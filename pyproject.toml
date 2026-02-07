@@ -9,13 +9,15 @@ description = "Small household humanoid robot"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "alive-progress>=3.3.0",
     "pyserial>=3.5",
     "vassar-feetech-servo-sdk>=1.5.0",
 ]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.0",
+    "pre-commit>=4.0.0",
+    "ruff>=0.15",
 ]
 
 [tool.ruff]
@@ -24,11 +26,20 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort (import sorting)
-    "UP",  # pyupgrade
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes (includes unused imports)
+    "I",     # isort (import sorting)
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear (common bugs and design problems)
+    "C4",    # flake8-comprehensions (better list/dict/set comprehensions)
+    "SIM",   # flake8-simplify (simplification suggestions)
+    "PIE",   # flake8-pie (misc lints)
+    "RET",   # flake8-return (return statement issues)
+    "PTH",   # flake8-use-pathlib (prefer pathlib over os.path)
+    "PL",    # pylint (comprehensive static analysis)
+    "PERF",  # perflint (performance anti-patterns)
+    "RUF",   # ruff-specific rules
 ]
 ignore = []
 
