@@ -1,7 +1,9 @@
 import math
 import time
 
+import numpy as np
 from alive_progress import alive_it
+from scipy.interpolate import CubicSpline
 from vassar_feetech_servo_sdk import ServoController
 
 from humanoid.logging import get_logger
@@ -14,6 +16,11 @@ ID_MAX = 253
 
 POS_MIN = 0
 POS_MAX = 4095
+
+ADDR_P_GAIN = 21
+ADDR_D_GAIN = 22
+ADDR_I_GAIN = 23
+ADDR_LOCK = 48
 
 
 class FeetechController(ServoController):
@@ -67,6 +74,82 @@ class FeetechController(ServoController):
         except KeyboardInterrupt:
             logger.info("Shutting down")
 
+    def home(
+        self,
+        servo_id: int,
+        speed: float = 2000.0,
+        update_frequency_hz: float = 100,
+        tolerance: float = 5.0,
+    ):
+        midpoint = (POS_MAX - POS_MIN) / 2
+
+        # Read current position
+        current_pos = self.read_position(servo_id)
+
+        # Calculate total distance to travel
+        total_distance = abs(midpoint - current_pos)
+
+        # If already at home, return immediately
+        if total_distance <= tolerance:
+            logger.info(f"Servo {servo_id} already at home position (within {tolerance} units)")
+            return True
+
+        # Calculate trajectory duration based on distance and speed
+        # Use trapezoidal velocity profile assumption: average speed is ~2/3 of max speed
+        duration = total_distance / (speed * 0.67)
+
+        logger.info(
+            f"Homing servo {servo_id} from position {current_pos} to {midpoint} "
+            f"(distance: {total_distance:.1f}, duration: {duration:.2f}s)"
+        )
+
+        # Create cubic spline trajectory with zero velocity at endpoints
+        # Time points: start, end
+        # Position points: current_pos, midpoint
+        # Boundary conditions: zero velocity at both ends (bc_type='clamped')
+        time_points = np.array([0.0, duration])
+        position_points = np.array([current_pos, midpoint])
+
+        # Create cubic spline with zero velocity boundary conditions
+        trajectory = CubicSpline(
+            time_points,
+            position_points,
+            bc_type=((1, 0.0), (1, 0.0)),  # Zero first derivative (velocity) at both ends
+        )
+
+        start_time = time.time()
+
+        def work():
+            elapsed = time.time() - start_time
+
+            # Get position from spline trajectory
+            if elapsed >= duration:
+                target = midpoint
+                progress = 1.0
+            else:
+                target = float(trajectory(elapsed))
+                progress = elapsed / duration
+
+            cmd = {servo_id: int(target)}
+
+            logger.debug(f"Homing progress: {progress:.2%}, target: {int(target)}")
+            result = self.write_position(cmd)
+            logger.debug(f"Result: {result=}")
+
+            # Stop when we've reached the target
+            if progress >= 1.0:
+                logger.info(f"Homing complete for servo {servo_id}")
+                return False  # Signal to stop the loop
+
+            return True  # Continue the loop
+
+        try:
+            loop_at_rate(work, update_frequency_hz)
+            return True
+        except KeyboardInterrupt:
+            logger.info("Homing interrupted")
+            return False
+
 
 class FeetechConfigurator:
     @classmethod
@@ -107,7 +190,18 @@ class FeetechConfigurator:
             return success
 
     @classmethod
-    def set_zero(cls, servo_id: int) -> bool:
+    def set_zero(cls, servo_id: int):
         logger.info(f"Setting zero (middle) position for {servo_id}")
         with FeetechController(servo_ids=[servo_id]) as controller:
             controller.set_middle_position([servo_id])
+
+    @classmethod
+    def read_gains(cls, servo_id: int) -> None:
+        with FeetechController(servo_ids=[servo_id]) as controller:
+            for addr, name in zip(
+                [ADDR_P_GAIN, ADDR_I_GAIN, ADDR_D_GAIN], ["P", "I", "D"], strict=True
+            ):
+                curr, res, err = controller.packet_handler.read1ByteTxRx(servo_id, addr)
+                if res != 0 or err != 0:
+                    raise RuntimeError(f"Problem reading {name} gain for {servo_id}")
+                logger.info(f"{name} gain for {servo_id}: {curr}")
