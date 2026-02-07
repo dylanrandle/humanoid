@@ -6,7 +6,7 @@ import sys
 
 def setup_logging(level: int = logging.INFO) -> None:
     formatter = logging.Formatter(
-        fmt="[%(levelname)s] %(asctime)s %(filename)s>%(funcName)s: %(message)s",
+        fmt="[%(levelname)s] %(asctime)s %(filename)s:%(lineno)d: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
