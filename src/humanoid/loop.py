@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 
 def loop_at_rate(
-    func: Callable,
+    func: Callable[[], None],
     rate_hz: float,
     duration: float | None = None,
 ) -> None:
