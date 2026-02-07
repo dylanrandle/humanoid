@@ -56,11 +56,11 @@ class FeetechController(ServoController):
             target = midpoint * math.sin(elapsed * angular_freq + phase_offset) + midpoint
             cmd = {servo_id: int(target)}
 
-            logger.info(f"Sending command: {cmd=}")
+            logger.debug(f"Sending command: {cmd=}")
             result = self.write_position(
                 cmd,
             )
-            logger.info(f"Result: {result=}")
+            logger.debug(f"Result: {result=}")
 
         try:
             loop_at_rate(work, update_frequency_hz)
@@ -108,5 +108,6 @@ class FeetechConfigurator:
 
     @classmethod
     def set_zero(cls, servo_id: int) -> bool:
+        logger.info(f"Setting zero (middle) position for {servo_id}")
         with FeetechController(servo_ids=[servo_id]) as controller:
             controller.set_middle_position([servo_id])
