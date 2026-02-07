@@ -38,8 +38,22 @@ class FeetechController(ServoController):
         midpoint = (POS_MAX - POS_MIN) / 2
         angular_freq = 2 * math.pi / period_s
 
+        # Read current position to calculate phase offset
+        current_pos = self.read_position(servo_id)
+
+        # Calculate phase offset so oscillation starts from current position
+        # current_pos = midpoint * sin(phase_offset) + midpoint
+        # Solving for phase_offset:
+        normalized_pos = (current_pos - midpoint) / midpoint
+        # Clamp to [-1, 1] to handle positions outside normal range
+        normalized_pos = max(-1.0, min(1.0, normalized_pos))
+        phase_offset = math.asin(normalized_pos)
+
+        start_time = time.time()
+
         def work():
-            target = midpoint * math.sin(time.time() * angular_freq) + midpoint
+            elapsed = time.time() - start_time
+            target = midpoint * math.sin(elapsed * angular_freq + phase_offset) + midpoint
             cmd = {servo_id: int(target)}
 
             logger.info(f"Sending command: {cmd=}")
@@ -91,3 +105,8 @@ class FeetechConfigurator:
                 logger.error(f"Failed to change motor ID from {current_id} to {new_id}")
 
             return success
+
+    @classmethod
+    def set_zero(cls, servo_id: int) -> bool:
+        with FeetechController(servo_ids=[servo_id]) as controller:
+            controller.set_middle_position([servo_id])
