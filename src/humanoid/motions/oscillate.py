@@ -11,9 +11,12 @@ from humanoid.types.robot import RobotCommand
 logger = get_logger(__name__)
 
 
+DEFAULT_RATE_HZ = 50
+
+
 def oscillate(
     servo_id: str,
-    update_frequency_hz: float = 10,
+    update_frequency_hz: float = DEFAULT_RATE_HZ,
     period_s: float = 5,
 ) -> None:
     subscriber = Subscriber(topics=[Topic.ROBOT_STATE])
@@ -63,8 +66,8 @@ def main():
     parser.add_argument(
         "--frequency",
         type=float,
-        default=10,
-        help="Update frequency in Hz (default: 10)",
+        default=DEFAULT_RATE_HZ,
+        help=f"Update frequency in Hz (default: {DEFAULT_RATE_HZ})",
     )
     parser.add_argument(
         "--period",

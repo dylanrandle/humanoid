@@ -9,7 +9,7 @@ from humanoid.types.robot import RobotState
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 50.0
+DEFAULT_RATE_HZ = 100.0
 
 
 class RobotDriver:
