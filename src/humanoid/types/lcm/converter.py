@@ -1,5 +1,6 @@
 """Converter between LCM types and Python dataclasses."""
 
+from humanoid.types.lcm import motor_temperature_t
 from humanoid.types.lcm.joint_position_t import joint_position_t
 from humanoid.types.lcm.robot_command_t import robot_command_t
 from humanoid.types.lcm.robot_state_t import robot_state_t
@@ -65,12 +66,19 @@ class LCMConverter:
         lcm_state.timestamp = int(state.timestamp * 1e9)  # Convert to nanoseconds
         lcm_state.num_joints = len(state.joint_positions)
         lcm_state.joint_positions = []
+        lcm_state.motor_temperatures = []
 
         for name, position in state.joint_positions.items():
             joint_pos = joint_position_t()
             joint_pos.name = name
             joint_pos.position = position
             lcm_state.joint_positions.append(joint_pos)
+
+        for name, temperature in state.motor_temperatures.items():
+            motor_temp = motor_temperature_t()
+            motor_temp.name = name
+            motor_temp.temperature = temperature
+            lcm_state.motor_temperatures.append(motor_temp)
 
         return lcm_state
 
@@ -88,7 +96,12 @@ class LCMConverter:
             jp.name: jp.position for jp in lcm_state.joint_positions
         }
 
+        motor_temperatures = {
+            mt.name: mt.temperature for mt in lcm_state.motor_temperatures
+        }
+
         return RobotState(
             timestamp=lcm_state.timestamp / 1e9,  # Convert from nanoseconds
             joint_positions=joint_positions,
+            motor_temperatures=motor_temperatures
         )

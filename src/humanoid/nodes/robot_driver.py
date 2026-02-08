@@ -1,6 +1,6 @@
 import time
 
-from humanoid.constants import Topic
+from humanoid.constants import SERVO_IDS, Topic
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
@@ -9,8 +9,7 @@ from humanoid.types.robot import RobotState
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 200.0
-SERVO_IDS = [1]
+DEFAULT_RATE_HZ = 50.0
 
 
 class RobotDriver:
@@ -30,9 +29,13 @@ class RobotDriver:
 
     def publish(self):
         positions = self.controller.read_all_positions()
-        robot_state = RobotState(time.perf_counter(), {str(k): v for k, v in positions.items()})
-        # TODO: add temps
-        # temperatures = self.controller.read_temperature(1)
+        temperatures = self.controller.read_all_temperatures()
+        robot_state = RobotState(
+            timestamp=time.perf_counter(),
+            joint_positions={str(k): v for k, v in positions.items()},
+            motor_temperatures={str(k): v for k, v in temperatures.items()},
+        )
+        logger.debug(f"Measured state: {robot_state}")
         self.publisher.publish(robot_state)
 
     def run(self, rate_hz: float = DEFAULT_RATE_HZ) -> None:

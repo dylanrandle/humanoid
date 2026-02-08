@@ -13,8 +13,8 @@ logger = get_logger(__name__)
 
 def oscillate(
     servo_id: str,
-    update_frequency_hz: float = 100,
-    period_s: float = 6,
+    update_frequency_hz: float = 10,
+    period_s: float = 5,
 ) -> None:
     subscriber = Subscriber(topics=[Topic.ROBOT_STATE])
     state = subscriber.receive(Topic.ROBOT_STATE)
@@ -63,14 +63,14 @@ def main():
     parser.add_argument(
         "--frequency",
         type=float,
-        default=100,
-        help="Update frequency in Hz (default: 100)",
+        default=10,
+        help="Update frequency in Hz (default: 10)",
     )
     parser.add_argument(
         "--period",
         type=float,
-        default=6,
-        help="Oscillation period in seconds (default: 6)",
+        default=5,
+        help="Oscillation period in seconds (default: 5)",
     )
     args = parser.parse_args()
 

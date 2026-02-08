@@ -11,5 +11,4 @@ class RobotCommand:
 class RobotState:
     timestamp: float
     joint_positions: dict[str, float]
-    # TODO: add temps
-    # motor_temperatures: dict[str, float]
+    motor_temperatures: dict[str, float]

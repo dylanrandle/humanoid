@@ -12,3 +12,4 @@ class Topic(Enum):
 
 TYPE_TO_TOPIC = {RobotCommand: Topic.ROBOT_COMMAND, RobotState: Topic.ROBOT_STATE}
 TOPIC_TO_TYPE = {v: k for k, v in TYPE_TO_TOPIC.items()}
+SERVO_IDS = [1]

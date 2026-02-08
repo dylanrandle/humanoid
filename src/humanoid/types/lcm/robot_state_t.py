@@ -11,11 +11,11 @@ import humanoid.types.lcm
 
 class robot_state_t(object):
 
-    __slots__ = ["timestamp", "num_joints", "joint_positions"]
+    __slots__ = ["timestamp", "num_joints", "joint_positions", "motor_temperatures"]
 
-    __typenames__ = ["int64_t", "int32_t", "humanoid.types.lcm.joint_position_t"]
+    __typenames__ = ["int64_t", "int32_t", "humanoid.types.lcm.joint_position_t", "humanoid.types.lcm.motor_temperature_t"]
 
-    __dimensions__ = [None, None, ["num_joints"]]
+    __dimensions__ = [None, None, ["num_joints"], ["num_joints"]]
 
     def __init__(self):
         self.timestamp = 0
@@ -24,6 +24,8 @@ class robot_state_t(object):
         """ LCM Type: int32_t """
         self.joint_positions = []
         """ LCM Type: humanoid.types.lcm.joint_position_t[num_joints] """
+        self.motor_temperatures = []
+        """ LCM Type: humanoid.types.lcm.motor_temperature_t[num_joints] """
 
     def encode(self):
         buf = BytesIO()
@@ -36,6 +38,9 @@ class robot_state_t(object):
         for i0 in range(self.num_joints):
             assert self.joint_positions[i0]._get_packed_fingerprint() == humanoid.types.lcm.joint_position_t._get_packed_fingerprint()
             self.joint_positions[i0]._encode_one(buf)
+        for i0 in range(self.num_joints):
+            assert self.motor_temperatures[i0]._get_packed_fingerprint() == humanoid.types.lcm.motor_temperature_t._get_packed_fingerprint()
+            self.motor_temperatures[i0]._encode_one(buf)
 
     @staticmethod
     def decode(data: bytes):
@@ -54,13 +59,16 @@ class robot_state_t(object):
         self.joint_positions = []
         for i0 in range(self.num_joints):
             self.joint_positions.append(humanoid.types.lcm.joint_position_t._decode_one(buf))
+        self.motor_temperatures = []
+        for i0 in range(self.num_joints):
+            self.motor_temperatures.append(humanoid.types.lcm.motor_temperature_t._decode_one(buf))
         return self
 
     @staticmethod
     def _get_hash_recursive(parents):
         if robot_state_t in parents: return 0
         newparents = parents + [robot_state_t]
-        tmphash = (0xc0cc70d9a8f769e9+ humanoid.types.lcm.joint_position_t._get_hash_recursive(newparents)) & 0xffffffffffffffff
+        tmphash = (0x1de878441dbb3d90+ humanoid.types.lcm.joint_position_t._get_hash_recursive(newparents)+ humanoid.types.lcm.motor_temperature_t._get_hash_recursive(newparents)) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None

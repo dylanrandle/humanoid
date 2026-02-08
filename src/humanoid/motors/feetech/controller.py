@@ -60,3 +60,6 @@ class FeetechController(ServoController):
         if res != 0 or err != 0:
             raise RuntimeError(f"Problem reading temperature for servo {servo_id}")
         return temp
+
+    def read_all_temperatures(self) -> dict[int, float]:
+        return {servo_id: self.read_temperature(servo_id) for servo_id in self.servo_ids}
