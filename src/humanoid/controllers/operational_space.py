@@ -176,6 +176,7 @@ class OperationalSpaceController:
 
         grad = np.zeros(self.nq)
         margin = self.config.joint_limit_margin
+        eps = 1e-6  # Small epsilon to prevent division by zero
 
         for i in range(self.nq):
             q_lower = self.model.lowerPositionLimit[i]
@@ -184,13 +185,13 @@ class OperationalSpaceController:
 
             # Distance to lower limit
             dist_lower = q - q_lower
-            if dist_lower < margin:
+            if dist_lower < margin and dist_lower > eps:
                 # Repulsive potential: 0.5 * k * (1/d - 1/d0)^2
                 grad[i] -= self.config.joint_limit_gain * (1.0 / dist_lower - 1.0 / margin)
 
             # Distance to upper limit
             dist_upper = q_upper - q
-            if dist_upper < margin:
+            if dist_upper < margin and dist_upper > eps:
                 grad[i] += self.config.joint_limit_gain * (1.0 / dist_upper - 1.0 / margin)
 
         return grad
