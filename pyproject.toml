@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "alive-progress>=3.3.0",
+    "lcm>=1.5.2",
     "pyserial>=3.5",
     "scipy>=1.15.0",
     "vassar-feetech-servo-sdk>=1.5.0",
@@ -24,6 +25,9 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+exclude = [
+    "src/humanoid/types/lcm/*.py",  # Auto-generated LCM types
+]
 
 [tool.ruff.lint]
 select = [

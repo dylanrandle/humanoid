@@ -1,0 +1,71 @@
+import time
+
+from humanoid.constants import Topic
+from humanoid.logger import get_logger
+from humanoid.loop import loop_at_rate
+from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.motors.feetech.controller import FeetechController
+from humanoid.types.robot import RobotCommand, RobotState
+
+logger = get_logger(__name__)
+
+DEFAULT_RATE_HZ = 200.0
+SERVO_IDS = [1]
+
+
+class RobotDriver:
+    def __init__(self):
+        self.subscriber = Subscriber(topics=[Topic.ROBOT_COMMAND])
+        self.publisher = Publisher()
+        self.controller = FeetechController(servo_ids=SERVO_IDS)
+        self.controller.connect()
+        logger.info("Initialized")
+
+    def process_command(self, command: RobotCommand) -> None:
+        logger.debug(
+            f"Received RobotCommand: timestamp={command.timestamp}, "
+            f"joint_positions={command.joint_positions}"
+        )
+        # Convert string keys to int keys for the controller
+        positions = {int(k): int(v) for k, v in command.joint_positions.items()}
+        self.controller.write_position(positions)
+
+    def receive(self):
+        command = self.subscriber.receive(Topic.ROBOT_COMMAND, timeout=0)
+        if command is not None:
+            self.process_command(command)
+
+    def publish(self):
+        positions = self.controller.read_all_positions()
+        robot_state = RobotState(time.perf_counter(), {str(k): v for k, v in positions.items()})
+        # TODO: add temps
+        # temperatures = self.controller.read_temperature(1)
+        self.publisher.publish(robot_state)
+
+    def run(self, rate_hz: float = DEFAULT_RATE_HZ) -> None:
+        logger.info(f"Starting main loop at {rate_hz} Hz...")
+
+        def work():
+            self.receive()
+            self.publish()
+
+        try:
+            loop_at_rate(work, rate_hz=rate_hz)
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user")
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        logger.info("Closing...")
+        self.subscriber.close()
+        self.controller.disconnect()
+
+
+def main():
+    driver = RobotDriver()
+    driver.run()
+
+
+if __name__ == "__main__":
+    main()

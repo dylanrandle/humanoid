@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -e
+
+# Get the project root directory (parent of scripts/)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Define paths
+LCM_DIR="${PROJECT_ROOT}/src/humanoid/types/lcm"
+LCM_OUTPUT="${PROJECT_ROOT}/src"
+
+echo "LCM definitions directory: ${LCM_DIR}"
+echo "Generating LCM Python types..."
+
+# Generate Python bindings for all .lcm files
+lcm-gen -p --ppath "${LCM_OUTPUT}" "${LCM_DIR}"/*.lcm
+
+echo "LCM Python types generated successfully!"

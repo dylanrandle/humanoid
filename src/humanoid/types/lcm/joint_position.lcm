@@ -1,0 +1,6 @@
+package humanoid.types.lcm;
+
+struct joint_position_t {
+    string name;
+    double position;
+}
