@@ -1,4 +1,4 @@
-from humanoid.logging import get_logger
+from humanoid.logger import get_logger
 from humanoid.motors.feetech.controller import FeetechConfigurator
 
 logger = get_logger(__name__)

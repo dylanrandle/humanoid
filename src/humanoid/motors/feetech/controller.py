@@ -1,13 +1,7 @@
-import math
-import time
-
-import numpy as np
 from alive_progress import alive_it
-from scipy.interpolate import CubicSpline
 from vassar_feetech_servo_sdk import ServoController
 
-from humanoid.logging import get_logger
-from humanoid.loop import loop_at_rate
+from humanoid.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -21,6 +15,7 @@ ADDR_P_GAIN = 21
 ADDR_D_GAIN = 22
 ADDR_I_GAIN = 23
 ADDR_LOCK = 48
+ADDR_TEMPERATURE = 63
 
 
 class FeetechController(ServoController):
@@ -39,116 +34,11 @@ class FeetechController(ServoController):
             logger.error(f"Failed to read motor at ID {servo_id}: {e}")
             return False
 
-    def oscillate(
-        self, servo_id: int, update_frequency_hz: float = 100, period_s: float = 6
-    ) -> bool:
-        midpoint = (POS_MAX - POS_MIN) / 2
-        angular_freq = 2 * math.pi / period_s
-
-        # Read current position to calculate phase offset
-        current_pos = self.read_position(servo_id)
-
-        # Calculate phase offset so oscillation starts from current position
-        # current_pos = midpoint * sin(phase_offset) + midpoint
-        # Solving for phase_offset:
-        normalized_pos = (current_pos - midpoint) / midpoint
-        # Clamp to [-1, 1] to handle positions outside normal range
-        normalized_pos = max(-1.0, min(1.0, normalized_pos))
-        phase_offset = math.asin(normalized_pos)
-
-        start_time = time.time()
-
-        def work():
-            elapsed = time.time() - start_time
-            target = midpoint * math.sin(elapsed * angular_freq + phase_offset) + midpoint
-            cmd = {servo_id: int(target)}
-
-            logger.debug(f"Sending command: {cmd=}")
-            result = self.write_position(
-                cmd,
-            )
-            logger.debug(f"Result: {result=}")
-
-        try:
-            loop_at_rate(work, update_frequency_hz)
-        except KeyboardInterrupt:
-            logger.info("Shutting down")
-
-    def home(
-        self,
-        servo_id: int,
-        speed: float = 2000.0,
-        update_frequency_hz: float = 100,
-        tolerance: float = 5.0,
-    ):
-        midpoint = (POS_MAX - POS_MIN) / 2
-
-        # Read current position
-        current_pos = self.read_position(servo_id)
-
-        # Calculate total distance to travel
-        total_distance = abs(midpoint - current_pos)
-
-        # If already at home, return immediately
-        if total_distance <= tolerance:
-            logger.info(f"Servo {servo_id} already at home position (within {tolerance} units)")
-            return True
-
-        # Calculate trajectory duration based on distance and speed
-        # Use trapezoidal velocity profile assumption: average speed is ~2/3 of max speed
-        duration = total_distance / (speed * 0.67)
-
-        logger.info(
-            f"Homing servo {servo_id} from position {current_pos} to {midpoint} "
-            f"(distance: {total_distance:.1f}, duration: {duration:.2f}s)"
-        )
-
-        # Create cubic spline trajectory with zero velocity at endpoints
-        # Time points: start, end
-        # Position points: current_pos, midpoint
-        # Boundary conditions: zero velocity at both ends (bc_type='clamped')
-        time_points = np.array([0.0, duration])
-        position_points = np.array([current_pos, midpoint])
-
-        # Create cubic spline with zero velocity boundary conditions
-        trajectory = CubicSpline(
-            time_points,
-            position_points,
-            bc_type=((1, 0.0), (1, 0.0)),  # Zero first derivative (velocity) at both ends
-        )
-
-        start_time = time.time()
-
-        def work():
-            elapsed = time.time() - start_time
-
-            # Get position from spline trajectory
-            if elapsed >= duration:
-                target = midpoint
-                progress = 1.0
-            else:
-                target = float(trajectory(elapsed))
-                progress = elapsed / duration
-
-            cmd = {servo_id: int(target)}
-
-            logger.debug(f"Homing progress: {progress:.2%}, target: {int(target)}")
-            result = self.write_position(cmd)
-            logger.debug(f"Result: {result=}")
-
-            # Stop when we've reached the target
-            if progress >= 1.0:
-                logger.info(f"Homing complete for servo {servo_id}")
-                return False  # Signal to stop the loop
-
-            return True  # Continue the loop
-
-        try:
-            loop_at_rate(work, update_frequency_hz)
-            return True
-        except KeyboardInterrupt:
-            logger.info("Homing interrupted")
-            return False
+    def read_temperature(self, servo_id: int) -> int:
+        temp, res, err = self.packet_handler.read1ByteTxRx(servo_id, ADDR_TEMPERATURE)
+        if res != 0 or err != 0:
+            raise RuntimeError(f"Problem reading temperature for servo {servo_id}")
+        return temp
 
 
 class FeetechConfigurator:
