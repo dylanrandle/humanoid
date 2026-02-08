@@ -1,4 +1,4 @@
-from typing import Any, Literal, overload
+from typing import Literal, overload
 
 import lcm
 
@@ -45,7 +45,7 @@ class Subscriber:
         self.lc = lcm.LCM(url)
         self.url = url
         self.topics = topics
-        self._subscriptions: list[Any] = []
+        self._subscriptions: list[lcm.LCMSubscription] = []
         self._message_queues: dict[Topic, list[AcceptedTypes]] = {}
 
         for topic in topics:
@@ -54,10 +54,10 @@ class Subscriber:
             self._message_queues[topic] = []
 
     def _handle_message(self, channel: str, data: bytes) -> None:
-        """Internal callback for LCM messages."""
         try:
             # Determine expected type from channel name
-            expected_type = TOPIC_TO_TYPE.get(channel)
+            topic = Topic(channel)
+            expected_type = TOPIC_TO_TYPE.get(topic)
 
             if expected_type == RobotCommand:
                 lcm_msg = robot_command_t.decode(data)
@@ -68,11 +68,7 @@ class Subscriber:
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
-            # Initialize queue for this channel if not exists
-            if channel not in self._message_queues:
-                self._message_queues[channel] = []
-
-            self._message_queues[channel].append(decoded_data)
+            self._message_queues[topic].append(decoded_data)
         except Exception as e:
             logger.error(f"Error decoding message on channel {channel}: {e}")
 
