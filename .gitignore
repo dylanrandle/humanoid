@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# LCM Java types
+lcm-java

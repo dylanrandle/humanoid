@@ -1,0 +1,23 @@
+#!/bin/bash
+
+set -e
+
+# Get the project root directory (parent of scripts/)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Define JAR path
+JAR_FILE="${PROJECT_ROOT}/src/humanoid/types/lcm/types.jar"
+
+# Check if JAR exists
+if [ ! -f "${JAR_FILE}" ]; then
+    echo "Error: JAR file not found at ${JAR_FILE}"
+    echo "Please run 'scripts/generate-lcm-types' first to generate the JAR file."
+    exit 1
+fi
+
+echo "Starting lcm-spy with humanoid LCM types..."
+echo "JAR file: ${JAR_FILE}"
+echo ""
+
+# Run lcm-spy with the JAR in the classpath
+CLASSPATH="${JAR_FILE}" lcm-spy

@@ -8,6 +8,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Define paths
 LCM_DIR="${PROJECT_ROOT}/src/humanoid/types/lcm"
 LCM_OUTPUT="${PROJECT_ROOT}/src"
+JAVA_OUTPUT="${PROJECT_ROOT}/lcm-java"
+JAR_OUTPUT="${LCM_DIR}/types.jar"
 
 echo "LCM definitions directory: ${LCM_DIR}"
 echo "Generating LCM Python types..."
@@ -16,3 +18,49 @@ echo "Generating LCM Python types..."
 lcm-gen -p --ppath "${LCM_OUTPUT}" "${LCM_DIR}"/*.lcm
 
 echo "LCM Python types generated successfully!"
+
+echo "Generating LCM Java types..."
+
+# Create Java output directory
+mkdir -p "${JAVA_OUTPUT}"
+
+# Generate Java bindings for all .lcm files
+lcm-gen -j --jpath "${JAVA_OUTPUT}" "${LCM_DIR}"/*.lcm
+
+echo "LCM Java types generated successfully!"
+
+echo "Compiling Java classes and creating JAR..."
+
+# Find all Java files and compile them
+JAVA_FILES=$(find "${JAVA_OUTPUT}" -name "*.java")
+
+if [ -n "$JAVA_FILES" ]; then
+    # Try to find lcm.jar in common locations
+    LCM_JAR=""
+    for path in /usr/local/share/java/lcm.jar /usr/share/java/lcm.jar /opt/homebrew/share/java/lcm.jar; do
+        if [ -f "$path" ]; then
+            LCM_JAR="$path"
+            break
+        fi
+    done
+    
+    if [ -z "$LCM_JAR" ]; then
+        echo "Error: Could not find lcm.jar. Please install LCM or set LCM_JAR environment variable."
+        echo "Common locations checked:"
+        echo "  - /usr/local/share/java/lcm.jar"
+        echo "  - /usr/share/java/lcm.jar"
+        echo "  - /opt/homebrew/share/java/lcm.jar"
+        exit 1
+    fi
+    
+    echo "Using LCM JAR: ${LCM_JAR}"
+    # Compile Java files (requires lcm.jar in classpath)
+    javac -cp "${LCM_JAR}" -d "${JAVA_OUTPUT}" $JAVA_FILES
+    
+    # Create JAR file
+    jar cf "${JAR_OUTPUT}" -C "${JAVA_OUTPUT}" .
+    
+    echo "JAR file created: ${JAR_OUTPUT}"
+else
+    echo "No Java files found to compile"
+fi
