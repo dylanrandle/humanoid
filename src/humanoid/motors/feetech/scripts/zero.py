@@ -1,7 +1,7 @@
 import argparse
 
 from humanoid.logger import get_logger
-from humanoid.motors.feetech.controller import FeetechConfigurator
+from humanoid.motors.feetech.configurator import FeetechConfigurator
 
 logger = get_logger(__name__)
 
