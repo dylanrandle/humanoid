@@ -2,7 +2,7 @@ import argparse
 import math
 import time
 
-from humanoid.constants import Topic
+from humanoid.constants import SERVO_IDS, Topic
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
@@ -15,23 +15,39 @@ DEFAULT_RATE_HZ = 50
 
 
 def oscillate(
-    servo_id: str,
+    servo_ids: list[str] | None = None,
     update_frequency_hz: float = DEFAULT_RATE_HZ,
     period_s: float = 5,
 ) -> None:
+    # Default to all servos if none specified
+    if servo_ids is None:
+        servo_ids = [str(sid) for sid in SERVO_IDS]
+        logger.info(f"Oscillating all servos: {servo_ids}")
+    else:
+        logger.info(f"Oscillating servos: {servo_ids}")
+
+    # Get initial state for all servos
     subscriber = Subscriber(topics=[Topic.ROBOT_STATE])
     state = subscriber.receive(Topic.ROBOT_STATE)
     subscriber.close()
 
     assert state, "Missing robot state"
-    assert servo_id in state.joint_positions, f"Missing joint pos for {servo_id}"
 
-    initial_angle = state.joint_positions[servo_id]
-    # Normalize angle to [-1, 1] range (assuming max range is -π to π)
-    normalized_angle = initial_angle / math.pi
-    # Clamp to [-1, 1] to handle angles outside normal range
-    normalized_angle = max(-1.0, min(1.0, normalized_angle))
-    phase_offset = math.asin(normalized_angle)
+    # Calculate initial phase offsets for each servo
+    servo_data = {}
+    for servo_id in servo_ids:
+        assert servo_id in state.joint_positions, f"Missing joint pos for {servo_id}"
+
+        initial_angle = state.joint_positions[servo_id]
+        # Normalize angle to [-1, 1] range (assuming max range is -π to π)
+        normalized_angle = initial_angle / math.pi
+        # Clamp to [-1, 1] to handle angles outside normal range
+        normalized_angle = max(-1.0, min(1.0, normalized_angle))
+        phase_offset = math.asin(normalized_angle)
+
+        servo_data[servo_id] = {
+            "phase_offset": phase_offset,
+        }
 
     angular_freq = 2 * math.pi / period_s
     start_time = time.time()
@@ -39,10 +55,18 @@ def oscillate(
 
     def work():
         elapsed = time.time() - start_time
-        # Oscillate between -π and π, centered at 0
-        target_angle = math.pi * math.sin(elapsed * angular_freq + phase_offset)
+        joint_positions = {}
+
+        # Calculate target angle for each servo
+        for servo_id in servo_ids:
+            phase_offset = servo_data[servo_id]["phase_offset"]
+            # Oscillate between -π and π, centered at 0
+            target_angle = math.pi * math.sin(elapsed * angular_freq + phase_offset)
+            joint_positions[servo_id] = float(target_angle)
+
         command = RobotCommand(
-            timestamp=time.perf_counter(), joint_positions={servo_id: float(target_angle)}
+            timestamp=time.perf_counter(),
+            joint_positions=joint_positions,
         )
 
         logger.debug(f"Publishing command: {command}")
@@ -57,11 +81,10 @@ def oscillate(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i",
-        "--servo-id",
+        "--servo-ids",
         type=str,
-        required=True,
-        help="ID of the servo to oscillate (as string)",
+        nargs="+",
+        help="IDs of the servos to oscillate. If not specified, oscillates all servos.",
     )
     parser.add_argument(
         "--frequency",
@@ -78,7 +101,7 @@ def main():
     args = parser.parse_args()
 
     oscillate(
-        servo_id=args.servo_id,
+        servo_ids=args.servo_ids,
         update_frequency_hz=args.frequency,
         period_s=args.period,
     )
