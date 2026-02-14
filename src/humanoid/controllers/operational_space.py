@@ -4,13 +4,13 @@ This controller computes joint commands to achieve target task space poses.
 """
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import pinocchio as pin
 from numpy.typing import NDArray
 
 from humanoid.logger import get_logger
+from humanoid.robots.base import Robot
 
 logger = get_logger(__name__)
 
@@ -34,26 +34,23 @@ class OperationalSpaceController:
 
     def __init__(
         self,
-        urdf_path: Path,
+        robot: Robot,
         end_effector_frame: str,
         config: OperationalSpaceConfig | None = None,
-        package_dirs: list[Path] | None = None,
     ):
         """Initialize the operational space controller.
 
         Args:
-            urdf_path: Path to the robot URDF file
+            robot: Robot instance containing the model and data
             end_effector_frame: Name of the end-effector frame in the URDF
             config: Controller configuration parameters
-            package_dirs: Optional list of package directories for URDF loading
         """
         self.config = config or OperationalSpaceConfig()
-        self.urdf_path = urdf_path
-        self.package_dirs = package_dirs
+        self.robot = robot
 
-        # Load robot model
-        self.model = pin.buildModelFromUrdf(str(self.urdf_path))
-        self.data = self.model.createData()
+        # Use robot's model and data
+        self.model = robot.model
+        self.data = robot.data
 
         # Get end-effector frame ID
         if not self.model.existFrame(end_effector_frame):
