@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 from humanoid.types.robot import RobotCommand, RobotState
@@ -13,3 +14,5 @@ class Topic(Enum):
 TYPE_TO_TOPIC = {RobotCommand: Topic.ROBOT_COMMAND, RobotState: Topic.ROBOT_STATE}
 TOPIC_TO_TYPE = {v: k for k, v in TYPE_TO_TOPIC.items()}
 SERVO_IDS = [1, 2, 3, 4]
+ROBOT_NAME = "panda"
+IS_SIMULATION = os.getenv("RUNTIME_ENV", "sim").lower() in ("sim", "simulation")

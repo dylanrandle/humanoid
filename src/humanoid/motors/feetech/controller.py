@@ -3,6 +3,7 @@ import math
 from vassar_feetech_servo_sdk import ServoController
 
 from humanoid.logger import get_logger
+from humanoid.motors.base import MotorController
 
 logger = get_logger(__name__)
 
@@ -13,9 +14,10 @@ POS_MID = (POS_MAX + POS_MIN) / 2
 ADDR_TEMPERATURE = 63
 
 
-class FeetechMotorController(ServoController):
-    def __init__(self, servo_ids: list[str]):
-        super().__init__(servo_ids=servo_ids)
+class FeetechMotorController(ServoController, MotorController):
+    def __init__(self, servo_ids: list[int]):
+        ServoController.__init__(self, servo_ids=servo_ids)
+        MotorController.__init__(self, servo_ids=servo_ids)
 
     @staticmethod
     def angle_to_position(angle: float) -> int:

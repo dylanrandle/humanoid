@@ -1,10 +1,12 @@
 import time
 
-from humanoid.constants import SERVO_IDS, Topic
+from humanoid.constants import IS_SIMULATION, SERVO_IDS, Topic
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.motors.base import MotorController
 from humanoid.motors.feetech.controller import FeetechMotorController
+from humanoid.motors.simulation import SimulatedMotorController
 from humanoid.types.robot import RobotState
 
 logger = get_logger(__name__)
@@ -16,7 +18,14 @@ class RobotDriver:
     def __init__(self):
         self.subscriber = Subscriber(topics=[Topic.ROBOT_COMMAND])
         self.publisher = Publisher()
-        self.controller = FeetechMotorController(servo_ids=SERVO_IDS)
+
+        if IS_SIMULATION:
+            logger.info("Using simulated motor controller")
+            self.controller: MotorController = SimulatedMotorController(servo_ids=SERVO_IDS)
+        else:
+            logger.info("Using Feetech motor controller")
+            self.controller: MotorController = FeetechMotorController(servo_ids=SERVO_IDS)
+
         self.controller.connect()
         logger.info("Initialized")
 
