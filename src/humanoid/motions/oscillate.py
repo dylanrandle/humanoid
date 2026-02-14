@@ -2,7 +2,7 @@ import argparse
 import math
 import time
 
-from humanoid.constants import SERVO_IDS, Topic
+from humanoid.constants import ROBOT_CONFIG, Topic
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
@@ -21,8 +21,8 @@ def oscillate(
 ) -> None:
     # Default to all servos if none specified
     if servo_ids is None:
-        servo_ids = [str(sid) for sid in SERVO_IDS]
-        logger.info(f"Oscillating all servos: {servo_ids}")
+        servo_ids = [str(sid) for sid in ROBOT_CONFIG.servo_ids]
+        logger.info(f"Oscillating all servos for {ROBOT_CONFIG.name}: {servo_ids}")
     else:
         logger.info(f"Oscillating servos: {servo_ids}")
 

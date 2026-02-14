@@ -3,9 +3,22 @@ import sys
 from multiprocessing import Process
 
 from humanoid.logger import get_logger
+from humanoid.nodes.robot_controller import RobotController
 from humanoid.nodes.robot_driver import RobotDriver
 
 logger = get_logger(__name__)
+
+
+def _start_robot_driver():
+    """Standalone function to start robot driver in subprocess."""
+    driver = RobotDriver()
+    driver.run()
+
+
+def _start_robot_controller():
+    """Standalone function to start robot controller in subprocess."""
+    controller = RobotController()
+    controller.run()
 
 
 class NodeManager:
@@ -13,18 +26,17 @@ class NodeManager:
         self.processes: list[Process] = []
         self.running = False
 
-    def start_robot_driver(self):
-        driver = RobotDriver()
-        driver.run()
-
     def start(self):
         logger.info("Starting node manager")
         self.running = True
 
-        driver_process = Process(target=self.start_robot_driver, name="RobotDriver")
+        driver_process = Process(target=_start_robot_driver, name="RobotDriver")
         driver_process.start()
-
         self.processes.append(driver_process)
+
+        controller_process = Process(target=_start_robot_controller, name="RobotController")
+        controller_process.start()
+        self.processes.append(controller_process)
 
     def stop(self, timeout=5):
         logger.info("Stopping node manager")

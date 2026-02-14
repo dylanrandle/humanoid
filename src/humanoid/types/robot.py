@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import numpy as np
 import pinocchio as pin
 
 
@@ -20,3 +21,11 @@ class RobotState:
 class RobotToolCommand:
     timestamp: float
     pose: pin.SE3
+
+
+@dataclass
+class RobotConfig:
+    name: str
+    end_effector_frame: str
+    home_position: np.ndarray
+    servo_ids: list[int]

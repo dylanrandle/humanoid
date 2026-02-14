@@ -1,7 +1,7 @@
 import argparse
 import time
 
-from humanoid.constants import SERVO_IDS
+from humanoid.constants import ROBOT_CONFIG
 from humanoid.logger import get_logger
 from humanoid.middleware.lcm import Publisher
 from humanoid.types.robot import RobotJointCommand
@@ -17,8 +17,8 @@ def home(servo_ids: list[str] | None = None) -> None:
     """
     # Default to all servos if none specified
     if servo_ids is None:
-        servo_ids = [str(sid) for sid in SERVO_IDS]
-        logger.info(f"Homing all servos: {servo_ids}")
+        servo_ids = [str(sid) for sid in ROBOT_CONFIG.servo_ids]
+        logger.info(f"Homing all servos for {ROBOT_CONFIG.name}: {servo_ids}")
     else:
         logger.info(f"Homing servos: {servo_ids}")
 
