@@ -1,10 +1,14 @@
 """Converter between LCM types and Python dataclasses."""
 
+import numpy as np
+import pinocchio as pin
+
 from humanoid.types.lcm import motor_temperature_t
 from humanoid.types.lcm.joint_position_t import joint_position_t
 from humanoid.types.lcm.robot_command_t import robot_command_t
 from humanoid.types.lcm.robot_state_t import robot_state_t
-from humanoid.types.robot import RobotCommand, RobotState
+from humanoid.types.lcm.robot_tool_command_t import robot_tool_command_t
+from humanoid.types.robot import RobotCommand, RobotState, RobotToolCommand
 
 
 class LCMConverter:
@@ -104,4 +108,57 @@ class LCMConverter:
             timestamp=lcm_state.timestamp / 1e9,  # Convert from nanoseconds
             joint_positions=joint_positions,
             motor_temperatures=motor_temperatures
+        )
+
+    @staticmethod
+    def robot_tool_command_to_lcm(command: RobotToolCommand) -> robot_tool_command_t:
+        """Convert RobotToolCommand dataclass to robot_tool_command_t LCM type.
+
+        Args:
+            command: RobotToolCommand dataclass with timestamp and pose (pin.SE3)
+
+        Returns:
+            robot_tool_command_t LCM type ready for transmission
+        """
+        lcm_command = robot_tool_command_t()
+        lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
+        
+        # Extract position from SE3
+        lcm_command.position = command.pose.translation.tolist()
+        
+        # Extract quaternion from SE3 rotation matrix in wxyz format
+        quat = pin.Quaternion(command.pose.rotation)
+        # Quaternion format: [w, x, y, z]
+        lcm_command.quaternion = [quat.w, quat.x, quat.y, quat.z]
+        
+        return lcm_command
+
+    @staticmethod
+    def robot_tool_command_from_lcm(lcm_command: robot_tool_command_t) -> RobotToolCommand:
+        """Convert robot_tool_command_t LCM type to RobotToolCommand dataclass.
+
+        Args:
+            lcm_command: robot_tool_command_t LCM type
+
+        Returns:
+            RobotToolCommand dataclass
+        """
+        # Reconstruct position
+        position = np.array(lcm_command.position)
+        
+        # Reconstruct rotation from quaternion in wxyz format [w, x, y, z]
+        quat = pin.Quaternion(
+            lcm_command.quaternion[0],  # w
+            lcm_command.quaternion[1],  # x
+            lcm_command.quaternion[2],  # y
+            lcm_command.quaternion[3]   # z
+        )
+        rotation = quat.toRotationMatrix()
+        
+        # Create SE3 pose
+        pose = pin.SE3(rotation, position)
+        
+        return RobotToolCommand(
+            timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
+            pose=pose
         )
