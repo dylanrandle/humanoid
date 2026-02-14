@@ -28,6 +28,12 @@ class OperationalSpaceConfig:
     # Control loop
     dt: float = 0.01  # Control timestep (seconds)
 
+    # Velocity and acceleration limits (per axis)
+    max_linear_velocity: float = 1.0  # Maximum linear velocity per axis (m/s)
+    max_angular_velocity: float = 2.0  # Maximum angular velocity per axis (rad/s)
+    max_linear_acceleration: float = 10.0  # Maximum linear acceleration per axis (m/s^2)
+    max_angular_acceleration: float = 20.0  # Maximum angular acceleration per axis (rad/s^2)
+
 
 class OperationalSpaceController:
     """Operational space controller for 6-DOF task space control."""
@@ -64,6 +70,7 @@ class OperationalSpaceController:
         # State tracking
         self.q_current: NDArray[np.float64] | None = None
         self.v_current: NDArray[np.float64] | None = None
+        self.prev_task_velocity: NDArray[np.float64] | None = None
 
     def update_state(self, q: NDArray[np.float64], v: NDArray[np.float64]) -> None:
         """Update the current robot state.
@@ -124,6 +131,46 @@ class OperationalSpaceController:
             pin.ReferenceFrame.LOCAL_WORLD_ALIGNED,
         )
 
+    def _clip_task_velocity(self, task_velocity: NDArray[np.float64]) -> NDArray[np.float64]:
+        """Clip task space velocity to configured limits (per axis).
+
+        Args:
+            task_velocity: 6D task space velocity [linear, angular]
+
+        Returns:
+            Clipped task space velocity
+        """
+        linear_vel = np.clip(
+            task_velocity[:3], -self.config.max_linear_velocity, self.config.max_linear_velocity
+        )
+        angular_vel = np.clip(
+            task_velocity[3:], -self.config.max_angular_velocity, self.config.max_angular_velocity
+        )
+        return np.concatenate([linear_vel, angular_vel])
+
+    def _clip_task_acceleration(
+        self, task_acceleration: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        """Clip task space acceleration to configured limits (per axis).
+
+        Args:
+            task_acceleration: 6D task space acceleration [linear, angular]
+
+        Returns:
+            Clipped task space acceleration
+        """
+        linear_accel = np.clip(
+            task_acceleration[:3],
+            -self.config.max_linear_acceleration,
+            self.config.max_linear_acceleration,
+        )
+        angular_accel = np.clip(
+            task_acceleration[3:],
+            -self.config.max_angular_acceleration,
+            self.config.max_angular_acceleration,
+        )
+        return np.concatenate([linear_accel, angular_accel])
+
     def compute_control(
         self, target_pose: pin.SE3, target_velocity: NDArray[np.float64] | None = None
     ) -> NDArray[np.float64]:
@@ -156,6 +203,18 @@ class OperationalSpaceController:
 
         # Desired task velocity with PD control
         desired_task_velocity = target_velocity + Kp @ task_error - Kd @ current_task_velocity
+
+        # Apply velocity limits
+        desired_task_velocity = self._clip_task_velocity(desired_task_velocity)
+
+        # Apply acceleration limits
+        if self.prev_task_velocity is not None:
+            task_acceleration = (desired_task_velocity - self.prev_task_velocity) / self.config.dt
+            task_acceleration = self._clip_task_acceleration(task_acceleration)
+            desired_task_velocity = self.prev_task_velocity + task_acceleration * self.config.dt
+
+        # Store for next iteration
+        self.prev_task_velocity = desired_task_velocity.copy()
 
         # Compute joint velocities using pseudo-inverse
         J_pinv = np.linalg.pinv(J)
