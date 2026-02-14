@@ -2,7 +2,7 @@ from alive_progress import alive_it
 
 from humanoid.logger import get_logger
 from humanoid.motors.feetech.controller import (
-    FeetechController,
+    FeetechMotorController,
 )
 
 logger = get_logger(__name__)
@@ -16,13 +16,13 @@ ADDR_I_GAIN = 23
 ADDR_LOCK = 48
 
 
-class FeetechConfigurator:
+class FeetechMotorConfigurator:
     @classmethod
     def scan(cls) -> list[int]:
         found_ids = []
         possible_ids = list(range(ID_MIN, ID_MAX + 1))
         for id in alive_it(possible_ids):
-            with FeetechController(servo_ids=[id]) as controller:
+            with FeetechMotorController(servo_ids=[id]) as controller:
                 if controller.ping(id):
                     found_ids.append(id)
         return found_ids
@@ -39,7 +39,7 @@ class FeetechConfigurator:
 
         logger.info(f"Attempting to change motor ID from {current_id} to {new_id}...")
 
-        with FeetechController(servo_ids=[current_id]) as controller:
+        with FeetechMotorController(servo_ids=[current_id]) as controller:
             if not controller.ping(current_id):
                 logger.error(f"Unable to find motor {current_id}")
                 return False
@@ -57,12 +57,12 @@ class FeetechConfigurator:
     @classmethod
     def set_zero(cls, servo_id: int):
         logger.info(f"Setting zero (middle) position for {servo_id}")
-        with FeetechController(servo_ids=[servo_id]) as controller:
+        with FeetechMotorController(servo_ids=[servo_id]) as controller:
             controller.set_middle_position([servo_id])
 
     @classmethod
     def read_gains(cls, servo_id: int) -> None:
-        with FeetechController(servo_ids=[servo_id]) as controller:
+        with FeetechMotorController(servo_ids=[servo_id]) as controller:
             for addr, name in zip(
                 [ADDR_P_GAIN, ADDR_I_GAIN, ADDR_D_GAIN], ["P", "I", "D"], strict=True
             ):

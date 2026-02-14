@@ -1,7 +1,7 @@
 import argparse
 
 from humanoid.logger import get_logger
-from humanoid.motors.feetech.configurator import FeetechConfigurator
+from humanoid.motors.feetech.configurator import FeetechMotorConfigurator
 
 logger = get_logger(__name__)
 
@@ -16,7 +16,7 @@ def main():
     )
     args = parser.parse_args()
 
-    FeetechConfigurator.set_zero(args.motor_id)
+    FeetechMotorConfigurator.set_zero(args.motor_id)
 
 
 if __name__ == "__main__":

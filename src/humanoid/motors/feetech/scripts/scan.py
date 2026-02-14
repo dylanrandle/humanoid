@@ -1,12 +1,12 @@
 from humanoid.logger import get_logger
-from humanoid.motors.feetech.configurator import FeetechConfigurator
+from humanoid.motors.feetech.configurator import FeetechMotorConfigurator
 
 logger = get_logger(__name__)
 
 
 def main():
     logger.info("Scanning for motors")
-    results = FeetechConfigurator.scan()
+    results = FeetechMotorConfigurator.scan()
     logger.info(f"Results: {results}")
 
 

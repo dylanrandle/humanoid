@@ -13,7 +13,7 @@ POS_MID = (POS_MAX + POS_MIN) / 2
 ADDR_TEMPERATURE = 63
 
 
-class FeetechController(ServoController):
+class FeetechMotorController(ServoController):
     def __init__(self, servo_ids: list[str]):
         super().__init__(servo_ids=servo_ids)
 
