@@ -194,7 +194,6 @@ class MeshcatVisualizer:
         name: str,
         pose: pin.SE3,
         axis_length: float = 0.1,
-        axis_thickness: float = 0.005,
     ) -> None:
         """Add a coordinate frame marker to the visualization.
 
@@ -204,7 +203,6 @@ class MeshcatVisualizer:
             name: Unique name for the frame (use "/" for hierarchy)
             pose: SE3 transformation representing the frame pose
             axis_length: Length of each axis in meters (default: 0.1m = 10cm)
-            axis_thickness: Thickness of each axis in meters (default: 0.005m = 5mm)
 
         Raises:
             RuntimeError: If the visualizer has not been initialized
@@ -212,47 +210,10 @@ class MeshcatVisualizer:
         if not self._initialized:
             raise RuntimeError("Visualizer not initialized. Call initialize() first.")
 
-        # Create axes as cylinders
-        axes = [
-            ("x", [1, 0, 0], 0xFF0000),  # Red
-            ("y", [0, 1, 0], 0x00FF00),  # Green
-            ("z", [0, 0, 1], 0x0000FF),  # Blue
-        ]
-
-        for axis_name, direction, color in axes:
-            axis_full_name = f"{name}/{axis_name}"
-
-            # Create cylinder geometry
-            self.viewer.viewer[axis_full_name].set_object(
-                g.Cylinder(axis_length, axis_thickness),
-                g.MeshBasicMaterial(color=color),
-            )
-
-            # Compute transform: cylinder is along Z, so rotate to align with axis
-            direction_vec = np.array(direction)
-            z_axis = np.array([0, 0, 1])
-
-            # Rotation to align Z with direction
-            if np.allclose(direction_vec, z_axis):
-                rotation = np.eye(3)
-            elif np.allclose(direction_vec, -z_axis):
-                rotation = np.array([[-1, 0, 0], [0, 1, 0], [0, 0, -1]])
-            else:
-                # Rodrigues' rotation formula
-                v = np.cross(z_axis, direction_vec)
-                s = np.linalg.norm(v)
-                c = np.dot(z_axis, direction_vec)
-                vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
-                rotation = np.eye(3) + vx + vx @ vx * ((1 - c) / (s * s))
-
-            # Position at half the axis length along the direction
-            position = pose.translation + pose.rotation @ (direction_vec * axis_length / 2)
-
-            # Combine rotations
-            final_rotation = pose.rotation @ rotation
-            axis_pose = pin.SE3(final_rotation, position)
-
-            self.viewer.viewer[axis_full_name].set_transform(axis_pose.homogeneous)
+        self.viewer.viewer[name].set_object(
+            g.triad(scale=axis_length),
+        )
+        self.viewer.viewer[name].set_transform(pose.homogeneous)
 
     def remove_object(self, name: str) -> None:
         """Remove an object from the visualization.
