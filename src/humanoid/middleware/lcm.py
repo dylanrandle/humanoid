@@ -4,15 +4,14 @@ import lcm
 
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, TYPE_TO_TOPIC, Topic
 from humanoid.logger import get_logger
+from humanoid.types.lcm import robot_joint_command_t, robot_state_t, robot_tool_command_t
 from humanoid.types.lcm.converter import LCMConverter
-from humanoid.types.lcm.robot_command_t import robot_command_t
-from humanoid.types.lcm.robot_state_t import robot_state_t
-from humanoid.types.robot import RobotCommand, RobotState
+from humanoid.types.robot import RobotJointCommand, RobotState, RobotToolCommand
 
 logger = get_logger(__name__)
 
 
-AcceptedTypes = RobotCommand | RobotState
+AcceptedTypes = RobotJointCommand | RobotToolCommand | RobotState
 
 
 class Publisher:
@@ -22,12 +21,15 @@ class Publisher:
 
     def publish(self, data: AcceptedTypes) -> None:
         # Convert to LCM type based on data type
-        if isinstance(data, RobotCommand):
-            lcm_data = LCMConverter.robot_command_to_lcm(data)
-            topic = TYPE_TO_TOPIC[RobotCommand]
+        if isinstance(data, RobotJointCommand):
+            lcm_data = LCMConverter.robot_joint_command_to_lcm(data)
+            topic = TYPE_TO_TOPIC[RobotJointCommand]
         elif isinstance(data, RobotState):
             lcm_data = LCMConverter.robot_state_to_lcm(data)
             topic = TYPE_TO_TOPIC[RobotState]
+        elif isinstance(data, RobotToolCommand):
+            lcm_data = LCMConverter.robot_tool_command_to_lcm(data)
+            topic = TYPE_TO_TOPIC[RobotToolCommand]
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 
@@ -59,12 +61,15 @@ class Subscriber:
             topic = Topic(channel)
             expected_type = TOPIC_TO_TYPE.get(topic)
 
-            if expected_type == RobotCommand:
-                lcm_msg = robot_command_t.decode(data)
-                decoded_data = LCMConverter.robot_command_from_lcm(lcm_msg)
+            if expected_type == RobotJointCommand:
+                lcm_msg = robot_joint_command_t.decode(data)
+                decoded_data = LCMConverter.robot_joint_command_from_lcm(lcm_msg)
             elif expected_type == RobotState:
                 lcm_msg = robot_state_t.decode(data)
                 decoded_data = LCMConverter.robot_state_from_lcm(lcm_msg)
+            elif expected_type == RobotToolCommand:
+                lcm_msg = robot_tool_command_t.decode(data)
+                decoded_data = LCMConverter.robot_tool_command_from_lcm(lcm_msg)
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
@@ -74,13 +79,18 @@ class Subscriber:
 
     @overload
     def receive(
-        self, topic: Literal[Topic.ROBOT_COMMAND], timeout: int | None = None
-    ) -> RobotCommand | None: ...
+        self, topic: Literal[Topic.ROBOT_JOINT_COMMAND], timeout: int | None = None
+    ) -> RobotJointCommand | None: ...
 
     @overload
     def receive(
         self, topic: Literal[Topic.ROBOT_STATE], timeout: int | None = None
     ) -> RobotState | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.ROBOT_TOOL_COMMAND], timeout: int | None = None
+    ) -> RobotToolCommand | None: ...
 
     def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None:
         # Check if we have queued messages for this topic

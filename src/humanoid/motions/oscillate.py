@@ -6,7 +6,7 @@ from humanoid.constants import SERVO_IDS, Topic
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
-from humanoid.types.robot import RobotCommand
+from humanoid.types.robot import RobotJointCommand
 
 logger = get_logger(__name__)
 
@@ -64,7 +64,7 @@ def oscillate(
             target_angle = math.pi * math.sin(elapsed * angular_freq + phase_offset)
             joint_positions[servo_id] = float(target_angle)
 
-        command = RobotCommand(
+        command = RobotJointCommand(
             timestamp=time.perf_counter(),
             joint_positions=joint_positions,
         )

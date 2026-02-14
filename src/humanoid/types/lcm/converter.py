@@ -3,28 +3,24 @@
 import numpy as np
 import pinocchio as pin
 
-from humanoid.types.lcm import motor_temperature_t
-from humanoid.types.lcm.joint_position_t import joint_position_t
-from humanoid.types.lcm.robot_command_t import robot_command_t
-from humanoid.types.lcm.robot_state_t import robot_state_t
-from humanoid.types.lcm.robot_tool_command_t import robot_tool_command_t
-from humanoid.types.robot import RobotCommand, RobotState, RobotToolCommand
+from humanoid.types.lcm import motor_temperature_t, joint_position_t, robot_joint_command_t, robot_state_t, robot_tool_command_t
+from humanoid.types.robot import RobotJointCommand, RobotState, RobotToolCommand
 
 
 class LCMConverter:
     """Handles conversion between LCM types and Python dataclasses."""
 
     @staticmethod
-    def robot_command_to_lcm(command: RobotCommand) -> robot_command_t:
-        """Convert RobotCommand dataclass to robot_command_t LCM type.
+    def robot_joint_command_to_lcm(command: RobotJointCommand) -> robot_joint_command_t:
+        """Convert RobotJointCommand dataclass to robot_joint_command_t LCM type.
 
         Args:
-            command: RobotCommand dataclass with timestamp and joint_positions dict
+            command: RobotJointCommand dataclass with timestamp and joint_positions dict
 
         Returns:
-            robot_command_t LCM type ready for transmission
+            robot_joint_command_t LCM type ready for transmission
         """
-        lcm_command = robot_command_t()
+        lcm_command = robot_joint_command_t()
         lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
         lcm_command.num_joints = len(command.joint_positions)
         lcm_command.joint_positions = []
@@ -38,20 +34,20 @@ class LCMConverter:
         return lcm_command
 
     @staticmethod
-    def robot_command_from_lcm(lcm_command: robot_command_t) -> RobotCommand:
-        """Convert robot_command_t LCM type to RobotCommand dataclass.
+    def robot_joint_command_from_lcm(lcm_command: robot_joint_command_t) -> RobotJointCommand:
+        """Convert robot_joint_command LCM type to RobotJointCommand dataclass.
 
         Args:
-            lcm_command: robot_command_t LCM type
+            lcm_command: robot_joint_command LCM type
 
         Returns:
-            RobotCommand dataclass
+            RobotJointCommand dataclass
         """
         joint_positions = {
             jp.name: jp.position for jp in lcm_command.joint_positions
         }
 
-        return RobotCommand(
+        return RobotJointCommand(
             timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
             joint_positions=joint_positions,
         )

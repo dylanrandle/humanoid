@@ -9,7 +9,7 @@ import struct
 
 import humanoid.types.lcm
 
-class robot_command_t(object):
+class robot_joint_command_t(object):
 
     __slots__ = ["timestamp", "num_joints", "joint_positions"]
 
@@ -27,7 +27,7 @@ class robot_command_t(object):
 
     def encode(self):
         buf = BytesIO()
-        buf.write(robot_command_t._get_packed_fingerprint())
+        buf.write(robot_joint_command_t._get_packed_fingerprint())
         self._encode_one(buf)
         return buf.getvalue()
 
@@ -43,13 +43,13 @@ class robot_command_t(object):
             buf = data
         else:
             buf = BytesIO(data)
-        if buf.read(8) != robot_command_t._get_packed_fingerprint():
+        if buf.read(8) != robot_joint_command_t._get_packed_fingerprint():
             raise ValueError("Decode error")
-        return robot_command_t._decode_one(buf)
+        return robot_joint_command_t._decode_one(buf)
 
     @staticmethod
     def _decode_one(buf):
-        self = robot_command_t()
+        self = robot_joint_command_t()
         self.timestamp, self.num_joints = struct.unpack(">qi", buf.read(12))
         self.joint_positions = []
         for i0 in range(self.num_joints):
@@ -58,8 +58,8 @@ class robot_command_t(object):
 
     @staticmethod
     def _get_hash_recursive(parents):
-        if robot_command_t in parents: return 0
-        newparents = parents + [robot_command_t]
+        if robot_joint_command_t in parents: return 0
+        newparents = parents + [robot_joint_command_t]
         tmphash = (0xc0cc70d9a8f769e9+ humanoid.types.lcm.joint_position_t._get_hash_recursive(newparents)) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
@@ -67,11 +67,11 @@ class robot_command_t(object):
 
     @staticmethod
     def _get_packed_fingerprint():
-        if robot_command_t._packed_fingerprint is None:
-            robot_command_t._packed_fingerprint = struct.pack(">Q", robot_command_t._get_hash_recursive([]))
-        return robot_command_t._packed_fingerprint
+        if robot_joint_command_t._packed_fingerprint is None:
+            robot_joint_command_t._packed_fingerprint = struct.pack(">Q", robot_joint_command_t._get_hash_recursive([]))
+        return robot_joint_command_t._packed_fingerprint
 
     def get_hash(self):
         """Get the LCM hash of the struct"""
-        return struct.unpack(">Q", robot_command_t._get_packed_fingerprint())[0]
+        return struct.unpack(">Q", robot_joint_command_t._get_packed_fingerprint())[0]
 

@@ -5,8 +5,7 @@ lcm-gen 1.5.2
 """
 
 from .joint_position_t import joint_position_t as joint_position_t
-from .robot_command_t import robot_command_t as robot_command_t
 from .robot_state_t import robot_state_t as robot_state_t
 from .motor_temperature_t import motor_temperature_t as motor_temperature_t
 from .robot_tool_command_t import robot_tool_command_t as robot_tool_command_t
-from .robot_tool_command_t import robot_tool_command_t as robot_tool_command_t
+from .robot_joint_command_t import robot_joint_command_t as robot_joint_command_t

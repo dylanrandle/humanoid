@@ -4,7 +4,7 @@ import time
 from humanoid.constants import SERVO_IDS
 from humanoid.logger import get_logger
 from humanoid.middleware.lcm import Publisher
-from humanoid.types.robot import RobotCommand
+from humanoid.types.robot import RobotJointCommand
 
 logger = get_logger(__name__)
 
@@ -26,7 +26,7 @@ def home(servo_ids: list[str] | None = None) -> None:
     joint_positions = dict.fromkeys(servo_ids, 0.0)
 
     publisher = Publisher()
-    command = RobotCommand(timestamp=time.perf_counter(), joint_positions=joint_positions)
+    command = RobotJointCommand(timestamp=time.perf_counter(), joint_positions=joint_positions)
     publisher.publish(command)
 
 

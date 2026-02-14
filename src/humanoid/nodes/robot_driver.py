@@ -16,7 +16,7 @@ DEFAULT_RATE_HZ = 100.0
 
 class RobotDriver:
     def __init__(self):
-        self.subscriber = Subscriber(topics=[Topic.ROBOT_COMMAND])
+        self.subscriber = Subscriber(topics=[Topic.ROBOT_JOINT_COMMAND])
         self.publisher = Publisher()
 
         if IS_SIMULATION:
@@ -30,7 +30,7 @@ class RobotDriver:
         logger.info("Initialized")
 
     def receive(self):
-        command = self.subscriber.receive(Topic.ROBOT_COMMAND, timeout=0)
+        command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=0)
         if command is not None:
             logger.debug(f"Received command: {command}")
             positions = {int(k): v for k, v in command.joint_positions.items()}

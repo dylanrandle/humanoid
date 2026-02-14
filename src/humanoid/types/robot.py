@@ -4,7 +4,7 @@ import pinocchio as pin
 
 
 @dataclass
-class RobotCommand:
+class RobotJointCommand:
     timestamp: float
     joint_positions: dict[str, float]
 
