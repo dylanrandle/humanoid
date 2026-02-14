@@ -60,6 +60,11 @@ class Robot:
 
         urdf_path = robot_dir / "urdf" / urdf_filename
 
+        # Store paths for external access
+        self._urdf_path = urdf_path
+        self._robot_dir = robot_dir
+        self._package_dirs = package_dirs
+
         # Validate paths
         if not robot_dir.exists():
             raise FileNotFoundError(
@@ -114,10 +119,40 @@ class Robot:
                 geometry_types=[pin.GeometryType.COLLISION],
             )
 
+        # Store final package directories
+        self._package_dirs = package_dirs
+
         # Create data structures for computations
         self.data = self.model.createData()
         self.collision_data = pin.GeometryData(self.collision_model)
         self.visual_data = pin.GeometryData(self.visual_model)
+
+    @property
+    def urdf_path(self) -> Path:
+        """Get the path to the robot's URDF file.
+
+        Returns:
+            Path to the URDF file
+        """
+        return self._urdf_path
+
+    @property
+    def robot_dir(self) -> Path:
+        """Get the robot's asset directory.
+
+        Returns:
+            Path to the robot's asset directory
+        """
+        return self._robot_dir
+
+    @property
+    def package_dirs(self) -> list[Path]:
+        """Get the package directories used for mesh loading.
+
+        Returns:
+            List of package directory paths
+        """
+        return self._package_dirs
 
     def print_info(self) -> None:
         """Print information about the robot model."""
