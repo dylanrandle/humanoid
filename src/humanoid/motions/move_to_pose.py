@@ -100,8 +100,14 @@ def generate_pose_trajectory(
     return trajectory
 
 
-def move_to_pose(
-    goal_pose: pin.SE3,
+def move_to_pose(  # noqa: PLR0913, PLR0915
+    goal_pose: pin.SE3 | None = None,
+    goal_x: float | None = None,
+    goal_y: float | None = None,
+    goal_z: float | None = None,
+    goal_roll: float | None = None,
+    goal_pitch: float | None = None,
+    goal_yaw: float | None = None,
     robot_config: RobotConfig = ROBOT_CONFIG,
     speed: float = 0.1,
     publish_rate: float = 100.0,
@@ -112,7 +118,14 @@ def move_to_pose(
     The robot always starts from its current pose (read from robot state).
 
     Args:
-        goal_pose: Goal end effector pose (SE3)
+        goal_pose: Goal end effector pose (SE3). If provided, other goal parameters are ignored.
+        goal_x: Goal X position in meters. If None, maintains starting X position.
+        goal_y: Goal Y position in meters. If None, maintains starting Y position.
+        goal_z: Goal Z position in meters. If None, maintains starting Z position.
+        goal_roll: Goal roll angle in radians. If None, maintains starting orientation.
+        goal_pitch: Goal pitch angle in radians. If None, maintains starting orientation.
+        goal_yaw: Goal yaw angle in radians. If None, maintains starting orientation.
+        robot_config: Robot configuration
         speed: Maximum end effector velocity in meters per second (default: 0.1)
         publish_rate: Rate at which to publish commands in Hz
         timeout_ms: Timeout in milliseconds for reading robot state
@@ -140,6 +153,26 @@ def move_to_pose(
     logger.info("Start pose:")
     logger.info(f"  Position: {start_pose.translation}")
     logger.info(f"  Rotation:\n{start_pose.rotation}")
+
+    # Build goal pose if not provided directly
+    if goal_pose is None:
+        # Use starting position for any unspecified coordinates
+        x = goal_x if goal_x is not None else start_pose.translation[0]
+        y = goal_y if goal_y is not None else start_pose.translation[1]
+        z = goal_z if goal_z is not None else start_pose.translation[2]
+        goal_position = np.array([x, y, z])
+
+        # Extract starting orientation as RPY
+        start_rpy = pin.rpy.matrixToRpy(start_pose.rotation)
+
+        # Use starting orientation for any unspecified angles
+        roll = goal_roll if goal_roll is not None else start_rpy[0]
+        pitch = goal_pitch if goal_pitch is not None else start_rpy[1]
+        yaw = goal_yaw if goal_yaw is not None else start_rpy[2]
+
+        # Build goal pose
+        goal_rotation = pin.rpy.rpyToMatrix(roll, pitch, yaw)
+        goal_pose = pin.SE3(goal_rotation, goal_position)
 
     logger.info("Goal pose:")
     logger.info(f"  Position: {goal_pose.translation}")
@@ -203,38 +236,38 @@ def main():
     parser.add_argument(
         "--x",
         type=float,
-        required=True,
-        help="Goal X position in meters",
+        default=None,
+        help="Goal X position in meters (default: maintain starting X position)",
     )
     parser.add_argument(
         "--y",
         type=float,
-        required=True,
-        help="Goal Y position in meters",
+        default=None,
+        help="Goal Y position in meters (default: maintain starting Y position)",
     )
     parser.add_argument(
         "--z",
         type=float,
-        required=True,
-        help="Goal Z position in meters",
+        default=None,
+        help="Goal Z position in meters (default: maintain starting Z position)",
     )
     parser.add_argument(
         "--roll",
         type=float,
-        default=0.0,
-        help="Goal orientation roll angle in radians (default: 0.0)",
+        default=None,
+        help="Goal orientation roll angle in radians (default: maintain starting orientation)",
     )
     parser.add_argument(
         "--pitch",
         type=float,
-        default=0.0,
-        help="Goal orientation pitch angle in radians (default: 0.0)",
+        default=None,
+        help="Goal orientation pitch angle in radians (default: maintain starting orientation)",
     )
     parser.add_argument(
         "--yaw",
         type=float,
-        default=0.0,
-        help="Goal orientation yaw angle in radians (default: 0.0)",
+        default=None,
+        help="Goal orientation yaw angle in radians (default: maintain starting orientation)",
     )
     parser.add_argument(
         "--speed",
@@ -257,14 +290,14 @@ def main():
 
     args = parser.parse_args()
 
-    # Create goal pose from command line arguments
-    goal_position = np.array([args.x, args.y, args.z])
-    # Convert RPY to rotation matrix using Pinocchio's rpy function
-    goal_rotation = pin.rpy.rpyToMatrix(args.roll, args.pitch, args.yaw)
-    goal_pose = pin.SE3(goal_rotation, goal_position)
-
+    # Pass position and orientation components separately to allow move_to_pose to handle defaults
     move_to_pose(
-        goal_pose=goal_pose,
+        goal_x=args.x,
+        goal_y=args.y,
+        goal_z=args.z,
+        goal_roll=args.roll,
+        goal_pitch=args.pitch,
+        goal_yaw=args.yaw,
         speed=args.speed,
         publish_rate=args.rate,
         timeout_ms=args.timeout,

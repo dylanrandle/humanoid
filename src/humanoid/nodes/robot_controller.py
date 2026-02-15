@@ -33,6 +33,7 @@ class RobotController:
 
         self.rate_hz = rate_hz
         self.robot = Robot.from_name(robot_config.name)
+        self.robot.print_info()
 
         # Initialize operational space controller
         logger.info(f"Initializing OSC for frame: {robot_config.end_effector_frame}")
