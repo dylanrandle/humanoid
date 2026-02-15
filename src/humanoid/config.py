@@ -15,7 +15,7 @@ ROBOT_CONFIGS = {
             name="panda",
             end_effector_frame="panda_hand_tcp",
             home_position=np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04, 0.04]),
-            rest_position=np.zeros(9),
+            rest_position=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.785, 0.0, 0.0]),
             joint_idx_to_servo_id={i: i for i in range(9)},
         ),
         RobotConfig(
