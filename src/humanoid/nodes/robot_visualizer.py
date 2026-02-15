@@ -11,6 +11,7 @@ from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Subscriber
 from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig
+from humanoid.types.visualizer import VisualizerConfig
 from humanoid.visualizers.meshcat import MeshcatVisualizer
 
 logger = get_logger(__name__)
@@ -33,15 +34,19 @@ class RobotVisualizer:
         running: Flag to control the main loop
     """
 
-    def __init__(self, robot_config: RobotConfig = ROBOT_CONFIG):
+    def __init__(
+        self,
+        robot_config: RobotConfig = ROBOT_CONFIG,
+        visualizer_config: VisualizerConfig = VISUALIZER_CONFIG,
+    ):
         logger.info(f"Initializing RobotVisualizer for: {robot_config.name}")
 
         # Load robot model
         self.robot = Robot.from_name(robot_config.name)
 
         # Setup MeshCat visualization
-        self.viz = MeshcatVisualizer(self.robot, show_collisions=VISUALIZER_CONFIG.show_collisions)
-        self.viz.initialize(open_browser=VISUALIZER_CONFIG.open_browser)
+        self.viz = MeshcatVisualizer(self.robot, config=visualizer_config)
+        self.viz.initialize()
 
         # Initialize with home position
         self.current_q = robot_config.home_position.copy()
@@ -84,7 +89,7 @@ class RobotVisualizer:
         """Run the visualizer main loop.
 
         Args:
-            rate_hz: Target update rate in Hz (default: 10.0)
+            rate_hz: Target update rate in Hz (default: 30.0)
         """
         logger.info(f"Starting visualizer main loop at {rate_hz} Hz...")
 

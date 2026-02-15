@@ -12,6 +12,7 @@ import pinocchio as pin
 from pinocchio.visualize import MeshcatVisualizer as PinocchioMeshcatVisualizer
 
 from humanoid.robots.base import Robot
+from humanoid.types.visualizer import VisualizerConfig
 
 
 class MeshcatVisualizer:
@@ -24,13 +25,15 @@ class MeshcatVisualizer:
     Example:
         >>> from humanoid.robots.base import Robot
         >>> from humanoid.visualizers.meshcat import MeshcatVisualizer
+        >>> from humanoid.types.visualizer import VisualizerConfig
         >>>
         >>> # Load robot
         >>> robot = Robot.from_name("panda")
         >>>
         >>> # Create and initialize visualizer
-        >>> viz = MeshcatVisualizer(robot)
-        >>> viz.initialize(open_browser=True)
+        >>> config = VisualizerConfig(open_browser=True, show_collisions=False)
+        >>> viz = MeshcatVisualizer(robot, config=config)
+        >>> viz.initialize()
         >>>
         >>> # Update robot configuration
         >>> q = np.zeros(robot.model.nq)
@@ -41,15 +44,15 @@ class MeshcatVisualizer:
         viewer: The underlying Pinocchio MeshcatVisualizer instance
     """
 
-    def __init__(self, robot: Robot, show_collisions: bool = False):
+    def __init__(self, robot: Robot, config: VisualizerConfig):
         """Initialize the MeshCat visualizer wrapper.
 
         Args:
             robot: Robot instance to visualize
-            show_collisions: Whether to display collision geometries by default
+            config: Visualizer configuration (controls browser opening, collision display, etc.)
         """
         self.robot = robot
-        self._show_collisions = show_collisions
+        self._config = config
         self._viewer: PinocchioMeshcatVisualizer | None = None
         self._initialized = False
 
@@ -67,14 +70,11 @@ class MeshcatVisualizer:
             raise RuntimeError("Visualizer not initialized. Call initialize() first.")
         return self._viewer
 
-    def initialize(self, open_browser: bool = True) -> None:
+    def initialize(self) -> None:
         """Initialize the MeshCat visualizer and load the robot model.
 
-        This method creates the visualizer, opens the viewer (optionally in a browser),
+        This method creates the visualizer, opens the viewer,
         and loads the robot's visual and collision models.
-
-        Args:
-            open_browser: Whether to automatically open the visualizer in a browser
         """
         # Create the Pinocchio MeshcatVisualizer
         self._viewer = PinocchioMeshcatVisualizer(
@@ -84,13 +84,13 @@ class MeshcatVisualizer:
         )
 
         # Initialize the viewer
-        self._viewer.initViewer(open=open_browser)
+        self._viewer.initViewer(open=self._config.open_browser)
 
         # Load the robot model into the viewer
         self._viewer.loadViewerModel()
 
         # Configure collision visibility
-        self._viewer.displayCollisions(self._show_collisions)
+        self._viewer.displayCollisions(self._config.show_collisions)
 
         self._initialized = True
 
@@ -228,31 +228,6 @@ class MeshcatVisualizer:
             raise RuntimeError("Visualizer not initialized. Call initialize() first.")
 
         self.viewer.viewer[name].delete()
-
-    def set_camera_position(
-        self,
-        position: np.ndarray,
-        target: np.ndarray | None = None,
-    ) -> None:
-        """Set the camera position and target.
-
-        Args:
-            position: 3D position vector for the camera [x, y, z]
-            target: Optional 3D target position vector (default: origin)
-
-        Raises:
-            RuntimeError: If the visualizer has not been initialized
-        """
-        if not self._initialized:
-            raise RuntimeError("Visualizer not initialized. Call initialize() first.")
-
-        if target is None:
-            target = np.zeros(3)
-
-        # MeshCat uses a different camera control API
-        # This is a simplified version - full camera control requires more complex setup
-        self.viewer.viewer.set_cam_pos(position.tolist())
-        self.viewer.viewer.set_cam_target(target.tolist())
 
     def __getitem__(self, name: str) -> Any:
         """Access the underlying MeshCat viewer's scene tree.
