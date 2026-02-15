@@ -49,7 +49,7 @@ class LCMConverter:
         """Convert RobotState dataclass to robot_state_t LCM type.
 
         Args:
-            state: RobotState dataclass with timestamp and joint_positions array
+            state: RobotState dataclass with timestamp, joint_positions, joint_velocities, and motor_temperatures arrays
 
         Returns:
             robot_state_t LCM type ready for transmission
@@ -58,6 +58,7 @@ class LCMConverter:
         lcm_state.timestamp = int(state.timestamp * 1e9)  # Convert to nanoseconds
         lcm_state.num_joints = len(state.joint_positions)
         lcm_state.joint_positions = state.joint_positions.tolist()
+        lcm_state.joint_velocities = state.joint_velocities.tolist()
         lcm_state.motor_temperatures = state.motor_temperatures.tolist()
 
         return lcm_state
@@ -73,11 +74,13 @@ class LCMConverter:
             RobotState dataclass
         """
         joint_positions = np.array(lcm_state.joint_positions)
+        joint_velocities = np.array(lcm_state.joint_velocities)
         motor_temperatures = np.array(lcm_state.motor_temperatures)
 
         return RobotState(
             timestamp=lcm_state.timestamp / 1e9,  # Convert from nanoseconds
             joint_positions=joint_positions,
+            joint_velocities=joint_velocities,
             motor_temperatures=motor_temperatures
         )
 

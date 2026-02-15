@@ -9,11 +9,11 @@ import struct
 
 class robot_state_t(object):
 
-    __slots__ = ["timestamp", "num_joints", "joint_positions", "motor_temperatures"]
+    __slots__ = ["timestamp", "num_joints", "joint_positions", "joint_velocities", "motor_temperatures"]
 
-    __typenames__ = ["int64_t", "int32_t", "double", "double"]
+    __typenames__ = ["int64_t", "int32_t", "double", "double", "double"]
 
-    __dimensions__ = [None, None, ["num_joints"], ["num_joints"]]
+    __dimensions__ = [None, None, ["num_joints"], ["num_joints"], ["num_joints"]]
 
     def __init__(self):
         self.timestamp = 0
@@ -21,6 +21,8 @@ class robot_state_t(object):
         self.num_joints = 0
         """ LCM Type: int32_t """
         self.joint_positions = []
+        """ LCM Type: double[num_joints] """
+        self.joint_velocities = []
         """ LCM Type: double[num_joints] """
         self.motor_temperatures = []
         """ LCM Type: double[num_joints] """
@@ -34,6 +36,7 @@ class robot_state_t(object):
     def _encode_one(self, buf):
         buf.write(struct.pack(">qi", self.timestamp, self.num_joints))
         buf.write(struct.pack('>%dd' % self.num_joints, *self.joint_positions[:self.num_joints]))
+        buf.write(struct.pack('>%dd' % self.num_joints, *self.joint_velocities[:self.num_joints]))
         buf.write(struct.pack('>%dd' % self.num_joints, *self.motor_temperatures[:self.num_joints]))
 
     @staticmethod
@@ -51,13 +54,14 @@ class robot_state_t(object):
         self = robot_state_t()
         self.timestamp, self.num_joints = struct.unpack(">qi", buf.read(12))
         self.joint_positions = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
+        self.joint_velocities = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
         self.motor_temperatures = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
         return self
 
     @staticmethod
     def _get_hash_recursive(parents):
         if robot_state_t in parents: return 0
-        tmphash = (0x3b24aea2de0ec77f) & 0xffffffffffffffff
+        tmphash = (0xdef2a4d864a0e6cc) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None

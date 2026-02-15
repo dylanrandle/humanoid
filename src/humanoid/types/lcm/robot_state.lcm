@@ -4,5 +4,6 @@ struct robot_state_t {
     int64_t timestamp;
     int32_t num_joints;
     double joint_positions[num_joints];
+    double joint_velocities[num_joints];
     double motor_temperatures[num_joints];
 }

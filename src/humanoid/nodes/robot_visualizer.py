@@ -21,8 +21,9 @@ DEFAULT_RATE_HZ = 30.0
 class RobotVisualizer:
     """Visualizer node that displays robot state in real-time.
 
-    This node subscribes to the ROBOT_STATE topic and updates a MeshCat
-    visualization with the robot's current joint positions.
+    This node subscribes to the ROBOT_STATE and ROBOT_TOOL_COMMAND topics
+    and updates a MeshCat visualization with the robot's current joint positions
+    and commanded tool pose.
 
     Attributes:
         robot: Robot instance for kinematics and visualization
@@ -51,28 +52,37 @@ class RobotVisualizer:
 
         # Setup LCM subscriber
         logger.info("Setting up LCM subscriber...")
-        self.subscriber = Subscriber([Topic.ROBOT_STATE])
-        logger.info(f"Subscribed to {Topic.ROBOT_STATE.value}")
+        self.subscriber = Subscriber(
+            [Topic.ROBOT_STATE, Topic.ROBOT_TOOL_COMMAND],
+        )
+        logger.info(f"Subscribed to {Topic.ROBOT_STATE.value} and {Topic.ROBOT_TOOL_COMMAND.value}")
+
+        # Track if we've visualized the tool command frame
+        self.tool_command_frame_name = "tool_command"
 
     def update(self) -> None:
-        """Update the visualization with the latest robot state."""
-        # Drain all pending messages and only use the most recent one
-        # This prevents the visualizer from lagging behind when messages accumulate
-        latest_state = None
-        while True:
-            robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=0)
-            if robot_state is None:
-                break
-            latest_state = robot_state
+        """Update the visualization with the latest robot state and tool command."""
+        # Check for robot state update
+        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=0)
 
-        if latest_state is not None:
+        if robot_state is not None:
             # Extract joint positions from the state
             # The joint_positions is a numpy array already in the correct order
-            q = latest_state.joint_positions
+            q = robot_state.joint_positions
 
             # Update visualization
             self.viz.display(q)
             self.current_q = q
+
+        # Check for tool command update
+        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=0)
+
+        if tool_command is not None:
+            # Visualize the commanded tool pose as a coordinate frame
+            self.viz.add_frame(
+                name=self.tool_command_frame_name,
+                pose=tool_command.pose,
+            )
 
     def run(self, rate_hz: float = DEFAULT_RATE_HZ) -> None:
         """Run the visualizer main loop.

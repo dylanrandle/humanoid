@@ -14,6 +14,7 @@ class RobotJointCommand:
 class RobotState:
     timestamp: float
     joint_positions: np.ndarray
+    joint_velocities: np.ndarray
     motor_temperatures: np.ndarray
 
 

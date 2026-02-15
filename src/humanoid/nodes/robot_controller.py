@@ -13,7 +13,7 @@ from humanoid.types.robot import RobotJointCommand
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 100.0
+DEFAULT_RATE_HZ = 500.0
 
 
 class RobotController:
@@ -46,7 +46,9 @@ class RobotController:
 
         # Set up LCM communication
         logger.info("Setting up LCM communication...")
-        self.subscriber = Subscriber(topics=[Topic.ROBOT_TOOL_COMMAND])
+        self.subscriber = Subscriber(
+            topics=[Topic.ROBOT_TOOL_COMMAND, Topic.ROBOT_STATE],
+        )
         self.publisher = Publisher()
 
         # Initialize state from robot config home position
@@ -60,6 +62,19 @@ class RobotController:
 
     def receive_and_compute(self) -> None:
         """Receive tool command and compute joint commands."""
+        # Check for robot state update
+        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=0)
+
+        # Update internal state from robot state feedback
+        if robot_state is not None:
+            # Use joint positions and velocities directly from robot state
+            # The driver already handles velocity estimation with filtering
+            self.q_current = robot_state.joint_positions.copy()
+            self.v_current = robot_state.joint_velocities.copy()
+            logger.debug(
+                f"Updated state from robot feedback: q={self.q_current}, v={self.v_current}"
+            )
+
         # Check for new tool command (non-blocking)
         tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=0)
 
@@ -73,11 +88,6 @@ class RobotController:
                 target_pose=tool_command.pose,
                 target_velocity=None,  # Let the controller compute velocity
             )
-
-            # Update current state (in a real system, this would come from robot state feedback)
-            # For now, we assume perfect tracking
-            self.q_current = q_cmd.copy()
-            self.v_current = (q_cmd - self.q_current) / self.controller.config.dt
 
             # Create joint command message with np.ndarray
             joint_command = RobotJointCommand(

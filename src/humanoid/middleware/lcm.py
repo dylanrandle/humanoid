@@ -1,3 +1,4 @@
+from collections import deque
 from typing import Literal, overload
 
 import lcm
@@ -43,17 +44,21 @@ class Subscriber:
         self,
         topics: list[Topic],
         url: str = DEFAULT_LCM_URL,
+        queue_size: int | None = 1,
     ):
         self.lc = lcm.LCM(url)
         self.url = url
         self.topics = topics
+        self.queue_size = queue_size
         self._subscriptions: list[lcm.LCMSubscription] = []
-        self._message_queues: dict[Topic, list[AcceptedTypes]] = {}
+        self._message_queues: dict[Topic, deque[AcceptedTypes]] = {}
 
         for topic in topics:
             subscription = self.lc.subscribe(topic.value, self._handle_message)
+            if queue_size is not None:
+                subscription.set_queue_capacity(queue_size)
             self._subscriptions.append(subscription)
-            self._message_queues[topic] = []
+            self._message_queues[topic] = deque(maxlen=queue_size)
 
     def _handle_message(self, channel: str, data: bytes) -> None:
         try:
@@ -95,7 +100,7 @@ class Subscriber:
     def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None:
         # Check if we have queued messages for this topic
         if self._message_queues[topic]:
-            return self._message_queues[topic].pop(0)
+            return self._message_queues[topic].popleft()
 
         # Handle LCM messages
         if timeout is None:
@@ -106,7 +111,7 @@ class Subscriber:
 
         # Return queued message if available for this topic
         if self._message_queues[topic]:
-            return self._message_queues[topic].pop(0)
+            return self._message_queues[topic].popleft()
 
         return None
 
