@@ -14,6 +14,7 @@ dependencies = [
     "meshcat>=0.3.2",
     "numpy>=2.0.0",
     "pin>=3.2.0",
+    "pynput>=1.8.1",
     "pyserial>=3.5",
     "qpsolvers[open-source-solvers]>=4.3.0",
     "vassar-feetech-servo-sdk>=1.5.0",
