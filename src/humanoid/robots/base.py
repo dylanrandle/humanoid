@@ -170,7 +170,7 @@ class Robot:
         print(f"Number of joints (nq): {self.model.nq}")
         print(f"Number of velocity coordinates (nv): {self.model.nv}")
         print(f"Number of configuration variables: {self.model.nq}")
-        print(f"\nAvailable frames ({len(self.model.frames)}):")
+        print(f"Available frames ({len(self.model.frames)}):")
         for i, frame in enumerate(self.model.frames):
             print(f"  {i}: {frame.name}")
 
