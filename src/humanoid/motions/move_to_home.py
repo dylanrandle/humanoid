@@ -91,24 +91,14 @@ def move_to_home(
     logger.info(f"Moving {robot_name} to home position...")
     logger.info(f"Home position: {home_position}")
 
-    # Read current position from robot state
-    logger.info("Reading current robot position...")
     subscriber = Subscriber([Topic.ROBOT_STATE])
-
     robot_state = subscriber.receive(Topic.ROBOT_STATE, timeout=timeout_ms)
+    subscriber.close()
 
     if robot_state is None:
-        logger.error(
-            f"Failed to receive robot state within {timeout_ms}ms. "
-            "Make sure the robot driver is running."
-        )
-        subscriber.close()
-        raise RuntimeError("Could not read current robot position")
+        raise RuntimeError(f"Could not read current robot position within {timeout_ms}ms")
 
-    # Joint positions are already an array
     q_start = robot_state.joint_positions
-    subscriber.close()
-    logger.info("Successfully read current robot position")
 
     # Calculate distance and duration
     joint_displacement = np.abs(home_position - q_start)
@@ -121,13 +111,9 @@ def move_to_home(
     logger.info(f"Calculated duration: {duration:.2f}s")
     logger.info(f"Publish rate: {publish_rate} Hz")
 
-    # Generate smooth trajectory
-    logger.info("Generating trajectory...")
     trajectory = generate_joint_trajectory(q_start, home_position, speed, dt)
     logger.info(f"Generated {len(trajectory)} waypoints")
 
-    # Initialize LCM publisher
-    logger.info("Initializing LCM publisher...")
     publisher = Publisher()
 
     # Execute trajectory and publish commands

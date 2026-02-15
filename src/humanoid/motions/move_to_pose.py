@@ -100,7 +100,7 @@ def generate_pose_trajectory(
     return trajectory
 
 
-def move_to_pose(  # noqa: PLR0915
+def move_to_pose(
     goal_pose: pin.SE3,
     robot_config: RobotConfig = ROBOT_CONFIG,
     speed: float = 0.1,
@@ -125,28 +125,16 @@ def move_to_pose(  # noqa: PLR0915
     logger.info(f"Moving {robot_name} end effector to goal pose...")
     logger.info(f"End effector frame: {end_effector_frame}")
 
-    # Read current position from robot state
-    logger.info("Reading current robot position...")
     subscriber = Subscriber([Topic.ROBOT_STATE])
-
     robot_state = subscriber.receive(Topic.ROBOT_STATE, timeout=timeout_ms)
+    subscriber.close()
 
     if robot_state is None:
-        logger.error(
-            f"Failed to receive robot state within {timeout_ms}ms. "
-            "Make sure the robot driver is running."
-        )
-        subscriber.close()
-        raise RuntimeError("Could not read current robot position")
+        raise RuntimeError(f"Could not read current robot position within {timeout_ms}ms")
 
     q_start = robot_state.joint_positions
-    subscriber.close()
-    logger.info("Successfully read current robot position")
 
-    # Load robot model
     robot = Robot.from_name(robot_name)
-
-    # Get current pose from current joint positions
     start_pose = robot.get_frame_pose(end_effector_frame, q_start)
 
     logger.info("Start pose:")
@@ -166,13 +154,9 @@ def move_to_pose(  # noqa: PLR0915
     logger.info(f"Calculated duration: {duration:.2f}s")
     logger.info(f"Publish rate: {publish_rate} Hz")
 
-    # Generate smooth trajectory
-    logger.info("Generating trajectory...")
     trajectory = generate_pose_trajectory(start_pose, goal_pose, speed, dt)
     logger.info(f"Generated {len(trajectory)} waypoints")
 
-    # Initialize LCM publisher
-    logger.info("Initializing LCM publisher...")
     publisher = Publisher()
 
     # Execute trajectory and publish commands
