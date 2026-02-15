@@ -4,6 +4,7 @@ from vassar_feetech_servo_sdk import ServoController
 
 from humanoid.logger import get_logger
 from humanoid.motors.base import MotorController
+from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
 
@@ -15,9 +16,9 @@ ADDR_TEMPERATURE = 63
 
 
 class FeetechMotorController(ServoController, MotorController):
-    def __init__(self, servo_ids: list[int]):
-        ServoController.__init__(self, servo_ids=servo_ids)
-        MotorController.__init__(self, servo_ids=servo_ids)
+    def __init__(self, robot_config: RobotConfig):
+        ServoController.__init__(self, servo_ids=robot_config.servo_ids)
+        MotorController.__init__(self, servo_ids=robot_config.servo_ids)
 
     @staticmethod
     def angle_to_position(angle: float) -> int:

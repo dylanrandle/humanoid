@@ -7,7 +7,7 @@ from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.lcm import Publisher, Subscriber
-from humanoid.types.robot import RobotJointCommand
+from humanoid.types.robot import RobotConfig, RobotJointCommand
 
 logger = get_logger(__name__)
 
@@ -70,6 +70,7 @@ def generate_joint_trajectory(
 
 
 def move_to_home(
+    robot_config: RobotConfig = ROBOT_CONFIG,
     speed: float = 1.0,
     dt: float = 0.01,
     publish_rate: float = 100.0,
@@ -84,8 +85,8 @@ def move_to_home(
         timeout_ms: Timeout in milliseconds for reading robot state
     """
     # Load robot configuration
-    robot_name = ROBOT_CONFIG.name
-    home_position = ROBOT_CONFIG.home_position
+    robot_name = robot_config.name
+    home_position = robot_config.home_position
 
     logger.info(f"Moving {robot_name} to home position...")
     logger.info(f"Home position: {home_position}")

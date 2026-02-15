@@ -10,7 +10,7 @@ from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.motors.base import MotorController
 from humanoid.motors.feetech.controller import FeetechMotorController
 from humanoid.motors.simulation import SimulatedMotorController
-from humanoid.types.robot import RobotState
+from humanoid.types.robot import RobotConfig, RobotState
 
 logger = get_logger(__name__)
 
@@ -18,23 +18,21 @@ DEFAULT_RATE_HZ = 500.0
 
 
 class RobotDriver:
-    def __init__(self):
+    def __init__(self, robot_config: RobotConfig = ROBOT_CONFIG):
         self.subscriber = Subscriber(topics=[Topic.ROBOT_JOINT_COMMAND])
         self.publisher = Publisher()
 
         # Use robot configuration from constants
-        logger.info(f"Using robot config: {ROBOT_CONFIG}")
-        servo_ids = ROBOT_CONFIG.servo_ids
-        self.joint_idx_to_servo_id = ROBOT_CONFIG.joint_idx_to_servo_id
-        # Create reverse mapping from servo ID to joint index
-        self.servo_id_to_joint_idx = {v: k for k, v in self.joint_idx_to_servo_id.items()}
+        logger.info(f"Initializing RobotDriver for: {robot_config.name}")
+        self.joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
+        self.servo_id_to_joint_idx = robot_config.servo_id_to_joint_idx
 
         if IS_SIMULATION:
             logger.info("Using simulated motor controller")
-            self.controller: MotorController = SimulatedMotorController(servo_ids=servo_ids)
+            self.controller: MotorController = SimulatedMotorController(robot_config=robot_config)
         else:
             logger.info("Using Feetech motor controller")
-            self.controller: MotorController = FeetechMotorController(servo_ids=servo_ids)
+            self.controller: MotorController = FeetechMotorController(robot_config=robot_config)
 
         self.controller.connect()
 
@@ -43,7 +41,7 @@ class RobotDriver:
         self.prev_timestamp = None
         self.joint_velocities = np.zeros(len(self.joint_idx_to_servo_id))
 
-        logger.info("Initialized")
+        logger.info("RobotDriver initialized")
 
     def receive(self):
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=0)

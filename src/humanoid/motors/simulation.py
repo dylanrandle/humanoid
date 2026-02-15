@@ -3,6 +3,7 @@ import time
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
 from humanoid.motors.base import MotorController
+from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
 
@@ -13,33 +14,37 @@ TEMPERATURE_VARIANCE = 5.0
 class SimulatedMotorController(MotorController):
     """Simulated motor controller for testing without hardware."""
 
-    def __init__(self, servo_ids: list[int], initial_positions: dict[int, float] | None = None):
+    def __init__(
+        self,
+        robot_config: RobotConfig = ROBOT_CONFIG,
+    ):
         """Initialize simulated motor controller.
 
         Args:
             servo_ids: List of servo IDs to simulate
             initial_positions: Optional dictionary mapping servo_id to initial position in radians.
         """
-        super().__init__(servo_ids)
+        super().__init__(robot_config.servo_ids)
 
         # Set initial positions
-        if initial_positions is None:
-            initial_positions = {}
-            home_pos = ROBOT_CONFIG.home_position
-            joint_idx_to_servo_id = ROBOT_CONFIG.joint_idx_to_servo_id
+        initial_positions = {}
+        home_pos = robot_config.home_position
+        joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
 
-            for joint_idx, servo_id in joint_idx_to_servo_id.items():
-                initial_positions[servo_id] = float(home_pos[joint_idx])
+        for joint_idx, servo_id in joint_idx_to_servo_id.items():
+            initial_positions[servo_id] = float(home_pos[joint_idx])
 
         # Initialize positions with provided or default values
         self._positions: dict[int, float] = {}
         self._target_positions: dict[int, float] = {}
-        for servo_id in servo_ids:
+        for servo_id in robot_config.servo_ids:
             pos = initial_positions[servo_id]
             self._positions[servo_id] = pos
             self._target_positions[servo_id] = pos
 
-        self._temperatures: dict[int, float] = dict.fromkeys(servo_ids, DEFAULT_TEMPERATURE)
+        self._temperatures: dict[int, float] = dict.fromkeys(
+            robot_config.servo_ids, DEFAULT_TEMPERATURE
+        )
         self._connected = False
         self._start_time = time.perf_counter()
 

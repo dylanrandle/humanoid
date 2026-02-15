@@ -9,7 +9,7 @@ from humanoid.constants import Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.robots.base import Robot
-from humanoid.types.robot import RobotToolCommand
+from humanoid.types.robot import RobotConfig, RobotToolCommand
 
 logger = get_logger(__name__)
 
@@ -102,6 +102,7 @@ def generate_pose_trajectory(
 
 def move_to_pose(  # noqa: PLR0915
     goal_pose: pin.SE3,
+    robot_config: RobotConfig = ROBOT_CONFIG,
     speed: float = 0.1,
     publish_rate: float = 100.0,
     timeout_ms: int = 1000,
@@ -117,8 +118,8 @@ def move_to_pose(  # noqa: PLR0915
         timeout_ms: Timeout in milliseconds for reading robot state
     """
     # Load robot configuration
-    robot_name = ROBOT_CONFIG.name
-    end_effector_frame = ROBOT_CONFIG.end_effector_frame
+    robot_name = robot_config.name
+    end_effector_frame = robot_config.end_effector_frame
     dt = 1 / publish_rate
 
     logger.info(f"Moving {robot_name} end effector to goal pose...")

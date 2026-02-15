@@ -9,7 +9,7 @@ from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.robots.base import Robot
-from humanoid.types.robot import RobotJointCommand
+from humanoid.types.robot import RobotConfig, RobotJointCommand
 
 logger = get_logger(__name__)
 
@@ -21,6 +21,7 @@ class RobotController:
 
     def __init__(
         self,
+        robot_config: RobotConfig = ROBOT_CONFIG,
         rate_hz: float = DEFAULT_RATE_HZ,
     ):
         """Initialize the robot controller node.
@@ -28,37 +29,32 @@ class RobotController:
         Args:
             rate_hz: Control loop rate in Hz
         """
-        logger.info(f"Initializing RobotController for robot: {ROBOT_CONFIG.name}")
-        logger.info(f"Using robot config: {ROBOT_CONFIG}")
+        logger.info(f"Initializing RobotController for: {robot_config.name}")
 
         self.rate_hz = rate_hz
-
-        # Load robot model
-        logger.info("Loading robot model...")
-        self.robot = Robot.from_name(ROBOT_CONFIG.name)
+        self.robot = Robot.from_name(robot_config.name)
 
         # Initialize operational space controller
-        logger.info(f"Initializing OSC for frame: {ROBOT_CONFIG.end_effector_frame}")
+        logger.info(f"Initializing OSC for frame: {robot_config.end_effector_frame}")
         self.controller = OperationalSpaceController(
             robot=self.robot,
-            end_effector_frame=ROBOT_CONFIG.end_effector_frame,
+            end_effector_frame=robot_config.end_effector_frame,
         )
 
         # Set up LCM communication
-        logger.info("Setting up LCM communication...")
         self.subscriber = Subscriber(
             topics=[Topic.ROBOT_TOOL_COMMAND, Topic.ROBOT_STATE],
         )
         self.publisher = Publisher()
 
         # Initialize state from robot config home position
-        self.q_current = ROBOT_CONFIG.home_position.copy()
+        self.q_current = robot_config.home_position.copy()
         self.v_current = np.zeros(self.controller.nv)
 
         # Set joint centers for null space control
         self.controller.set_joint_centers(self.q_current)
 
-        logger.info("Initialization complete")
+        logger.info("RobotController initialized")
 
     def receive_and_compute(self) -> None:
         """Receive tool command and compute joint commands."""
@@ -107,11 +103,8 @@ class RobotController:
         """
         logger.info(f"Starting controller loop at {self.rate_hz} Hz...")
 
-        def work():
-            self.receive_and_compute()
-
         try:
-            loop_at_rate(work, rate_hz=self.rate_hz)
+            loop_at_rate(self.receive_and_compute, rate_hz=self.rate_hz)
         except KeyboardInterrupt:
             logger.info("Interrupted by user")
         finally:

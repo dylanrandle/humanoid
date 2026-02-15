@@ -10,6 +10,7 @@ from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Subscriber
 from humanoid.robots.base import Robot
+from humanoid.types.robot import RobotConfig
 from humanoid.visualizers.meshcat import MeshcatVisualizer
 
 logger = get_logger(__name__)
@@ -32,33 +33,28 @@ class RobotVisualizer:
         running: Flag to control the main loop
     """
 
-    def __init__(self):
-        logger.info(f"Initializing robot visualizer for {ROBOT_CONFIG.name}...")
-        logger.info(f"Using robot config: {ROBOT_CONFIG}")
+    def __init__(self, robot_config: RobotConfig = ROBOT_CONFIG):
+        logger.info(f"Initializing RobotVisualizer for: {robot_config.name}")
 
         # Load robot model
-        self.robot = Robot.from_name(ROBOT_CONFIG.name)
-        logger.info(f"Loaded robot: {ROBOT_CONFIG.name}")
+        self.robot = Robot.from_name(robot_config.name)
 
         # Setup MeshCat visualization
-        logger.info("Setting up MeshCat visualization...")
         self.viz = MeshcatVisualizer(self.robot, show_collisions=VISUALIZER_CONFIG.show_collisions)
         self.viz.initialize(open_browser=VISUALIZER_CONFIG.open_browser)
-        logger.info(f"MeshCat visualizer available at: {self.viz.get_url()}")
 
         # Initialize with home position
-        self.current_q = ROBOT_CONFIG.home_position.copy()
+        self.current_q = robot_config.home_position.copy()
         self.viz.display(self.current_q)
 
         # Setup LCM subscriber
-        logger.info("Setting up LCM subscriber...")
         self.subscriber = Subscriber(
             [Topic.ROBOT_STATE, Topic.ROBOT_TOOL_COMMAND],
         )
-        logger.info(f"Subscribed to {Topic.ROBOT_STATE.value} and {Topic.ROBOT_TOOL_COMMAND.value}")
 
         # Track if we've visualized the tool command frame
         self.tool_command_frame_name = "tool_command"
+        logger.info("RobotVisualizer initialized")
 
     def update(self) -> None:
         """Update the visualization with the latest robot state and tool command."""

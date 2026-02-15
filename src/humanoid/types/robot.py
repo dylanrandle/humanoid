@@ -34,3 +34,7 @@ class RobotConfig:
     @property
     def servo_ids(self) -> list[int]:
         return list(self.joint_idx_to_servo_id.values())
+
+    @property
+    def servo_id_to_joint_idx(self) -> dict[int, int]:
+        return {v: k for k, v in self.joint_idx_to_servo_id.items()}
