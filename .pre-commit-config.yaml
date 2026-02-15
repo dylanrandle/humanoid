@@ -13,8 +13,8 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-      - id: ty
-        name: ty
+      - id: typecheck
+        name: typecheck
         entry: uv run ty check
         language: system
         types: [python]
