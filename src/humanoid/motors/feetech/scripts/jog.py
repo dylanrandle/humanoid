@@ -12,12 +12,16 @@ logger = get_logger(__name__)
 
 # Jog step size in radians
 DEFAULT_STEP_SIZE = 0.05  # ~2.86 degrees
+DEFAULT_ACCELERATION = 15
 
 
-def jog_motor(motor_id: int, step_size: float = DEFAULT_STEP_SIZE):
+def jog_motor(
+    motor_id: int, step_size: float = DEFAULT_STEP_SIZE, acceleration: int = DEFAULT_ACCELERATION
+):
     """Jog a motor using arrow keys with global keyboard capture."""
     logger.info(f"Starting jog mode for motor {motor_id}")
     logger.info(f"Step size: {step_size:.4f} rad (~{np.rad2deg(step_size):.2f} degrees)")
+    logger.info(f"Acceleration: {acceleration}")
     logger.info("Controls:")
     logger.info("  LEFT ARROW  - Move motor counter-clockwise")
     logger.info("  RIGHT ARROW - Move motor clockwise")
@@ -46,7 +50,7 @@ def jog_motor(motor_id: int, step_size: float = DEFAULT_STEP_SIZE):
                 if current_pos and key == keyboard.Key.left:
                     # Move counter-clockwise (decrease angle)
                     new_pos = current_pos - step_size
-                    controller.write_position({motor_id: new_pos})
+                    controller.write_position({motor_id: new_pos}, acceleration=acceleration)
                     current_pos = new_pos
                     logger.info(
                         f"← Position: {current_pos:.4f} rad ({np.rad2deg(current_pos):.2f} deg)"
@@ -54,7 +58,7 @@ def jog_motor(motor_id: int, step_size: float = DEFAULT_STEP_SIZE):
                 elif current_pos and key == keyboard.Key.right:
                     # Move clockwise (increase angle)
                     new_pos = current_pos + step_size
-                    controller.write_position({motor_id: new_pos})
+                    controller.write_position({motor_id: new_pos}, acceleration=acceleration)
                     current_pos = new_pos
                     logger.info(
                         f"→ Position: {current_pos:.4f} rad ({np.rad2deg(current_pos):.2f} deg)"
@@ -102,6 +106,12 @@ Examples:
         default=DEFAULT_STEP_SIZE,
         help=f"Step size in radians (default: {DEFAULT_STEP_SIZE})",
     )
+    parser.add_argument(
+        "--acceleration",
+        type=int,
+        default=DEFAULT_ACCELERATION,
+        help=f"Acceleration value (default: {DEFAULT_ACCELERATION})",
+    )
     args = parser.parse_args()
 
     # Validate motor ID
@@ -114,7 +124,12 @@ Examples:
         logger.error(f"Invalid step size: {args.step_size}. Must be positive.")
         sys.exit(1)
 
-    jog_motor(args.motor_id, args.step_size)
+    # Validate acceleration
+    if args.acceleration <= 0:
+        logger.error(f"Invalid acceleration: {args.acceleration}. Must be positive.")
+        sys.exit(1)
+
+    jog_motor(args.motor_id, args.step_size, args.acceleration)
 
 
 if __name__ == "__main__":

@@ -29,11 +29,11 @@ class FeetechMotorController(ServoController, MotorController):
     def position_to_angle(position: int) -> float:
         return ((position - POS_MID) / (POS_MAX - POS_MID)) * math.pi
 
-    def write_position(self, positions: dict[int, float]):  # ty:ignore[invalid-method-override]
+    def write_position(self, positions: dict[int, float], **kwargs):  # ty:ignore[invalid-method-override]
         raw_positions = {
             servo_id: self.angle_to_position(angle) for servo_id, angle in positions.items()
         }
-        super().write_position(raw_positions)
+        super().write_position(raw_positions, **kwargs)
 
     def read_position(self, servo_id: int) -> float | None:  # ty:ignore[invalid-method-override]
         raw_position = super().read_position(servo_id)
