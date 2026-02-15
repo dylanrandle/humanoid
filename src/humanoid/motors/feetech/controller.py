@@ -10,12 +10,13 @@ logger = get_logger(__name__)
 POS_MIN = 0
 POS_MAX = 4095
 POS_MID = (POS_MAX + POS_MIN) / 2
-
+MAX_ACCELERATION = 20
 ADDR_TEMPERATURE = 63
 
 
 class FeetechMotorController(ServoController, MotorController):
-    def __init__(self, servo_ids: list[int]):
+    def __init__(self, servo_ids: list[int], max_acceleration: int = MAX_ACCELERATION):
+        self.max_acceleration = max_acceleration
         ServoController.__init__(self, servo_ids=servo_ids)
         MotorController.__init__(self, servo_ids=servo_ids)
 
@@ -33,7 +34,7 @@ class FeetechMotorController(ServoController, MotorController):
         raw_positions = {
             servo_id: self.angle_to_position(angle) for servo_id, angle in positions.items()
         }
-        super().write_position(raw_positions, **kwargs)
+        super().write_position(raw_positions, acceleration=self.max_acceleration, **kwargs)
 
     def read_position(self, servo_id: int) -> float | None:  # ty:ignore[invalid-method-override]
         raw_position = super().read_position(servo_id)
