@@ -234,28 +234,22 @@ def main():
         help="Goal Z position in meters",
     )
     parser.add_argument(
-        "--qw",
-        type=float,
-        default=1.0,
-        help="Goal orientation quaternion w component (default: 1.0)",
-    )
-    parser.add_argument(
-        "--qx",
+        "--roll",
         type=float,
         default=0.0,
-        help="Goal orientation quaternion x component (default: 0.0)",
+        help="Goal orientation roll angle in radians (default: 0.0)",
     )
     parser.add_argument(
-        "--qy",
+        "--pitch",
         type=float,
         default=0.0,
-        help="Goal orientation quaternion y component (default: 0.0)",
+        help="Goal orientation pitch angle in radians (default: 0.0)",
     )
     parser.add_argument(
-        "--qz",
+        "--yaw",
         type=float,
         default=0.0,
-        help="Goal orientation quaternion z component (default: 0.0)",
+        help="Goal orientation yaw angle in radians (default: 0.0)",
     )
     parser.add_argument(
         "--speed",
@@ -280,9 +274,9 @@ def main():
 
     # Create goal pose from command line arguments
     goal_position = np.array([args.x, args.y, args.z])
-    goal_quaternion = pin.Quaternion(args.qw, args.qx, args.qy, args.qz)
-    goal_quaternion.normalize()  # Ensure quaternion is normalized
-    goal_pose = pin.SE3(goal_quaternion.toRotationMatrix(), goal_position)
+    # Convert RPY to rotation matrix using Pinocchio's rpy function
+    goal_rotation = pin.rpy.rpyToMatrix(args.roll, args.pitch, args.yaw)
+    goal_pose = pin.SE3(goal_rotation, goal_position)
 
     move_to_pose(
         goal_pose=goal_pose,
