@@ -146,7 +146,7 @@ class Robot:
         return self._robot_dir
 
     @property
-    def package_dirs(self) -> list[Path]:
+    def package_dirs(self) -> list[Path] | None:
         """Get the package directories used for mesh loading.
 
         Returns:

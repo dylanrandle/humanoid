@@ -32,7 +32,9 @@ class RobotDriver:
             self.controller: MotorController = SimulatedMotorController(robot_config=robot_config)
         else:
             logger.info("Using Feetech motor controller")
-            self.controller: MotorController = FeetechMotorController(robot_config=robot_config)
+            self.controller: MotorController = FeetechMotorController(
+                servo_ids=robot_config.servo_ids
+            )
 
         self.controller.connect()
 

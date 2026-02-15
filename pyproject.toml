@@ -27,6 +27,7 @@ dev = [
     "pre-commit>=4.0.0",
     "pytest>=8.0.0",
     "ruff>=0.15",
+    "ty>=0.0.17",
 ]
 
 [tool.ruff]
@@ -57,6 +58,14 @@ ignore = []
 
 [tool.ruff.lint.isort]
 known-first-party = ["humanoid"]
+
+[tool.ty.src]
+exclude = [
+    "src/humanoid/types/lcm/*.py",  # Auto-generated LCM types
+]
+
+[tool.ty.environment]
+extra-paths = ["typings"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/humanoid"]

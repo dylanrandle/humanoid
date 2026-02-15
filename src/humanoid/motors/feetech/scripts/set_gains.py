@@ -6,7 +6,7 @@ from humanoid.motors.feetech.configurator import FeetechMotorConfigurator
 logger = get_logger(__name__)
 
 
-def set_pid_gains(servo_id: int, p_gain: int, i_gain: int, d_gain: int) -> bool:
+def set_pid_gains(servo_id: int, p_gain: int, i_gain: int, d_gain: int):
     logger.info(f"Setting PID gains for motor {servo_id}: P={p_gain}, I={i_gain}, D={d_gain}")
 
     FeetechMotorConfigurator.read_gains(servo_id)
