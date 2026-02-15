@@ -375,7 +375,9 @@
     <parent link="lower_arm_link"/>
     <child link="wrist_link"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-1.65806" upper="1.65806"/>
+    <!-- Note: original limits were (-1.65806, 1.65806) -->
+    <!-- Modified to be more conservative -->
+    <limit effort="10" velocity="10" lower="-1.6" upper="1.6"/>
   </joint>
 
   <transmission name="wrist_flex_trans">
@@ -396,7 +398,9 @@
     <parent link="upper_arm_link"/>
     <child link="lower_arm_link"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-1.69" upper="1.69"/>
+    <!-- Note: original limits were (-1.69, 1.69) -->
+    <!-- Modified to be more conservative -->
+    <limit effort="10" velocity="10" lower="-1.55" upper="1.55"/>
   </joint>
 
   <transmission name="elbow_flex_trans">
@@ -416,7 +420,9 @@
     <parent link="shoulder_link"/>
     <child link="upper_arm_link"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-1.74533" upper="1.74533"/>
+    <!-- Note: original limits were (-1.7453, 1.74533) -->
+    <!-- Modified to be more conservative -->
+    <limit effort="10" velocity="10" lower="-1.55" upper="1.55"/>
   </joint>
 
   <transmission name="shoulder_lift_trans">
@@ -436,7 +442,9 @@
     <parent link="base_link"/>
     <child link="shoulder_link"/>
     <axis xyz="0 0 1"/>
-    <limit effort="10" velocity="10" lower="-1.91986" upper="1.91986"/>
+    <!-- Note: original limits were (-1.91986, 1.91986) -->
+    <!-- Modified to avoid hitting table clamps -->
+    <limit effort="10" velocity="10" lower="-1.57" upper="1.57"/>
   </joint>
 
   <transmission name="shoulder_pan_trans">
