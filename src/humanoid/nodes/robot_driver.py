@@ -10,6 +10,7 @@ from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.motors.base import MotorController
 from humanoid.motors.feetech.controller import FeetechMotorController
 from humanoid.motors.simulation import SimulatedMotorController
+from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig, RobotState
 
 logger = get_logger(__name__)
@@ -26,6 +27,11 @@ class RobotDriver:
         logger.info(f"Initializing RobotDriver for: {robot_config.name}")
         self.joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
         self.servo_id_to_joint_idx = robot_config.servo_id_to_joint_idx
+
+        # Load robot model to access joint limits
+        self.robot = Robot.from_name(robot_config.name)
+        self.joint_lower_limits = self.robot.model.lowerPositionLimit
+        self.joint_upper_limits = self.robot.model.upperPositionLimit
 
         if IS_SIMULATION:
             logger.info("Using simulated motor controller")
@@ -49,10 +55,24 @@ class RobotDriver:
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=0)
         if command is not None:
             logger.debug(f"Received command: {command}")
+
+            # Clamp joint positions to respect joint limits
+            clamped_positions = np.clip(
+                command.joint_positions, self.joint_lower_limits, self.joint_upper_limits
+            )
+
+            # Log if any positions were clamped
+            if not np.allclose(command.joint_positions, clamped_positions):
+                logger.warning(
+                    f"Joint positions clamped to limits. "
+                    f"Original: {command.joint_positions}, "
+                    f"Clamped: {clamped_positions}"
+                )
+
             # Convert joint indices to servo IDs using the mapping
             positions = {
                 self.joint_idx_to_servo_id[joint_idx]: float(position)
-                for joint_idx, position in enumerate(command.joint_positions)
+                for joint_idx, position in enumerate(clamped_positions)
             }
             self.controller.write_position(positions)
 
