@@ -6,7 +6,7 @@ from humanoid.types.robot import RobotConfig
 from humanoid.types.visualizer import VisualizerConfig
 
 IS_SIMULATION = os.getenv("HUMANOID_RUNTIME", "sim").lower().strip() in ("sim", "simulation")
-ROBOT_NAME = os.getenv("HUMANOID_ROBOT", "panda").lower().strip()
+ROBOT_NAME = os.getenv("HUMANOID_ROBOT", "so101").lower().strip()
 
 ROBOT_CONFIGS = {
     cfg.name: cfg
@@ -19,9 +19,9 @@ ROBOT_CONFIGS = {
         ),
         RobotConfig(
             name="so101",
-            end_effector_frame="tcp",
-            home_position=np.array([0.0, 0.0, 0.0, 0.0]),
-            joint_idx_to_servo_id={i: i + 1 for i in range(4)},
+            end_effector_frame="gripper_frame_link",
+            home_position=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            joint_idx_to_servo_id={i: i + 1 for i in range(6)},
         ),
     ]
 }
