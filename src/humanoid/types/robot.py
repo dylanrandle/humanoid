@@ -29,6 +29,7 @@ class RobotConfig:
     name: str
     end_effector_frame: str
     home_position: np.ndarray
+    rest_position: np.ndarray
     joint_idx_to_servo_id: dict[int, int]
 
     @property

@@ -69,16 +69,19 @@ def generate_joint_trajectory(
     return trajectory
 
 
-def move_to_home(
+def move_to_joint_pose(  # noqa: PLR0913
+    target_position: np.ndarray,
     robot_config: RobotConfig = ROBOT_CONFIG,
     speed: float = 1.0,
     dt: float = 0.01,
     publish_rate: float = 100.0,
     timeout_ms: int = 1000,
 ) -> None:
-    """Move the robot smoothly to its home position in joint space.
+    """Move the robot smoothly to a target joint position.
 
     Args:
+        target_position: Target joint configuration to move to
+        robot_config: Robot configuration (default: ROBOT_CONFIG)
         speed: Maximum joint velocity in radians per second (default: 1.0)
         dt: Time step for trajectory generation
         publish_rate: Rate at which to publish commands in Hz
@@ -86,10 +89,9 @@ def move_to_home(
     """
     # Load robot configuration
     robot_name = robot_config.name
-    home_position = robot_config.home_position
 
-    logger.info(f"Moving {robot_name} to home position...")
-    logger.info(f"Home position: {home_position}")
+    logger.info(f"Moving {robot_name} to target position...")
+    logger.info(f"Target position: {target_position}")
 
     subscriber = Subscriber([Topic.ROBOT_STATE])
     robot_state = subscriber.receive(Topic.ROBOT_STATE, timeout=timeout_ms)
@@ -101,7 +103,7 @@ def move_to_home(
     q_start = robot_state.joint_positions
 
     # Calculate distance and duration
-    joint_displacement = np.abs(home_position - q_start)
+    joint_displacement = np.abs(target_position - q_start)
     max_displacement = np.max(joint_displacement)
     duration = max(max_displacement / speed, 0.1)
 
@@ -111,7 +113,7 @@ def move_to_home(
     logger.info(f"Calculated duration: {duration:.2f}s")
     logger.info(f"Publish rate: {publish_rate} Hz")
 
-    trajectory = generate_joint_trajectory(q_start, home_position, speed, dt)
+    trajectory = generate_joint_trajectory(q_start, target_position, speed, dt)
     logger.info(f"Generated {len(trajectory)} waypoints")
 
     publisher = Publisher()
@@ -146,12 +148,18 @@ def move_to_home(
         time.sleep(dt)
 
     logger.info("Motion complete!")
-    logger.info(f"Final position: {home_position}")
+    logger.info(f"Final position: {target_position}")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Move robot smoothly to home position in joint space"
+    parser = argparse.ArgumentParser(description="Move robot smoothly to a target joint position")
+    parser.add_argument(
+        "-p",
+        "--position",
+        type=str,
+        required=True,
+        choices=["home", "rest"],
+        help="Target position to move to: 'home' or 'rest'",
     )
     parser.add_argument(
         "--speed",
@@ -174,7 +182,16 @@ def main():
 
     args = parser.parse_args()
 
-    move_to_home(
+    # Map position names to robot configuration attributes
+    position_map = {
+        "home": ROBOT_CONFIG.home_position,
+        "rest": ROBOT_CONFIG.rest_position,
+    }
+
+    target_position = position_map[args.position]
+
+    move_to_joint_pose(
+        target_position=target_position,
         speed=args.speed,
         publish_rate=args.rate,
         timeout_ms=args.timeout,
