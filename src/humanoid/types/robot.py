@@ -7,14 +7,14 @@ import pinocchio as pin
 @dataclass
 class RobotJointCommand:
     timestamp: float
-    joint_positions: dict[str, float]
+    joint_positions: np.ndarray
 
 
 @dataclass
 class RobotState:
     timestamp: float
-    joint_positions: dict[str, float]
-    motor_temperatures: dict[str, float]
+    joint_positions: np.ndarray
+    motor_temperatures: np.ndarray
 
 
 @dataclass
@@ -28,4 +28,8 @@ class RobotConfig:
     name: str
     end_effector_frame: str
     home_position: np.ndarray
-    servo_ids: list[int]
+    joint_idx_to_servo_id: dict[int, int]
+
+    @property
+    def servo_ids(self) -> list[int]:
+        return list(self.joint_idx_to_servo_id.values())

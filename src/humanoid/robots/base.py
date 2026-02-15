@@ -154,6 +154,15 @@ class Robot:
         """
         return self._package_dirs
 
+    @property
+    def joint_names(self) -> list[str]:
+        """Get the list of joint names in the robot model.
+
+        Returns:
+            List of joint names (excluding the universe joint)
+        """
+        return [self.model.names[i] for i in range(1, self.model.njoints)]
+
     def print_info(self) -> None:
         """Print information about the robot model."""
         print(f"Robot: {self.name}")

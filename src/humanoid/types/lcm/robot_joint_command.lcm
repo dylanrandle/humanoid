@@ -3,5 +3,5 @@ package humanoid.types.lcm;
 struct robot_joint_command_t {
     int64_t timestamp;
     int32_t num_joints;
-    joint_position_t joint_positions[num_joints];
+    double joint_positions[num_joints];
 }

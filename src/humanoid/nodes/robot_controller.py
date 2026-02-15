@@ -2,7 +2,8 @@ import time
 
 import numpy as np
 
-from humanoid.constants import ROBOT_CONFIG, Topic
+from humanoid.config import ROBOT_CONFIG
+from humanoid.constants import Topic
 from humanoid.controllers.operational_space import OperationalSpaceController
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
@@ -35,7 +36,6 @@ class RobotController:
         # Load robot model
         logger.info("Loading robot model...")
         self.robot = Robot.from_name(ROBOT_CONFIG.name)
-        self.robot.print_info()
 
         # Initialize operational space controller
         logger.info(f"Initializing OSC for frame: {ROBOT_CONFIG.end_effector_frame}")
@@ -56,11 +56,6 @@ class RobotController:
         # Set joint centers for null space control
         self.controller.set_joint_centers(self.q_current)
 
-        # Get joint names from the robot model
-        self.joint_names = [self.robot.model.names[i] for i in range(1, self.robot.model.njoints)]
-
-        logger.info(f"Controller initialized with {self.controller.nq} DOF")
-        logger.info(f"Joint names: {self.joint_names}")
         logger.info("Initialization complete")
 
     def receive_and_compute(self) -> None:
@@ -84,15 +79,10 @@ class RobotController:
             self.q_current = q_cmd.copy()
             self.v_current = (q_cmd - self.q_current) / self.controller.config.dt
 
-            # Create joint command message
-            joint_positions = {
-                name: float(position)
-                for name, position in zip(self.joint_names, q_cmd, strict=False)
-            }
-
+            # Create joint command message with np.ndarray
             joint_command = RobotJointCommand(
                 timestamp=time.perf_counter(),
-                joint_positions=joint_positions,
+                joint_positions=q_cmd,
             )
 
             # Publish joint command

@@ -1,6 +1,0 @@
-package humanoid.types.lcm;
-
-struct motor_temperature_t {
-    string name;
-    double temperature;
-}

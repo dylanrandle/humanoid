@@ -1,6 +1,9 @@
 import time
 
-from humanoid.constants import IS_SIMULATION, ROBOT_CONFIG, Topic
+import numpy as np
+
+from humanoid.config import IS_SIMULATION, ROBOT_CONFIG
+from humanoid.constants import Topic
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
@@ -22,6 +25,9 @@ class RobotDriver:
         # Use robot configuration from constants
         logger.info(f"Using robot config: {ROBOT_CONFIG}")
         servo_ids = ROBOT_CONFIG.servo_ids
+        self.joint_idx_to_servo_id = ROBOT_CONFIG.joint_idx_to_servo_id
+        # Create reverse mapping from servo ID to joint index
+        self.servo_id_to_joint_idx = {v: k for k, v in self.joint_idx_to_servo_id.items()}
 
         if IS_SIMULATION:
             logger.info("Using simulated motor controller")
@@ -37,16 +43,33 @@ class RobotDriver:
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=0)
         if command is not None:
             logger.debug(f"Received command: {command}")
-            positions = {int(k): v for k, v in command.joint_positions.items()}
+            # Convert joint indices to servo IDs using the mapping
+            positions = {
+                self.joint_idx_to_servo_id[joint_idx]: float(position)
+                for joint_idx, position in enumerate(command.joint_positions)
+            }
             self.controller.write_position(positions)
 
     def publish(self):
         positions = self.controller.read_all_positions()
         temperatures = self.controller.read_all_temperatures()
+
+        # Convert servo positions to joint position array
+        joint_positions = np.zeros(len(self.joint_idx_to_servo_id))
+        for servo_id, position in positions.items():
+            joint_idx = self.servo_id_to_joint_idx[servo_id]
+            joint_positions[joint_idx] = position
+
+        # Convert servo temperatures to motor temperature array
+        motor_temperatures = np.zeros(len(self.joint_idx_to_servo_id))
+        for servo_id, temperature in temperatures.items():
+            joint_idx = self.servo_id_to_joint_idx[servo_id]
+            motor_temperatures[joint_idx] = temperature
+
         robot_state = RobotState(
             timestamp=time.perf_counter(),
-            joint_positions={str(k): v for k, v in positions.items()},
-            motor_temperatures={str(k): v for k, v in temperatures.items()},
+            joint_positions=joint_positions,
+            motor_temperatures=motor_temperatures,
         )
         logger.debug(f"Measured state: {robot_state}")
         self.publisher.publish(robot_state)
