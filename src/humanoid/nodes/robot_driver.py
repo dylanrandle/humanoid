@@ -61,14 +61,6 @@ class RobotDriver:
                 command.joint_positions, self.joint_lower_limits, self.joint_upper_limits
             )
 
-            # Log if any positions were clamped
-            if not np.allclose(command.joint_positions, clamped_positions):
-                logger.warning(
-                    f"Joint positions clamped to limits. "
-                    f"Original: {command.joint_positions}, "
-                    f"Clamped: {clamped_positions}"
-                )
-
             # Convert joint indices to servo IDs using the mapping
             positions = {
                 self.joint_idx_to_servo_id[joint_idx]: float(position)
