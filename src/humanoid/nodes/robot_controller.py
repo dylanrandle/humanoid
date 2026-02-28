@@ -4,7 +4,10 @@ import numpy as np
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
-from humanoid.controllers.operational_space import OperationalSpaceController
+from humanoid.controllers.operational_space import (
+    OperationalSpaceConfig,
+    OperationalSpaceController,
+)
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
@@ -37,9 +40,9 @@ class RobotController:
 
         # Initialize operational space controller
         logger.info(f"Initializing OSC for frame: {robot_config.end_effector_frame}")
+        config = OperationalSpaceConfig(taskspace_mask=robot_config.taskspace_mask)
         self.controller = OperationalSpaceController(
-            robot=self.robot,
-            end_effector_frame=robot_config.end_effector_frame,
+            robot=self.robot, end_effector_frame=robot_config.end_effector_frame, config=config
         )
 
         # Set up LCM communication

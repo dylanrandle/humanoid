@@ -31,6 +31,7 @@ class RobotConfig:
     home_position: np.ndarray
     rest_position: np.ndarray
     joint_idx_to_servo_id: dict[int, int]
+    taskspace_mask: list[bool] | None = None  # 6D mask for [x, y, z, rx, ry, rz] tracking
 
     @property
     def servo_ids(self) -> list[int]:

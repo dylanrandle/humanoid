@@ -14,13 +14,18 @@ from humanoid.robots.base import Robot
 
 logger = get_logger(__name__)
 
+TASKSPACE_DIM = 6
+
 
 @dataclass
 class OperationalSpaceConfig:
     """Configuration parameters for the operational space controller."""
 
+    # Taskspace mask for selective axis control
+    taskspace_mask: list[bool] | None = None  # Optional 6D mask for [x, y, z, rx, ry, rz] tracking
+
     # Task space gain
-    task_gain: float = 100.0  # Task space error gain (position and orientation)
+    task_gain: float = 10.0  # Task space error gain (position and orientation)
 
     # Control loop
     dt: float = 0.01  # Control timestep (seconds)
@@ -67,6 +72,14 @@ class OperationalSpaceController:
         # Store dimensions
         self.nq = self.model.nq  # Number of joint positions
         self.nv = self.model.nv  # Number of joint velocities
+
+        # Taskspace mask for selective axis control
+        if self.config.taskspace_mask is not None:
+            if len(self.config.taskspace_mask) != TASKSPACE_DIM:
+                raise ValueError(f"Invalid taskspace_mask, must contain {TASKSPACE_DIM} entries")
+            self.taskspace_mask = np.array(self.config.taskspace_mask, dtype=float)
+        else:
+            self.taskspace_mask = np.ones(6, dtype=float)  # Track all axes by default
 
         # State tracking
         self.q_current: NDArray[np.float64] | None = None
@@ -230,8 +243,12 @@ class OperationalSpaceController:
         """Compute joint velocity commands to achieve target task space pose.
 
         Uses a hierarchical control structure:
-        1. Primary task: Achieve target pose in task space
+        1. Primary task: Achieve target pose in task space (with optional masking)
         2. Secondary task (null space): Move joints toward center positions
+
+        The taskspace_mask allows selective control of specific axes. Masked axes
+        (mask value = 0) will not contribute to the control, allowing the null space
+        controller to handle those degrees of freedom.
 
         Args:
             target_pose: Target 6-DOF pose (SE3)
@@ -250,12 +267,18 @@ class OperationalSpaceController:
         pos_error, ori_error = self.compute_task_error(target_pose)
         task_error = np.concatenate([pos_error, ori_error])
 
+        # Apply taskspace mask to error
+        task_error = task_error * self.taskspace_mask
+
         # Get current task velocity
         J = self.compute_jacobian()
         current_task_velocity = J @ self.v_current
 
         # Desired task velocity with proportional control
         desired_task_velocity = current_task_velocity + self.config.task_gain * task_error
+
+        # Apply taskspace mask to desired velocity
+        desired_task_velocity = desired_task_velocity * self.taskspace_mask
 
         # Apply velocity limits
         desired_task_velocity = self._clip_task_velocity(desired_task_velocity)
@@ -269,14 +292,17 @@ class OperationalSpaceController:
         # Store for next iteration
         self.prev_task_velocity = desired_task_velocity.copy()
 
+        # Apply mask to Jacobian for masked axes
+        J_masked = J * self.taskspace_mask[:, np.newaxis]
+
         # Compute joint velocities for primary task using pseudo-inverse
-        J_pinv = np.linalg.pinv(J)
+        J_pinv = np.linalg.pinv(J_masked)
         dq_primary = J_pinv @ desired_task_velocity
 
         # Add secondary task in null space (joint centering)
         if self.config.enable_joint_centering:
-            # Compute null space projector
-            N = self._compute_null_space_projector(J)
+            # Compute null space projector using masked Jacobian
+            N = self._compute_null_space_projector(J_masked)
 
             # Compute joint centering velocity
             dq_secondary = self._compute_joint_centering_velocity()
