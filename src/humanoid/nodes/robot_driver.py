@@ -29,7 +29,7 @@ class RobotDriver:
         self.servo_id_to_joint_idx = robot_config.servo_id_to_joint_idx
 
         # Load robot model to access joint limits
-        self.robot = Robot.from_name(robot_config.name)
+        self.robot = Robot(robot_config)
         self.joint_lower_limits = self.robot.model.lowerPositionLimit
         self.joint_upper_limits = self.robot.model.upperPositionLimit
 

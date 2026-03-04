@@ -6,6 +6,7 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.logger import get_logger
+from humanoid.types.robot import RobotConfig
 
 COLLISION_URDF_SUFFIX = "_collision.urdf"
 
@@ -20,7 +21,7 @@ class Robot:
     with collision and visual geometries using Pinocchio.
 
     Attributes:
-        name: Name of the robot (e.g., "panda")
+        config: Robot configuration containing name and other parameters
         model: Pinocchio model containing kinematic and dynamic information
         collision_model: Pinocchio collision model
         visual_model: Pinocchio visual model
@@ -31,7 +32,7 @@ class Robot:
 
     def __init__(
         self,
-        name: str,
+        config: RobotConfig,
         urdf_filename: str | None = None,
         collision_urdf_filename: str | None = None,
         package_dirs: list[Path] | None = None,
@@ -39,24 +40,24 @@ class Robot:
         """Initialize the robot by loading its URDF model.
 
         Args:
-            name: Name of the robot (should match the directory name in assets/)
-            urdf_filename: Name of the URDF file for visual model. If None, uses "{name}.urdf"
+            config: Robot configuration containing name and other parameters
+            urdf_filename: Name of the URDF file for visual model. Default: "{config.name}.urdf"
             collision_urdf_filename: Optional separate URDF for collision model.
                                     If None, automatically checks one
                                     and falls back to urdf_filename if not found.
             package_dirs: Additional package directories for mesh loading.
                          The assets directory is automatically included.
         """
-        self.name = name
+        self._config = config
 
         # Determine paths relative to this file
         robots_dir = Path(__file__).parent
         assets_dir = robots_dir / "assets"
-        robot_dir = assets_dir / name
+        robot_dir = assets_dir / config.name
 
         # Default URDF filename
         if urdf_filename is None:
-            urdf_filename = f"{name}.urdf"
+            urdf_filename = f"{config.name}.urdf"
 
         urdf_path = robot_dir / "urdf" / urdf_filename
 
@@ -81,9 +82,9 @@ class Robot:
         # Auto-detect collision URDF if not specified
         if collision_urdf_filename is None:
             # Check if a collision URDF variant exists
-            collision_candidate = robot_dir / "urdf" / f"{name}{COLLISION_URDF_SUFFIX}"
+            collision_candidate = robot_dir / "urdf" / f"{config.name}{COLLISION_URDF_SUFFIX}"
             if collision_candidate.exists():
-                collision_urdf_filename = f"{name}{COLLISION_URDF_SUFFIX}"
+                collision_urdf_filename = f"{config.name}{COLLISION_URDF_SUFFIX}"
                 logger.info(f"Using separate collision URDF: {collision_urdf_filename}")
 
         # Setup package directories for mesh loading
@@ -128,6 +129,15 @@ class Robot:
         self.visual_data = pin.GeometryData(self.visual_model)
 
     @property
+    def config(self) -> RobotConfig:
+        """Get the robot configuration.
+
+        Returns:
+            Robot configuration
+        """
+        return self._config
+
+    @property
     def urdf_path(self) -> Path:
         """Get the path to the robot's URDF file.
 
@@ -165,7 +175,7 @@ class Robot:
 
     def print_info(self) -> None:
         """Print information about the robot model."""
-        print(f"Robot: {self.name}")
+        print(f"Robot: {self.config.name}")
         print(f"Model name: {self.model.name}")
         print(f"Number of joints (nq): {self.model.nq}")
         print(f"Number of velocity coordinates (nv): {self.model.nv}")
@@ -215,19 +225,3 @@ class Robot:
         self.forward_kinematics(q)
         frame_id = self.get_frame_id(frame_name)
         return self.data.oMf[frame_id]
-
-    @classmethod
-    def from_name(cls, name: str, **kwargs) -> "Robot":
-        """Create a robot instance from a robot name.
-
-        This is a convenience factory method that automatically detects
-        and uses collision URDFs if available.
-
-        Args:
-            name: Name of the robot (e.g., "panda")
-            **kwargs: Additional arguments passed to __init__
-
-        Returns:
-            Robot instance
-        """
-        return cls(name=name, **kwargs)

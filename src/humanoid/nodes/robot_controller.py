@@ -35,15 +35,13 @@ class RobotController:
 
         self.rate_hz = rate_hz
         self.dt = 1 / rate_hz
-        self.robot = Robot.from_name(robot_config.name)
+        self.robot = Robot(robot_config)
         self.robot.print_info()
 
         # Initialize operational space controller
         logger.info(f"Initializing OSC for frame: {robot_config.end_effector_frame}")
         config = OperationalSpaceConfig(dt=self.dt)
-        self.controller = OperationalSpaceController(
-            robot=self.robot, end_effector_frame=robot_config.end_effector_frame, config=config
-        )
+        self.controller = OperationalSpaceController(robot=self.robot, config=config)
 
         # Set up LCM communication
         self.subscriber = Subscriber(

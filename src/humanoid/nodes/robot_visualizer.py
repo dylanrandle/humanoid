@@ -42,7 +42,7 @@ class RobotVisualizer:
         logger.info(f"Initializing RobotVisualizer for: {robot_config.name}")
 
         # Load robot model
-        self.robot = Robot.from_name(robot_config.name)
+        self.robot = Robot(robot_config)
 
         # Setup MeshCat visualization
         self.viz = MeshcatVisualizer(self.robot, config=visualizer_config)

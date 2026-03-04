@@ -147,7 +147,7 @@ def move_to_pose(  # noqa: PLR0913, PLR0915
 
     q_start = robot_state.joint_positions
 
-    robot = Robot.from_name(robot_name)
+    robot = Robot(robot_config)
     start_pose = robot.get_frame_pose(end_effector_frame, q_start)
 
     logger.info("Start pose:")

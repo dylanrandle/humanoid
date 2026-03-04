@@ -35,7 +35,7 @@ class OperationalSpaceConfig:
 
     # Task space costs (Pink uses costs instead of gains)
     position_cost: float = 1.0  # Position tracking cost [cost] / [m]
-    orientation_cost: float = 1.0  # Orientation tracking cost [cost] / [rad]
+    orientation_cost: float = 0.1  # Orientation tracking cost [cost] / [rad]
 
     # Control loop
     dt: float = 0.01  # Control timestep (seconds)
@@ -60,7 +60,6 @@ class OperationalSpaceController:
     def __init__(
         self,
         robot: Robot,
-        end_effector_frame: str,
         config: OperationalSpaceConfig | None = None,
     ):
         """Initialize the operational space controller.
@@ -74,8 +73,8 @@ class OperationalSpaceController:
         self.robot = robot
 
         # Get end-effector frame ID
-        if not robot.model.existFrame(end_effector_frame):
-            raise ValueError(f"Frame '{end_effector_frame}' not found in URDF")
+        if not robot.model.existFrame(robot.config.end_effector_frame):
+            raise ValueError(f"Frame '{robot.config.end_effector_frame}' not found in URDF")
 
         # Defer configuration initialization until first state update
         self.configuration: pink.Configuration | None = None
@@ -85,7 +84,7 @@ class OperationalSpaceController:
 
         # Create end-effector frame task
         self.tasks[TaskName.END_EFFECTOR] = FrameTask(
-            end_effector_frame,
+            robot.config.end_effector_frame,
             position_cost=self.config.position_cost,
             orientation_cost=self.config.orientation_cost,
         )
@@ -95,10 +94,8 @@ class OperationalSpaceController:
             cost=self.config.joint_centering_cost,
         )
 
-        # Joint centering target (default to middle of joint range)
-        self.q_center: NDArray[np.float64] = (
-            self.robot.model.lowerPositionLimit + self.robot.model.upperPositionLimit
-        ) / 2.0
+        # Joint centering target (default to home position)
+        self.q_center: NDArray[np.float64] = robot.config.home_position
 
         # Set initial posture target
         self.tasks[TaskName.JOINT_CENTERING].set_target(self.q_center)
@@ -148,12 +145,16 @@ class OperationalSpaceController:
         self.tasks[TaskName.END_EFFECTOR].set_target(target_pose)
 
         # Solve inverse kinematics using Pink
-        velocity = pink.solve_ik(
-            self.configuration,
-            self.tasks.values(),
-            self.config.dt,
-            solver=self.config.solver,
-        )
-        self.configuration.integrate_inplace(velocity, self.config.dt)
+        try:
+            velocity = pink.solve_ik(
+                self.configuration,
+                self.tasks.values(),
+                self.config.dt,
+                solver=self.config.solver,
+            )
+            self.configuration.integrate_inplace(velocity, self.config.dt)
+        except Exception as e:
+            # TODO: try to get unstuck if we are at limits
+            logger.error(f"Encountered exception: {e}")
 
         return self.configuration.q

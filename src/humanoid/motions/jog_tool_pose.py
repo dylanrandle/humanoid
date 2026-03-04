@@ -81,7 +81,7 @@ def jog_tool_pose(  # noqa: PLR0915
         raise RuntimeError(f"Could not read current robot state within {timeout_ms}ms")
 
     # Get initial end-effector pose
-    robot = Robot.from_name(robot_name)
+    robot = Robot(robot_config)
     current_pose = robot.get_frame_pose(end_effector_frame, robot_state.joint_positions)
 
     logger.info("\nInitial end-effector pose:")

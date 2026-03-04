@@ -34,7 +34,7 @@ def mock_robot_driver():
         mock_robot.model.upperPositionLimit = np.array(
             [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]
         )
-        mock_robot_cls.from_name.return_value = mock_robot
+        mock_robot_cls.return_value = mock_robot
 
         # Setup mock controller
         mock_controller_instance = MagicMock()
