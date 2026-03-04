@@ -442,9 +442,7 @@
     <parent link="base_link"/>
     <child link="shoulder_link"/>
     <axis xyz="0 0 1"/>
-    <!-- Note: original limits were (-1.91986, 1.91986) -->
-    <!-- Modified to avoid hitting table clamps -->
-    <limit effort="10" velocity="10" lower="-1.57" upper="1.57"/>
+    <limit effort="10" velocity="10" lower="-1.91986" upper="1.91986"/>
   </joint>
 
   <transmission name="shoulder_pan_trans">

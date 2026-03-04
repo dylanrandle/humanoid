@@ -1,7 +1,5 @@
 import time
 
-import numpy as np
-
 from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.controllers.operational_space import (
@@ -12,11 +10,11 @@ from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.robots.base import Robot
-from humanoid.types.robot import RobotConfig, RobotJointCommand
+from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotToolCommand
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 500.0
+DEFAULT_RATE_HZ = 200.0
 
 
 class RobotController:
@@ -30,17 +28,19 @@ class RobotController:
         """Initialize the robot controller node.
 
         Args:
+            robot_config: Robot configuration including name and end effector frame
             rate_hz: Control loop rate in Hz
         """
         logger.info(f"Initializing RobotController for: {robot_config.name}")
 
         self.rate_hz = rate_hz
+        self.dt = 1 / rate_hz
         self.robot = Robot.from_name(robot_config.name)
         self.robot.print_info()
 
         # Initialize operational space controller
         logger.info(f"Initializing OSC for frame: {robot_config.end_effector_frame}")
-        config = OperationalSpaceConfig(taskspace_mask=robot_config.taskspace_mask)
+        config = OperationalSpaceConfig(dt=self.dt)
         self.controller = OperationalSpaceController(
             robot=self.robot, end_effector_frame=robot_config.end_effector_frame, config=config
         )
@@ -51,12 +51,8 @@ class RobotController:
         )
         self.publisher = Publisher()
 
-        # Initialize state from robot config home position
-        self.q_current = robot_config.home_position.copy()
-        self.v_current = np.zeros(self.controller.nv)
-
-        # Set joint centers for null space control
-        self.controller.set_joint_centers(self.q_current)
+        # Reference for current tool command
+        self.current_tool_command: RobotToolCommand | None = None
 
         logger.info("RobotController initialized")
 
@@ -67,27 +63,24 @@ class RobotController:
 
         # Update internal state from robot state feedback
         if robot_state is not None:
-            # Use joint positions and velocities directly from robot state
-            # The driver already handles velocity estimation with filtering
-            self.q_current = robot_state.joint_positions.copy()
-            self.v_current = robot_state.joint_velocities.copy()
-            logger.debug(
-                f"Updated state from robot feedback: q={self.q_current}, v={self.v_current}"
-            )
+            logger.debug(f"Received robot state: {robot_state}")
+
+            # Update the operational space controller's state
+            # TODO: explore open-loop variation of OSC
+            self.controller.update_state(robot_state.joint_positions)
 
         # Check for new tool command (non-blocking)
         tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=0)
 
+        # Update internal state from tool command
         if tool_command is not None:
-            logger.debug(f"Received tool command: position={tool_command.pose.translation}")
+            logger.debug(f"Received tool command: {tool_command}")
+            self.current_tool_command = tool_command
 
+        # Control current command
+        if self.current_tool_command is not None:
             # Compute joint commands using the operational space controller
-            q_cmd = self.controller.compute_joint_commands(
-                q_current=self.q_current,
-                v_current=self.v_current,
-                target_pose=tool_command.pose,
-                target_velocity=None,  # Let the controller compute velocity
-            )
+            q_cmd = self.controller.compute_control(self.current_tool_command.pose)
 
             # Create joint command message with np.ndarray
             joint_command = RobotJointCommand(
@@ -100,11 +93,7 @@ class RobotController:
             self.publisher.publish(joint_command)
 
     def run(self) -> None:
-        """Run the controller node main loop.
-
-        Args:
-            rate_hz: Control loop rate in Hz
-        """
+        """Run the controller node main loop."""
         logger.info(f"Starting controller loop at {self.rate_hz} Hz...")
 
         try:
