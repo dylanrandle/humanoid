@@ -35,12 +35,12 @@ def jog_tool_pose(  # noqa: PLR0915
     by publishing RobotToolCommand messages. The robot starts from its current pose.
 
     Controls:
-        - W/S: Move forward/backward (X axis)
-        - A/D: Move left/right (Y axis)
-        - Q/E: Move up/down (Z axis)
-        - I/K: Pitch up/down
+        - W/S: Move right/left (Y axis)
+        - A/D: Move backward/forward (X axis)
+        - Q/E: Move down/up (Z axis)
+        - I/K: Roll clockwise/counter-clockwise
         - J/L: Yaw left/right
-        - U/O: Roll counter-clockwise/clockwise
+        - U/O: Pitch down/up
         - ESC or 'x': Quit
 
     Args:
@@ -62,13 +62,13 @@ def jog_tool_pose(  # noqa: PLR0915
     logger.info(f"Publish rate: {publish_rate} Hz")
     logger.info("\nControls:")
     logger.info("  Translation:")
-    logger.info("    W/S - Move forward/backward (X axis)")
-    logger.info("    A/D - Move left/right (Y axis)")
-    logger.info("    Q/E - Move up/down (Z axis)")
+    logger.info("    W/S - Move right/left (Y axis)")
+    logger.info("    A/D - Move backward/forward (X axis)")
+    logger.info("    Q/E - Move down/up (Z axis)")
     logger.info("  Rotation:")
-    logger.info("    I/K - Pitch up/down")
+    logger.info("    I/K - Roll clockwise/counter-clockwise")
     logger.info("    J/L - Yaw left/right")
-    logger.info("    U/O - Roll counter-clockwise/clockwise")
+    logger.info("    U/O - Pitch down/up")
     logger.info("  ESC or 'x' - Quit")
     logger.info("\nNote: Keyboard input works globally (terminal doesn't need focus)")
 
@@ -135,56 +135,56 @@ def jog_tool_pose(  # noqa: PLR0915
 
             # Translation controls
             if key_char == "w":
-                # Move forward (positive X)
-                with pose_lock:
-                    current_pose.translation[0] += translation_step
-                logger.info(f"↑ Forward (X+{translation_step:.4f}m)")
-                log_pose()
-            elif key_char == "s":
-                # Move backward (negative X)
-                with pose_lock:
-                    current_pose.translation[0] -= translation_step
-                logger.info(f"↓ Backward (X-{translation_step:.4f}m)")
-                log_pose()
-            elif key_char == "a":
-                # Move left (negative Y)
-                with pose_lock:
-                    current_pose.translation[1] -= translation_step
-                logger.info(f"← Left (Y-{translation_step:.4f}m)")
-                log_pose()
-            elif key_char == "d":
                 # Move right (positive Y)
                 with pose_lock:
                     current_pose.translation[1] += translation_step
                 logger.info(f"→ Right (Y+{translation_step:.4f}m)")
                 log_pose()
-            elif key_char == "q":
-                # Move up (positive Z)
+            elif key_char == "s":
+                # Move left (negative Y)
                 with pose_lock:
-                    current_pose.translation[2] += translation_step
-                logger.info(f"⬆ Up (Z+{translation_step:.4f}m)")
+                    current_pose.translation[1] -= translation_step
+                logger.info(f"← Left (Y-{translation_step:.4f}m)")
                 log_pose()
-            elif key_char == "e":
+            elif key_char == "a":
+                # Move backward (negative X)
+                with pose_lock:
+                    current_pose.translation[0] -= translation_step
+                logger.info(f"↓ Backward (X-{translation_step:.4f}m)")
+                log_pose()
+            elif key_char == "d":
+                # Move forward (positive X)
+                with pose_lock:
+                    current_pose.translation[0] += translation_step
+                logger.info(f"↑ Forward (X+{translation_step:.4f}m)")
+                log_pose()
+            elif key_char == "q":
                 # Move down (negative Z)
                 with pose_lock:
                     current_pose.translation[2] -= translation_step
                 logger.info(f"⬇ Down (Z-{translation_step:.4f}m)")
                 log_pose()
+            elif key_char == "e":
+                # Move up (positive Z)
+                with pose_lock:
+                    current_pose.translation[2] += translation_step
+                logger.info(f"⬆ Up (Z+{translation_step:.4f}m)")
+                log_pose()
 
             # Rotation controls (applied in the current frame)
             elif key_char == "i":
-                # Pitch up (positive rotation around Y axis)
-                rotation = pin.utils.rotate("y", rotation_step)
+                # Roll clockwise (negative rotation around X axis)
+                rotation = pin.utils.rotate("x", -rotation_step)
                 with pose_lock:
                     current_pose.rotation = current_pose.rotation @ rotation
-                logger.info(f"⤴ Pitch up (+{np.rad2deg(rotation_step):.2f}°)")
+                logger.info(f"↻ Roll CW (-{np.rad2deg(rotation_step):.2f}°)")
                 log_pose()
             elif key_char == "k":
-                # Pitch down (negative rotation around Y axis)
-                rotation = pin.utils.rotate("y", -rotation_step)
+                # Roll counter-clockwise (positive rotation around X axis)
+                rotation = pin.utils.rotate("x", rotation_step)
                 with pose_lock:
                     current_pose.rotation = current_pose.rotation @ rotation
-                logger.info(f"⤵ Pitch down (-{np.rad2deg(rotation_step):.2f}°)")
+                logger.info(f"↺ Roll CCW (+{np.rad2deg(rotation_step):.2f}°)")
                 log_pose()
             elif key_char == "j":
                 # Yaw left (positive rotation around Z axis)
@@ -201,18 +201,18 @@ def jog_tool_pose(  # noqa: PLR0915
                 logger.info(f"↷ Yaw right (-{np.rad2deg(rotation_step):.2f}°)")
                 log_pose()
             elif key_char == "u":
-                # Roll counter-clockwise (positive rotation around X axis)
-                rotation = pin.utils.rotate("x", rotation_step)
+                # Pitch down (negative rotation around Y axis)
+                rotation = pin.utils.rotate("y", -rotation_step)
                 with pose_lock:
                     current_pose.rotation = current_pose.rotation @ rotation
-                logger.info(f"↺ Roll CCW (+{np.rad2deg(rotation_step):.2f}°)")
+                logger.info(f"⤵ Pitch down (-{np.rad2deg(rotation_step):.2f}°)")
                 log_pose()
             elif key_char == "o":
-                # Roll clockwise (negative rotation around X axis)
-                rotation = pin.utils.rotate("x", -rotation_step)
+                # Pitch up (positive rotation around Y axis)
+                rotation = pin.utils.rotate("y", rotation_step)
                 with pose_lock:
                     current_pose.rotation = current_pose.rotation @ rotation
-                logger.info(f"↻ Roll CW (-{np.rad2deg(rotation_step):.2f}°)")
+                logger.info(f"⤴ Pitch up (+{np.rad2deg(rotation_step):.2f}°)")
                 log_pose()
             elif key_char == "x" or key == keyboard.Key.esc:
                 logger.info("Exiting jog mode...")
@@ -267,13 +267,13 @@ Examples:
 
 Controls:
   Translation:
-    W/S - Move forward/backward (X axis)
-    A/D - Move left/right (Y axis)
-    Q/E - Move up/down (Z axis)
+    W/S - Move right/left (Y axis)
+    A/D - Move backward/forward (X axis)
+    Q/E - Move down/up (Z axis)
   Rotation:
-    I/K - Pitch up/down
+    I/K - Roll clockwise/counter-clockwise
     J/L - Yaw left/right
-    U/O - Roll counter-clockwise/clockwise
+    U/O - Pitch down/up
   ESC or 'x' - Quit
         """,
     )
