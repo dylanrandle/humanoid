@@ -48,7 +48,7 @@ class OperationalSpaceConfig:
     joint_centering_cost: float = 1e-3  # Cost for posture task [cost] / [rad]
 
     # Damping task (velocity minimization)
-    damping_cost: float = 1e-3  # Cost for damping task [cost] / [rad/s]
+    damping_cost: float = 1e-1  # Cost for damping task [cost] / [rad/s]
 
     # QP solver
     solver: str = "quadprog"  # QP solver to use ("quadprog", "proxqp", etc.)
