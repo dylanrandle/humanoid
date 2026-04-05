@@ -100,6 +100,7 @@ class Robot:
             str(urdf_path),
             package_dirs=package_dirs_str,
             geometry_types=[pin.GeometryType.VISUAL],
+            mimic=True,
         )
 
         # Load collision model from separate URDF if available, otherwise use main URDF
@@ -111,6 +112,7 @@ class Robot:
                 str(collision_urdf_path),
                 package_dirs=package_dirs_str,
                 geometry_types=[pin.GeometryType.COLLISION],
+                mimic=True,
             )
         else:
             # Use the same URDF for collision
@@ -118,6 +120,7 @@ class Robot:
                 str(urdf_path),
                 package_dirs=package_dirs_str,
                 geometry_types=[pin.GeometryType.COLLISION],
+                mimic=True,
             )
 
         # Store final package directories
