@@ -39,7 +39,8 @@ class RobotDriver:
         else:
             logger.info("Using Feetech motor controller")
             self.controller: MotorController = FeetechMotorController(
-                servo_ids=robot_config.servo_ids
+                servo_ids=robot_config.servo_ids,
+                inverted_servo_ids=robot_config.inverted_servo_ids,
             )
 
         self.controller.connect()

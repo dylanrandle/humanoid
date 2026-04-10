@@ -10,29 +10,41 @@ logger = get_logger(__name__)
 POS_MIN = 0
 POS_MAX = 4095
 POS_MID = (POS_MAX + POS_MIN) / 2
-MAX_ACCELERATION = 10
+MAX_ACCELERATION = 254
 ADDR_TEMPERATURE = 63
 
 
 class FeetechMotorController(ServoController, MotorController):
-    def __init__(self, servo_ids: list[int], max_acceleration: int = MAX_ACCELERATION):
+    def __init__(
+        self,
+        servo_ids: list[int],
+        max_acceleration: int = MAX_ACCELERATION,
+        inverted_servo_ids: list[int] | None = None,
+    ):
         self.max_acceleration = max_acceleration
+        self.inverted_servo_ids = set(inverted_servo_ids or [])
         ServoController.__init__(self, servo_ids=servo_ids)
         MotorController.__init__(self, servo_ids=servo_ids)
 
-    @staticmethod
-    def angle_to_position(angle: float) -> int:
+    def angle_to_position(self, angle: float, servo_id: int) -> int:
         angle = max(-math.pi, min(math.pi, angle))
+        # Invert angle if this servo is marked as inverted
+        if servo_id in self.inverted_servo_ids:
+            angle = -angle
         position = POS_MID + (angle / math.pi) * (POS_MAX - POS_MID)
         return int(position)
 
-    @staticmethod
-    def position_to_angle(position: int) -> float:
-        return ((position - POS_MID) / (POS_MAX - POS_MID)) * math.pi
+    def position_to_angle(self, position: int, servo_id: int) -> float:
+        angle = ((position - POS_MID) / (POS_MAX - POS_MID)) * math.pi
+        # Invert angle if this servo is marked as inverted
+        if servo_id in self.inverted_servo_ids:
+            angle = -angle
+        return angle
 
     def write_position(self, positions: dict[int, float], **kwargs):  # ty:ignore[invalid-method-override]
         raw_positions = {
-            servo_id: self.angle_to_position(angle) for servo_id, angle in positions.items()
+            servo_id: self.angle_to_position(angle, servo_id)
+            for servo_id, angle in positions.items()
         }
         super().write_position(raw_positions, acceleration=self.max_acceleration, **kwargs)
 
@@ -40,11 +52,14 @@ class FeetechMotorController(ServoController, MotorController):
         raw_position = super().read_position(servo_id)
         if raw_position is None:
             return None
-        return self.position_to_angle(raw_position)
+        return self.position_to_angle(raw_position, servo_id)
 
     def read_all_positions(self) -> dict[int, float]:  # ty:ignore[invalid-method-override]
         raw_positions = super().read_all_positions()
-        return {servo_id: self.position_to_angle(pos) for servo_id, pos in raw_positions.items()}
+        return {
+            servo_id: self.position_to_angle(pos, servo_id)
+            for servo_id, pos in raw_positions.items()
+        }
 
     def ping(self, servo_id: int) -> bool:
         try:

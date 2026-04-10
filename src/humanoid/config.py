@@ -29,9 +29,10 @@ ROBOT_CONFIGS = {
         RobotConfig(
             name="elrobot",
             end_effector_frame="Gripper_Base_v1_1",
-            home_position=np.array([0.0, -0.75, 0.5, 0.0, 0.0, 1.0, 0.0, 0.0]),
-            rest_position=np.array([0.0, -1.6, 1.6, 0.0, 0.0, 0.7, 0.0, 2.2]),
+            home_position=np.array([0.0, -0.75, 0.5, 0.0, 0.0, 1.0, 0.0, 0]),
+            rest_position=np.array([0.0, -1.6, 1.6, 0.0, 0.0, 0.5, 0.0, 2.2]),
             joint_idx_to_servo_id={i: i + 1 for i in range(8)},
+            inverted_servo_ids=[8],  # Servo 8 direction is inverted
         ),
     ]
 }
