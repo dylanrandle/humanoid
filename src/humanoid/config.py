@@ -6,7 +6,7 @@ from humanoid.types.robot import RobotConfig
 from humanoid.types.visualizer import VisualizerConfig
 
 IS_SIMULATION = os.getenv("HUMANOID_RUNTIME", "sim").lower().strip() in ("sim", "simulation")
-ROBOT_NAME = os.getenv("HUMANOID_ROBOT", "so101").lower().strip()
+ROBOT_NAME = os.getenv("HUMANOID_ROBOT", "elrobot").lower().strip()
 
 ROBOT_CONFIGS = {
     cfg.name: cfg

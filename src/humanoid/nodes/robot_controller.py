@@ -56,15 +56,13 @@ class RobotController:
 
     def receive_and_compute(self) -> None:
         """Receive tool command and compute joint commands."""
-        # Check for robot state update
+        # Check for robot state update (for initialization only)
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=0)
 
-        # Update internal state from robot state feedback
-        if robot_state is not None:
-            logger.debug(f"Received robot state: {robot_state}")
-
-            # Update the operational space controller's state
-            # TODO: explore open-loop variation of OSC
+        # Initialize controller state from first robot state feedback
+        # After initialization, use open-loop control (internal state integration)
+        if robot_state is not None and self.controller.configuration is None:
+            logger.info(f"Initializing controller state from robot state: {robot_state}")
             self.controller.update_state(robot_state.joint_positions)
 
         # Check for new tool command (non-blocking)
