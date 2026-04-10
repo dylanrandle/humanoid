@@ -23,9 +23,10 @@ DEFAULT_RATE_HZ = 30.0
 class RobotVisualizer:
     """Visualizer node that displays robot state in real-time.
 
-    This node subscribes to the ROBOT_STATE and ROBOT_TOOL_COMMAND topics
-    and updates a MeshCat visualization with the robot's current joint positions
-    and commanded tool pose.
+    This node subscribes to the ROBOT_STATE, ROBOT_JOINT_COMMAND, and
+    ROBOT_TOOL_COMMAND topics and updates a MeshCat visualization with the
+    robot's current joint positions, commanded joint positions, and commanded
+    tool pose.
 
     Attributes:
         robot: Robot instance for kinematics and visualization
@@ -54,15 +55,16 @@ class RobotVisualizer:
 
         # Setup LCM subscriber
         self.subscriber = Subscriber(
-            [Topic.ROBOT_STATE, Topic.ROBOT_TOOL_COMMAND],
+            [Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND, Topic.ROBOT_TOOL_COMMAND],
         )
 
-        # Track if we've visualized the tool command frame
-        self.tool_command_frame_name = "tool_command"
         logger.info("RobotVisualizer initialized")
 
     def update(self) -> None:
-        """Update the visualization with the latest robot state and tool command."""
+        """
+        Update the visualization with the latest
+        robot state, joint commands, and tool command.
+        """
         # Check for robot state update
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=0)
 
@@ -75,15 +77,18 @@ class RobotVisualizer:
             self.viz.display(q)
             self.current_q = q
 
+        # Check for joint command update
+        joint_command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=0)
+
+        if joint_command is not None:
+            self.viz.display_joint_command(joint_command.joint_positions)
+
         # Check for tool command update
         tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=0)
 
         if tool_command is not None:
-            # Visualize the commanded tool pose as a coordinate frame
-            self.viz.add_frame(
-                name=self.tool_command_frame_name,
-                pose=tool_command.pose,
-            )
+            # Visualize the commanded tool pose with the end effector geometry
+            self.viz.display_tool_command(tool_command.pose)
 
     def run(self, rate_hz: float = DEFAULT_RATE_HZ) -> None:
         """Run the visualizer main loop.

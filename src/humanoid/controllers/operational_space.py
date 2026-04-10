@@ -66,7 +66,6 @@ class OperationalSpaceController:
 
         Args:
             robot: Robot instance containing the model and data
-            end_effector_frame: Name of the end-effector frame in the URDF
             config: Controller configuration parameters
         """
         self.config = config or OperationalSpaceConfig()
