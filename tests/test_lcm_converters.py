@@ -56,3 +56,28 @@ def test_robot_tool_command_conversion():
 
     # Assert rotation is recovered correctly
     np.testing.assert_allclose(cmd_recovered.pose.rotation, rotation, atol=1e-9)
+
+
+def test_robot_tool_command_with_gripper():
+    """Test RobotToolCommand conversion with gripper positions."""
+    position = np.array([0.5, 0.3, 0.8])
+    rotation = pin.rpy.rpyToMatrix(0.1, 0.2, 0.3)
+    pose = pin.SE3(rotation, position)
+    gripper_positions = np.array([0.01, 0.02])
+    timestamp = 42.123
+
+    cmd = RobotToolCommand(timestamp=timestamp, pose=pose, gripper_positions=gripper_positions)
+
+    # Convert to LCM
+    lcm_cmd = LCMConverter.robot_tool_command_to_lcm(cmd)
+
+    # Check gripper data
+    assert lcm_cmd.num_gripper_joints == len(gripper_positions)
+    np.testing.assert_allclose(lcm_cmd.gripper_positions, gripper_positions, atol=1e-9)
+
+    # Convert back
+    cmd_recovered = LCMConverter.robot_tool_command_from_lcm(lcm_cmd)
+
+    # Verify gripper positions are recovered
+    assert cmd_recovered.gripper_positions is not None
+    np.testing.assert_allclose(cmd_recovered.gripper_positions, gripper_positions, atol=1e-9)

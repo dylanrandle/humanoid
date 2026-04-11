@@ -9,10 +9,12 @@ class Action:
     """Action type that can represent either joint space or tool space commands.
 
     Exactly one of joint_positions or tool_pose should be set.
+    Optionally, gripper_positions can be specified alongside tool_pose.
     """
 
     joint_positions: np.ndarray | None = None
     tool_pose: pin.SE3 | None = None
+    gripper_positions: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         """Validate that exactly one action type is specified."""

@@ -1,6 +1,10 @@
 from enum import Enum
 
-from humanoid.types.robot import RobotJointCommand, RobotState, RobotToolCommand
+from humanoid.types.robot import (
+    RobotJointCommand,
+    RobotState,
+    RobotToolCommand,
+)
 
 DEFAULT_LCM_URL = "udpm://239.255.76.67:7667?ttl=1"
 

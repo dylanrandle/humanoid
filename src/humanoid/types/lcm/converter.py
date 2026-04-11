@@ -3,8 +3,16 @@
 import numpy as np
 import pinocchio as pin
 
-from humanoid.types.lcm import robot_joint_command_t, robot_state_t, robot_tool_command_t
-from humanoid.types.robot import RobotJointCommand, RobotState, RobotToolCommand
+from humanoid.types.lcm import (
+    robot_joint_command_t,
+    robot_state_t,
+    robot_tool_command_t,
+)
+from humanoid.types.robot import (
+    RobotJointCommand,
+    RobotState,
+    RobotToolCommand,
+)
 
 
 class LCMConverter:
@@ -81,7 +89,7 @@ class LCMConverter:
             timestamp=lcm_state.timestamp / 1e9,  # Convert from nanoseconds
             joint_positions=joint_positions,
             joint_velocities=joint_velocities,
-            motor_temperatures=motor_temperatures
+            motor_temperatures=motor_temperatures,
         )
 
     @staticmethod
@@ -89,22 +97,30 @@ class LCMConverter:
         """Convert RobotToolCommand dataclass to robot_tool_command_t LCM type.
 
         Args:
-            command: RobotToolCommand dataclass with timestamp and pose (pin.SE3)
+            command: RobotToolCommand dataclass with timestamp, pose (pin.SE3), and optional gripper_positions
 
         Returns:
             robot_tool_command_t LCM type ready for transmission
         """
         lcm_command = robot_tool_command_t()
         lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
-        
+
         # Extract position from SE3
         lcm_command.position = command.pose.translation.tolist()
-        
+
         # Extract quaternion from SE3 rotation matrix in wxyz format
         quat = pin.Quaternion(command.pose.rotation)
         # Quaternion format: [w, x, y, z]
         lcm_command.quaternion = [quat.w, quat.x, quat.y, quat.z]
-        
+
+        # Add gripper positions if provided
+        if command.gripper_positions is not None:
+            lcm_command.num_gripper_joints = len(command.gripper_positions)
+            lcm_command.gripper_positions = command.gripper_positions.tolist()
+        else:
+            lcm_command.num_gripper_joints = 0
+            lcm_command.gripper_positions = []
+
         return lcm_command
 
     @staticmethod
@@ -119,20 +135,26 @@ class LCMConverter:
         """
         # Reconstruct position
         position = np.array(lcm_command.position)
-        
+
         # Reconstruct rotation from quaternion in wxyz format [w, x, y, z]
         quat = pin.Quaternion(
             lcm_command.quaternion[0],  # w
             lcm_command.quaternion[1],  # x
             lcm_command.quaternion[2],  # y
-            lcm_command.quaternion[3]   # z
+            lcm_command.quaternion[3],  # z
         )
         rotation = quat.toRotationMatrix()
-        
+
         # Create SE3 pose
         pose = pin.SE3(rotation, position)
-        
+
+        # Extract gripper positions if present
+        gripper_positions = None
+        if lcm_command.num_gripper_joints > 0:
+            gripper_positions = np.array(lcm_command.gripper_positions)
+
         return RobotToolCommand(
             timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
-            pose=pose
+            pose=pose,
+            gripper_positions=gripper_positions,
         )

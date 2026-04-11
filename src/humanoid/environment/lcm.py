@@ -110,6 +110,7 @@ class LCMEnvironment(Environment):
             command = RobotToolCommand(
                 timestamp=timestamp,
                 pose=action.tool_pose,
+                gripper_positions=action.gripper_positions,
             )
             self.publisher.publish(command)
             logger.debug("Published tool command")

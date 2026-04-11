@@ -9,11 +9,11 @@ import struct
 
 class robot_tool_command_t(object):
 
-    __slots__ = ["timestamp", "position", "quaternion"]
+    __slots__ = ["timestamp", "position", "quaternion", "num_gripper_joints", "gripper_positions"]
 
-    __typenames__ = ["int64_t", "double", "double"]
+    __typenames__ = ["int64_t", "double", "double", "int32_t", "double"]
 
-    __dimensions__ = [None, [3], [4]]
+    __dimensions__ = [None, [3], [4], None, ["num_gripper_joints"]]
 
     def __init__(self):
         self.timestamp = 0
@@ -22,6 +22,14 @@ class robot_tool_command_t(object):
         """ LCM Type: double[3] """
         self.quaternion = [ 0.0 for dim0 in range(4) ]
         """ LCM Type: double[4] """
+        self.num_gripper_joints = 0
+        """
+        wxyz format (w, x, y, z)
+        LCM Type: int32_t
+        """
+
+        self.gripper_positions = []
+        """ LCM Type: double[num_gripper_joints] """
 
     def encode(self):
         buf = BytesIO()
@@ -33,6 +41,8 @@ class robot_tool_command_t(object):
         buf.write(struct.pack(">q", self.timestamp))
         buf.write(struct.pack('>3d', *self.position[:3]))
         buf.write(struct.pack('>4d', *self.quaternion[:4]))
+        buf.write(struct.pack(">i", self.num_gripper_joints))
+        buf.write(struct.pack('>%dd' % self.num_gripper_joints, *self.gripper_positions[:self.num_gripper_joints]))
 
     @staticmethod
     def decode(data: bytes):
@@ -50,12 +60,14 @@ class robot_tool_command_t(object):
         self.timestamp = struct.unpack(">q", buf.read(8))[0]
         self.position = struct.unpack('>3d', buf.read(24))
         self.quaternion = struct.unpack('>4d', buf.read(32))
+        self.num_gripper_joints = struct.unpack(">i", buf.read(4))[0]
+        self.gripper_positions = struct.unpack('>%dd' % self.num_gripper_joints, buf.read(self.num_gripper_joints * 8))
         return self
 
     @staticmethod
     def _get_hash_recursive(parents):
         if robot_tool_command_t in parents: return 0
-        tmphash = (0x2f2ae79e4be50733) & 0xffffffffffffffff
+        tmphash = (0x945f510b2ff35207) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None

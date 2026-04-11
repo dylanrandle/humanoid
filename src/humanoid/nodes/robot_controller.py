@@ -10,7 +10,11 @@ from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.robots.base import Robot
-from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotToolCommand
+from humanoid.types.robot import (
+    RobotConfig,
+    RobotJointCommand,
+    RobotToolCommand,
+)
 
 logger = get_logger(__name__)
 
@@ -76,7 +80,11 @@ class RobotController:
         # Control current command
         if self.current_tool_command is not None:
             # Compute joint commands using the operational space controller
-            q_cmd = self.controller.compute_control(self.current_tool_command.pose)
+            # OSC will merge gripper positions with IK-computed arm positions
+            q_cmd = self.controller.compute_control(
+                self.current_tool_command.pose,
+                gripper_positions=self.current_tool_command.gripper_positions,
+            )
 
             # Create joint command message with np.ndarray
             joint_command = RobotJointCommand(

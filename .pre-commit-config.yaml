@@ -6,19 +6,19 @@ repos:
         entry: uv run ruff check --fix
         language: system
         types: [python]
-        pass_filenames: true
+        pass_filenames: false
       - id: format
         name: format
         entry: uv run ruff format
         language: system
         types: [python]
-        pass_filenames: true
+        pass_filenames: false
       - id: typecheck
         name: typecheck
         entry: uv run ty check
         language: system
         types: [python]
-        pass_filenames: true
+        pass_filenames: false
       - id: test
         name: test
         entry: uv run pytest
