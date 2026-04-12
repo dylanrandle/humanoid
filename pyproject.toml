@@ -13,6 +13,7 @@ dependencies = [
     "lcm>=1.5.2",
     "meshcat>=0.3.2",
     "numpy>=2.0.0",
+    "oculus-reader",
     "pin>=3.2.0",
     "pin-pink>=4.0.0",
     "pynput>=1.8.1",
@@ -71,3 +72,6 @@ extra-paths = ["typings"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/humanoid"]
+
+[tool.uv.sources]
+oculus-reader = { git = "https://github.com/rail-berkeley/oculus_reader.git", rev = "17bc7b3923f5754d70c4e358867a3bcac1a3c0c3" }
