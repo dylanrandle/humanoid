@@ -13,7 +13,7 @@ from humanoid.config import ROBOT_CONFIG
 from humanoid.environment.lcm import LCMEnvironment
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
-from humanoid.policy.keyboard_teleop import KeyboardTeleopPolicy
+from humanoid.policy import KeyboardTeleopPolicy
 from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
