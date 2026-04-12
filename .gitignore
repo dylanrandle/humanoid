@@ -11,3 +11,6 @@ wheels/
 
 # LCM Java types
 lcm-java
+
+# AI agents
+plans/
