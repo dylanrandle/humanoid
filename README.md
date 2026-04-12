@@ -10,6 +10,7 @@ A Python framework for controlling small household humanoid robots with support 
 - **LCM middleware**: Lightweight Communications and Marshalling for inter-process communication
 - **Operational space control**: Advanced control algorithms for precise robot manipulation
 - **Keyboard teleoperation**: Interactive control interface for testing and development
+- **Oculus teleoperation**: VR controller-based teleoperation for intuitive robot control
 
 ## Requirements
 
@@ -92,6 +93,15 @@ Control the robot using keyboard input:
 ```bash
 uv run python -m humanoid.nodes.keyboard_teleop
 ```
+
+### Oculus Teleoperation
+
+Control the robot using Oculus VR controllers for intuitive, immersive teleoperation:
+```bash
+uv run python -m humanoid.nodes.oculus_teleop
+```
+
+**Device Setup**: For instructions on setting up your Oculus device, refer to the [oculus_reader](https://github.com/rail-berkeley/oculus_reader) repository.
 
 ### Running Tests
 
