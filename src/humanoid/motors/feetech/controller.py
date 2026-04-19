@@ -46,7 +46,8 @@ class FeetechMotorController(ServoController, MotorController):
             servo_id: self.angle_to_position(angle, servo_id)
             for servo_id, angle in positions.items()
         }
-        super().write_position(raw_positions, acceleration=self.max_acceleration, **kwargs)
+        acceleration = kwargs.pop("acceleration", self.max_acceleration)
+        super().write_position(raw_positions, acceleration=acceleration, **kwargs)
 
     def read_position(self, servo_id: int) -> float | None:  # ty:ignore[invalid-method-override]
         raw_position = super().read_position(servo_id)
