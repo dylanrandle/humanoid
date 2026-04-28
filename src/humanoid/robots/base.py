@@ -35,6 +35,7 @@ class Robot:
         config: RobotConfig,
         urdf_filename: str | None = None,
         collision_urdf_filename: str | None = None,
+        srdf_filename: str | None = None,
         package_dirs: list[Path] | None = None,
     ):
         """Initialize the robot by loading its URDF model.
@@ -59,10 +60,15 @@ class Robot:
         if urdf_filename is None:
             urdf_filename = f"{config.name}.urdf"
 
+        if srdf_filename is None:
+            srdf_filename = f"{config.name}.srdf"
+
         urdf_path = robot_dir / "urdf" / urdf_filename
+        srdf_path = robot_dir / "srdf" / srdf_filename
 
         # Store paths for external access
         self._urdf_path = urdf_path
+        self._srdf_path = srdf_path
         self._robot_dir = robot_dir
         self._package_dirs = package_dirs
 
@@ -148,6 +154,15 @@ class Robot:
             Path to the URDF file
         """
         return self._urdf_path
+
+    @property
+    def srdf_path(self) -> Path:
+        """Get the path to the robot's SRDF file.
+
+        Returns:
+            Path to the SRDF file
+        """
+        return self._srdf_path
 
     @property
     def robot_dir(self) -> Path:

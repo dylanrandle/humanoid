@@ -11,14 +11,14 @@ import numpy as np
 import pink
 import pinocchio as pin
 from numpy.typing import NDArray
+from pink.barriers import SelfCollisionBarrier
 from pink.tasks import DampingTask, FrameTask, PostureTask
+from pink.utils import process_collision_pairs
 
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
 
 logger = get_logger(__name__)
-
-TASKSPACE_DIM = 6
 
 
 class TaskName(StrEnum):
@@ -52,6 +52,9 @@ class OperationalSpaceConfig:
 
     # QP solver
     solver: str = "quadprog"  # QP solver to use ("quadprog", "proxqp", etc.)
+
+    # Collision avoidance
+    avoid_collisions: bool = False
 
 
 class OperationalSpaceController:
@@ -104,6 +107,28 @@ class OperationalSpaceController:
             cost=self.config.damping_cost,
         )
 
+        # Initialize barriers
+        self.barriers = []
+
+        if self.config.avoid_collisions:
+            # Process collision pairs from SRDF to set up collision data
+            # Note: This modifies robot.collision_data in place
+            process_collision_pairs(
+                self.robot.model, self.robot.collision_model, str(self.robot.srdf_path)
+            )
+
+            # Create self-collision barrier
+            collision_barrier = SelfCollisionBarrier(
+                n_collision_pairs=len(self.robot.collision_model.collisionPairs),
+            )
+            self.barriers.append(collision_barrier)
+            logger.info(
+                "Collision avoidance enabled "
+                f"with {len(self.robot.collision_model.collisionPairs)} collision pairs"
+            )
+        else:
+            logger.info("Collision avoidance disabled")
+
     def update_state(self, q: np.ndarray):
         """Update the robot configuration state.
 
@@ -111,8 +136,17 @@ class OperationalSpaceController:
             q: Joint configuration vector (nq,)
         """
         if self.configuration is None:
+            collision_model = self.robot.collision_model if self.config.avoid_collisions else None
+            collision_data = self.robot.collision_data if self.config.avoid_collisions else None
+
             # Initialize configuration on first state update
-            self.configuration = pink.Configuration(self.robot.model, self.robot.data, q)
+            self.configuration = pink.Configuration(
+                self.robot.model,
+                self.robot.data,
+                q,
+                collision_model=collision_model,
+                collision_data=collision_data,
+            )
             logger.info(f"Initialized controller configuration with state: q={q}")
         else:
             self.configuration.update(q)
@@ -153,6 +187,7 @@ class OperationalSpaceController:
                 self.tasks.values(),
                 self.config.dt,
                 solver=self.config.solver,
+                barriers=self.barriers,
             )
             self.configuration.integrate_inplace(velocity, self.config.dt)
         except Exception as e:
