@@ -71,3 +71,30 @@ class MotorController(ABC):
         Returns:
             Dictionary mapping servo_id to temperature
         """
+
+    @abstractmethod
+    def write_velocity(self, velocities: dict[int, float]) -> None:
+        """Write target velocities (in rad/s) to servos.
+
+        Args:
+            velocities: Dictionary mapping servo_id to target velocity in rad/s
+        """
+
+    @abstractmethod
+    def read_velocity(self, servo_id: int) -> float | None:
+        """Read current velocity (in rad/s) from a single servo.
+
+        Args:
+            servo_id: ID of the servo to read from
+
+        Returns:
+            Current velocity in rad/s, or None if read fails
+        """
+
+    @abstractmethod
+    def read_all_velocities(self) -> dict[int, float]:
+        """Read current velocities (in rad/s) from all servos.
+
+        Returns:
+            Dictionary mapping servo_id to current velocity in rad/s
+        """
