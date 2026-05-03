@@ -12,6 +12,10 @@ POS_MAX = 4095
 POS_MID = (POS_MAX + POS_MIN) / 2
 MAX_ACCELERATION = 254
 ADDR_TEMPERATURE = 63
+ADDR_GOAL_SPEED = 46
+ADDR_PRESENT_SPEED = 58
+# 0.732 RPM per raw unit, BIT15 encodes direction
+SPEED_UNIT_RAD_S = 0.732 * 2 * math.pi / 60
 
 
 class FeetechMotorController(ServoController, MotorController):
@@ -83,3 +87,30 @@ class FeetechMotorController(ServoController, MotorController):
 
     def read_all_temperatures(self) -> dict[int, float]:
         return {servo_id: self.read_temperature(servo_id) for servo_id in self.servo_ids}
+
+    def write_velocity(self, velocities: dict[int, float]):
+        # Requires servo to be in velocity mode (mode 1); call set_operating_mode(id, 1) first.
+        assert self.packet_handler, "Not connected"
+        for servo_id, velocity in velocities.items():
+            v = -velocity if servo_id in self.inverted_servo_ids else velocity
+            magnitude = int(min(abs(v) / SPEED_UNIT_RAD_S, 32767))
+            raw = (magnitude | 0x8000) if v < 0 else magnitude
+            self.packet_handler.write2ByteTxRx(servo_id, ADDR_GOAL_SPEED, raw)
+
+    def read_velocity(self, servo_id: int) -> float | None:
+        assert self.packet_handler, "Not connected"
+        raw, res, err = self.packet_handler.ReadSpeed(servo_id)
+        if res != 0 or err != 0:
+            return None
+        direction = -1 if (raw & 0x8000) else 1
+        velocity = direction * (raw & 0x7FFF) * SPEED_UNIT_RAD_S
+        if servo_id in self.inverted_servo_ids:
+            velocity = -velocity
+        return velocity
+
+    def read_all_velocities(self) -> dict[int, float]:
+        return {
+            servo_id: v
+            for servo_id in self.servo_ids
+            if (v := self.read_velocity(servo_id)) is not None
+        }
