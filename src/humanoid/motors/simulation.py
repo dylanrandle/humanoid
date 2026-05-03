@@ -42,6 +42,8 @@ class SimulatedMotorController(MotorController):
             self._positions[servo_id] = pos
             self._target_positions[servo_id] = pos
 
+        self._velocities: dict[int, float] = dict.fromkeys(robot_config.servo_ids, 0.0)
+
         self._temperatures: dict[int, float] = dict.fromkeys(
             robot_config.servo_ids, DEFAULT_TEMPERATURE
         )
@@ -162,3 +164,51 @@ class SimulatedMotorController(MotorController):
             return {}
 
         return {servo_id: self.read_temperature(servo_id) for servo_id in self.servo_ids}
+
+    def write_velocity(self, velocities: dict[int, float]) -> None:
+        """Write target velocities (in rad/s) to simulated servos.
+
+        Args:
+            velocities: Dictionary mapping servo_id to target velocity in rad/s
+        """
+        if not self._connected:
+            logger.warning("Cannot write velocities: controller not connected")
+            return
+
+        for servo_id, velocity in velocities.items():
+            if servo_id in self._velocities:
+                self._velocities[servo_id] = velocity
+                logger.debug(f"Servo {servo_id} velocity set to {velocity:.3f} rad/s")
+            else:
+                logger.warning(f"Unknown servo ID: {servo_id}")
+
+    def read_velocity(self, servo_id: int) -> float | None:
+        """Read current velocity (in rad/s) from a simulated servo.
+
+        Args:
+            servo_id: ID of the servo to read from
+
+        Returns:
+            Current velocity in rad/s, or None if read fails
+        """
+        if not self._connected:
+            logger.warning("Cannot read velocity: controller not connected")
+            return None
+
+        if servo_id not in self._velocities:
+            logger.error(f"Unknown servo ID: {servo_id}")
+            return None
+
+        return self._velocities[servo_id]
+
+    def read_all_velocities(self) -> dict[int, float]:
+        """Read current velocities (in rad/s) from all simulated servos.
+
+        Returns:
+            Dictionary mapping servo_id to current velocity in rad/s
+        """
+        if not self._connected:
+            logger.warning("Cannot read velocities: controller not connected")
+            return {}
+
+        return self._velocities.copy()
