@@ -94,7 +94,7 @@ class OculusTeleopPolicy(Policy):
         # Log configuration
         if self.verbose:
             logger.info(f"OculusTeleopPolicy initialized for {robot_config.name}")
-            logger.info(f"End effector frame: {robot_config.end_effector_frame}")
+            logger.info(f"End effector frame: {robot_config.tool_frame}")
             if robot_config.gripper_joint_indices:
                 logger.info(f"Gripper joint indices: {robot_config.gripper_joint_indices}")
             logger.info(f"Translation scale: {scale_translation:.2f}")
@@ -153,7 +153,7 @@ class OculusTeleopPolicy(Policy):
         """
         self.reference_controller_pose = right_controller_pose.copy()
         self.reference_tool_pose = self.robot.get_frame_pose(
-            self.robot_config.end_effector_frame,
+            self.robot_config.tool_frame,
             observation.robot_state.joint_positions,
         )
 
@@ -177,7 +177,7 @@ class OculusTeleopPolicy(Policy):
             Action to maintain current pose
         """
         current_tool_pose = self.robot.get_frame_pose(
-            self.robot_config.end_effector_frame,
+            self.robot_config.tool_frame,
             observation.robot_state.joint_positions,
         )
         gripper_positions = self._get_current_gripper_positions(observation)

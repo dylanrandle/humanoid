@@ -13,7 +13,7 @@ def mock_robot_driver():
     # Mock the robot config
     robot_config = RobotConfig(
         name="panda",
-        end_effector_frame="panda_hand",
+        tool_frame="panda_hand",
         home_position=np.zeros(7),
         rest_position=np.ones(7),
         joint_idx_to_servo_id={i: i + 1 for i in range(7)},

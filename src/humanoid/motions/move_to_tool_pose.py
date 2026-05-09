@@ -132,7 +132,7 @@ def move_to_pose(  # noqa: PLR0913, PLR0915
     """
     # Load robot configuration
     robot_name = robot_config.name
-    end_effector_frame = robot_config.end_effector_frame
+    end_effector_frame = robot_config.tool_frame
     dt = 1 / publish_rate
 
     logger.info(f"Moving {robot_name} end effector to goal pose...")

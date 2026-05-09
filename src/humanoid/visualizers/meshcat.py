@@ -350,7 +350,7 @@ class MeshcatVisualizer:
             self._tool_command_viz = ToolCommandVisualizer(
                 self.robot,
                 self._viewer,
-                end_effector_frame=self.robot.config.end_effector_frame,
+                end_effector_frame=self.robot.config.tool_frame,
                 opacity=self._config.tool_command_opacity,
             )
             self._tool_command_viz.initialize()

@@ -30,6 +30,14 @@ class TaskName(StrEnum):
 
 
 @dataclass
+class ControlResult:
+    """Result of a single control step."""
+
+    q: NDArray[np.float64]  # joint configuration (nq,)
+    v: NDArray[np.float64]  # joint velocity (nv,)
+
+
+@dataclass
 class OperationalSpaceConfig:
     """Configuration parameters for the operational space controller."""
 
@@ -75,8 +83,8 @@ class OperationalSpaceController:
         self.robot = robot
 
         # Get end-effector frame ID
-        if not robot.model.existFrame(robot.config.end_effector_frame):
-            raise ValueError(f"Frame '{robot.config.end_effector_frame}' not found in URDF")
+        if not robot.model.existFrame(robot.config.tool_frame):
+            raise ValueError(f"Frame '{robot.config.tool_frame}' not found in URDF")
 
         # Defer configuration initialization until first state update
         self.configuration: pink.Configuration | None = None
@@ -86,7 +94,7 @@ class OperationalSpaceController:
 
         # Create end-effector frame task
         self.tasks[TaskName.END_EFFECTOR] = FrameTask(
-            robot.config.end_effector_frame,
+            robot.config.tool_frame,
             position_cost=self.config.position_cost,
             orientation_cost=self.config.orientation_cost,
         )
@@ -153,7 +161,7 @@ class OperationalSpaceController:
 
     def compute_control(
         self, target_pose: pin.SE3, gripper_positions: NDArray[np.float64] | None = None
-    ) -> NDArray[np.float64]:
+    ) -> ControlResult:
         """Compute joint configuration to achieve target task space pose.
 
         Uses Pink's differential inverse kinematics solver with:
@@ -166,7 +174,7 @@ class OperationalSpaceController:
             gripper_positions: Optional gripper joint positions to override in the result
 
         Returns:
-            Joint configuration vector (nq,) with gripper positions overridden if provided
+            ControlResult with q (nq,) and v (nv,); q has gripper positions overridden if provided
 
         Raises:
             RuntimeError: If configuration has not been initialized via update_state()
@@ -181,6 +189,7 @@ class OperationalSpaceController:
         self.tasks[TaskName.END_EFFECTOR].set_target(target_pose)
 
         # Solve inverse kinematics using Pink
+        velocity = np.zeros(self.robot.model.nv)
         try:
             velocity = pink.solve_ik(
                 self.configuration,
@@ -204,4 +213,4 @@ class OperationalSpaceController:
                 if i < len(gripper_positions):
                     q[gripper_idx] = gripper_positions[i]
 
-        return q
+        return ControlResult(q=q, v=velocity)

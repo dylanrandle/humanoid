@@ -43,7 +43,7 @@ class RobotController:
         self.robot.print_info()
 
         # Initialize operational space controller
-        logger.info(f"Initializing OSC for frame: {robot_config.end_effector_frame}")
+        logger.info(f"Initializing OSC for frame: {robot_config.tool_frame}")
         config = OperationalSpaceConfig(dt=self.dt)
         self.controller = OperationalSpaceController(robot=self.robot, config=config)
 
@@ -81,7 +81,7 @@ class RobotController:
         if self.current_tool_command is not None:
             # Compute joint commands using the operational space controller
             # OSC will merge gripper positions with IK-computed arm positions
-            q_cmd = self.controller.compute_control(
+            result = self.controller.compute_control(
                 self.current_tool_command.pose,
                 gripper_positions=self.current_tool_command.gripper_positions,
             )
@@ -89,7 +89,7 @@ class RobotController:
             # Create joint command message with np.ndarray
             joint_command = RobotJointCommand(
                 timestamp=time.perf_counter(),
-                joint_positions=q_cmd,
+                joint_positions=result.q,
             )
 
             # Publish joint command

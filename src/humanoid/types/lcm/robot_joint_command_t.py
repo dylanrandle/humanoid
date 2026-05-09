@@ -9,11 +9,11 @@ import struct
 
 class robot_joint_command_t(object):
 
-    __slots__ = ["timestamp", "num_joints", "joint_positions"]
+    __slots__ = ["timestamp", "num_joints", "joint_positions", "joint_velocities"]
 
-    __typenames__ = ["int64_t", "int32_t", "double"]
+    __typenames__ = ["int64_t", "int32_t", "double", "double"]
 
-    __dimensions__ = [None, None, ["num_joints"]]
+    __dimensions__ = [None, None, ["num_joints"], ["num_joints"]]
 
     def __init__(self):
         self.timestamp = 0
@@ -21,6 +21,8 @@ class robot_joint_command_t(object):
         self.num_joints = 0
         """ LCM Type: int32_t """
         self.joint_positions = []
+        """ LCM Type: double[num_joints] """
+        self.joint_velocities = []
         """ LCM Type: double[num_joints] """
 
     def encode(self):
@@ -32,6 +34,7 @@ class robot_joint_command_t(object):
     def _encode_one(self, buf):
         buf.write(struct.pack(">qi", self.timestamp, self.num_joints))
         buf.write(struct.pack('>%dd' % self.num_joints, *self.joint_positions[:self.num_joints]))
+        buf.write(struct.pack('>%dd' % self.num_joints, *self.joint_velocities[:self.num_joints]))
 
     @staticmethod
     def decode(data: bytes):
@@ -48,12 +51,13 @@ class robot_joint_command_t(object):
         self = robot_joint_command_t()
         self.timestamp, self.num_joints = struct.unpack(">qi", buf.read(12))
         self.joint_positions = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
+        self.joint_velocities = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
         return self
 
     @staticmethod
     def _get_hash_recursive(parents):
         if robot_joint_command_t in parents: return 0
-        tmphash = (0xf6e2dcba3a9aeab3) & 0xffffffffffffffff
+        tmphash = (0x35e6e7d1c62ff252) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None

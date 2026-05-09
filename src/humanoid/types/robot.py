@@ -8,6 +8,7 @@ import pinocchio as pin
 class RobotJointCommand:
     timestamp: float
     joint_positions: np.ndarray
+    joint_velocities: np.ndarray | None = None
 
 
 @dataclass
@@ -28,7 +29,7 @@ class RobotToolCommand:
 @dataclass
 class RobotConfig:
     name: str
-    end_effector_frame: str
+    tool_frame: str
     home_position: np.ndarray
     rest_position: np.ndarray
     joint_idx_to_servo_id: dict[int, int]

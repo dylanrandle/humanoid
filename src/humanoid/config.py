@@ -13,7 +13,7 @@ ROBOT_CONFIGS = {
     for cfg in [
         RobotConfig(
             name="panda",
-            end_effector_frame="panda_hand_tcp",
+            tool_frame="panda_hand_tcp",
             home_position=np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04]),
             rest_position=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.785, 0.0]),
             joint_idx_to_servo_id={i: i for i in range(8)},
@@ -21,7 +21,7 @@ ROBOT_CONFIGS = {
         ),
         RobotConfig(
             name="so101",
-            end_effector_frame="gripper_frame_link",
+            tool_frame="gripper_frame_link",
             home_position=np.array([0.0, -0.5, 0.8, -0.3, 0.0, 0.0]),
             rest_position=np.array([0.0, -1.55, 1.5, 1.0, 0.0, -0.15]),
             # NOTE: motors 5 <-> 6 are swapped
@@ -30,7 +30,7 @@ ROBOT_CONFIGS = {
         ),
         RobotConfig(
             name="elrobot",
-            end_effector_frame="Gripper_Base_v1_1",
+            tool_frame="Gripper_Base_v1_1",
             home_position=np.array([0.0, -0.75, 0.5, 0.0, 0.0, 1.0, 0.0, 0]),
             rest_position=np.array([0.0, -1.6, -0.1, 1.65, 0.0, 0.21, 0.0, 2.2]),
             joint_idx_to_servo_id={i: i + 1 for i in range(8)},
