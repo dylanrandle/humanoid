@@ -27,6 +27,8 @@ def _make_driver(
         mock_robot.model.lowerPositionLimit = np.full(n_joints, -3.0)
         mock_robot.model.upperPositionLimit = np.full(n_joints, 3.0)
         mock_robot.model.velocityLimit = velocity_limit
+        mock_robot.joint_idx_to_position_idx.side_effect = lambda i: i
+        mock_robot.joint_idx_to_velocity_idx.side_effect = lambda i: i
         mock_robot_cls.return_value = mock_robot
 
         mock_controller_instance = MagicMock()

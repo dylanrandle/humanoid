@@ -35,6 +35,18 @@ class RobotDriver:
         self.joint_upper_limits = self.robot.model.upperPositionLimit
         self.joint_velocity_limits = self.robot.model.velocityLimit
 
+        # Store position/velocity controlled joints
+        self.position_controlled_joints: list[int] = []
+        self.velocity_controlled_joints: list[int] = []
+        for joint_idx, servo_id in self.joint_idx_to_servo_id.items():
+            control_mode = robot_config.servo_control_modes[servo_id]
+            if control_mode == ServoControlMode.POSITION:
+                self.position_controlled_joints.append(joint_idx)
+            elif control_mode == ServoControlMode.VELOCITY:
+                self.velocity_controlled_joints.append(joint_idx)
+            else:
+                raise ValueError(f"Unrecognized servo control mode: {control_mode}")
+
         if IS_SIMULATION:
             logger.info("Using simulated motor controller")
             self.controller: MotorController = SimulatedMotorController(robot_config=robot_config)
@@ -55,18 +67,16 @@ class RobotDriver:
 
         logger.debug(f"Received command: {command}")
 
-        # Clamp joint positions to respect joint limits
+        # Clamp joint positions to respect limits
         clamped_positions = np.clip(
             command.joint_positions, self.joint_lower_limits, self.joint_upper_limits
         )
 
         positions = {}
-        for joint_idx, position in enumerate(clamped_positions):
-            # Convert joint indices to servo IDs using the mapping
+        for joint_idx in self.position_controlled_joints:
             servo_id = self.joint_idx_to_servo_id[joint_idx]
-            # Only send position commands for position-controlled servos
-            if self.robot.config.servo_control_modes[servo_id] == ServoControlMode.POSITION:
-                positions[servo_id] = float(position)
+            position_idx = self.robot.joint_idx_to_position_idx(joint_idx)
+            positions[servo_id] = float(clamped_positions[position_idx])
 
         velocities = {}
         if command.joint_velocities is not None:
@@ -74,12 +84,10 @@ class RobotDriver:
             clamped_velocities = np.clip(
                 command.joint_velocities, -self.joint_velocity_limits, self.joint_velocity_limits
             )
-            for joint_idx, velocity in enumerate(clamped_velocities):
-                # Convert joint indices to servo IDs using the mapping
+            for joint_idx in self.velocity_controlled_joints:
                 servo_id = self.joint_idx_to_servo_id[joint_idx]
-                # Only send velocity commands for velocity-controlled servos
-                if self.robot.config.servo_control_modes[servo_id] == ServoControlMode.VELOCITY:
-                    velocities[servo_id] = float(velocity)
+                velocity_idx = self.robot.joint_idx_to_velocity_idx(joint_idx)
+                velocities[servo_id] = float(clamped_velocities[velocity_idx])
 
         self.controller.write_position(positions)
         self.controller.write_velocity(velocities)

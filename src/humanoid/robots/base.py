@@ -243,3 +243,25 @@ class Robot:
         self.forward_kinematics(q)
         frame_id = self.get_frame_id(frame_name)
         return self.data.oMf[frame_id]
+
+    def joint_idx_to_position_idx(self, joint_idx: int) -> int:
+        """Return the index into the configuration vector q for the given joint.
+
+        Args:
+            joint_idx: 0-based joint index (universe joint at Pinocchio index 0 is skipped)
+
+        Returns:
+            Starting index of this joint's position coordinates in q
+        """
+        return self.model.joints[joint_idx + 1].idx_q
+
+    def joint_idx_to_velocity_idx(self, joint_idx: int) -> int:
+        """Return the index into the velocity vector v for the given joint.
+
+        Args:
+            joint_idx: 0-based joint index (universe joint at Pinocchio index 0 is skipped)
+
+        Returns:
+            Starting index of this joint's velocity coordinates in v
+        """
+        return self.model.joints[joint_idx + 1].idx_v

@@ -3,6 +3,7 @@ import time
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
 from humanoid.motors.base import MotorController
+from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
@@ -31,8 +32,12 @@ class SimulatedMotorController(MotorController):
         home_pos = robot_config.home_position
         joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
 
+        robot = Robot(robot_config)
+
         for joint_idx, servo_id in joint_idx_to_servo_id.items():
-            initial_positions[servo_id] = float(home_pos[joint_idx])
+            initial_positions[servo_id] = float(
+                home_pos[robot.joint_idx_to_position_idx(joint_idx)]
+            )
 
         # Initialize positions with provided or default values
         self._positions: dict[int, float] = {}
