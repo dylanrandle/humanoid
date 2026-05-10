@@ -6,12 +6,14 @@ import lcm
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, TYPE_TO_TOPIC, Topic
 from humanoid.logger import get_logger
 from humanoid.types.lcm import (
+    robot_base_command_t,
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
 )
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.robot import (
+    RobotBaseCommand,
     RobotJointCommand,
     RobotState,
     RobotToolCommand,
@@ -20,7 +22,7 @@ from humanoid.types.robot import (
 logger = get_logger(__name__)
 
 
-AcceptedTypes = RobotJointCommand | RobotToolCommand | RobotState
+AcceptedTypes = RobotJointCommand | RobotToolCommand | RobotBaseCommand | RobotState
 
 
 class Publisher:
@@ -39,6 +41,9 @@ class Publisher:
         elif isinstance(data, RobotToolCommand):
             lcm_data = LCMConverter.robot_tool_command_to_lcm(data)
             topic = TYPE_TO_TOPIC[RobotToolCommand]
+        elif isinstance(data, RobotBaseCommand):
+            lcm_data = LCMConverter.robot_base_command_to_lcm(data)
+            topic = TYPE_TO_TOPIC[RobotBaseCommand]
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 
@@ -83,6 +88,9 @@ class Subscriber:
             elif expected_type == RobotToolCommand:
                 lcm_msg = robot_tool_command_t.decode(data)
                 decoded_data = LCMConverter.robot_tool_command_from_lcm(lcm_msg)
+            elif expected_type == RobotBaseCommand:
+                lcm_msg = robot_base_command_t.decode(data)
+                decoded_data = LCMConverter.robot_base_command_from_lcm(lcm_msg)
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
@@ -104,6 +112,11 @@ class Subscriber:
     def receive(
         self, topic: Literal[Topic.ROBOT_TOOL_COMMAND], timeout: int | None = None
     ) -> RobotToolCommand | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.ROBOT_BASE_COMMAND], timeout: int | None = None
+    ) -> RobotBaseCommand | None: ...
 
     def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None:
         # Check if we have queued messages for this topic

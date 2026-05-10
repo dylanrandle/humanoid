@@ -2,7 +2,7 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.types.lcm.converter import LCMConverter
-from humanoid.types.robot import RobotToolCommand
+from humanoid.types.robot import RobotBaseCommand, RobotToolCommand
 
 
 def test_robot_tool_command_conversion():
@@ -81,3 +81,51 @@ def test_robot_tool_command_with_gripper():
     # Verify gripper positions are recovered
     assert cmd_recovered.gripper_positions is not None
     np.testing.assert_allclose(cmd_recovered.gripper_positions, gripper_positions, atol=1e-9)
+
+
+def test_robot_base_command_conversion():
+    """Test that base position and quaternion are recovered correctly through LCM conversion."""
+    position = np.array([0.7, -1.2, 0.0])
+
+    angle = np.pi / 3
+    axis = np.array([0.0, 0.0, 1.0])
+    rotation = pin.AngleAxis(angle, axis).toRotationMatrix()
+
+    pose = pin.SE3(rotation, position)
+    timestamp = 987.654321
+    cmd = RobotBaseCommand(timestamp=timestamp, pose=pose)
+
+    lcm_cmd = LCMConverter.robot_base_command_to_lcm(cmd)
+
+    expected_timestamp_ns = int(timestamp * 1e9)
+    assert lcm_cmd.timestamp == expected_timestamp_ns
+
+    np.testing.assert_allclose(lcm_cmd.position, position, atol=1e-9)
+
+    quat_expected = pin.Quaternion(rotation)
+    np.testing.assert_allclose(
+        lcm_cmd.quaternion,
+        [quat_expected.w, quat_expected.x, quat_expected.y, quat_expected.z],
+        atol=1e-9,
+    )
+
+    quat_norm = np.linalg.norm(lcm_cmd.quaternion)
+    assert np.isclose(quat_norm, 1.0, atol=1e-9)
+
+    cmd_recovered = LCMConverter.robot_base_command_from_lcm(lcm_cmd)
+
+    assert np.isclose(cmd_recovered.timestamp, timestamp, rtol=1e-9)
+    np.testing.assert_allclose(cmd_recovered.pose.translation, position, atol=1e-9)
+    np.testing.assert_allclose(cmd_recovered.pose.rotation, rotation, atol=1e-9)
+
+
+def test_robot_base_command_identity():
+    """Test that an identity SE3 round-trips cleanly."""
+    cmd = RobotBaseCommand(timestamp=0.0, pose=pin.SE3.Identity())
+
+    lcm_cmd = LCMConverter.robot_base_command_to_lcm(cmd)
+    cmd_recovered = LCMConverter.robot_base_command_from_lcm(lcm_cmd)
+
+    np.testing.assert_allclose(cmd_recovered.pose.translation, np.zeros(3), atol=1e-9)
+    np.testing.assert_allclose(cmd_recovered.pose.rotation, np.eye(3), atol=1e-9)
+    assert cmd_recovered.timestamp == 0.0

@@ -7,3 +7,4 @@ lcm-gen 1.5.2
 from .robot_state_t import robot_state_t as robot_state_t
 from .robot_tool_command_t import robot_tool_command_t as robot_tool_command_t
 from .robot_joint_command_t import robot_joint_command_t as robot_joint_command_t
+from .robot_base_command_t import robot_base_command_t as robot_base_command_t

@@ -13,7 +13,7 @@ from humanoid.config import ROBOT_CONFIG
 from humanoid.environment.lcm import LCMEnvironment
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
-from humanoid.policy import KeyboardTeleopPolicy
+from humanoid.policy import KeyboardTeleopPolicy, KeyboardTeleopPolicyConfig
 from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
@@ -31,21 +31,20 @@ class KeyboardTeleopNode:
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
+        policy_config: KeyboardTeleopPolicyConfig | None = None,
         rate_hz: float = DEFAULT_RATE_HZ,
     ):
         """Initialize the keyboard teleoperation node.
 
         Args:
             robot_config: Robot configuration
+            policy_config: Tunable parameters for the keyboard teleop policy
             rate_hz: Control loop rate in Hz
-            timeout_ms: Timeout in milliseconds for receiving robot state
         """
         logger.info("Initializing KeyboardTeleopNode")
 
-        # Create policy with default settings
-        self.policy = KeyboardTeleopPolicy(robot_config=robot_config)
+        self.policy = KeyboardTeleopPolicy(robot_config=robot_config, config=policy_config)
 
-        # Create environment
         self.env = LCMEnvironment()
 
         self.rate_hz = rate_hz

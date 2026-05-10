@@ -1,6 +1,7 @@
 """Keyboard teleoperation policy for controlling robot end-effector pose."""
 
 import threading
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -20,6 +21,29 @@ logger = get_logger(__name__)
 DEFAULT_TRANSLATION_STEP = 0.005  # 0.5 cm
 DEFAULT_ROTATION_STEP = 0.05  # ~2.86 degrees
 DEFAULT_GRIPPER_STEP_PCT = 0.025  # 2.5% of gripper range per keypress
+DEFAULT_BASE_TRANSLATION_STEP = 0.02  # 2 cm per keypress
+DEFAULT_BASE_ROTATION_STEP = 0.05  # ~2.86 degrees per keypress
+
+
+@dataclass
+class KeyboardTeleopPolicyConfig:
+    """Tunable parameters for KeyboardTeleopPolicy.
+
+    Args:
+        translation_step: Step size in meters for end-effector translation.
+        rotation_step: Step size in radians for end-effector rotation.
+        gripper_step_pct: Percentage of gripper range per keypress (e.g. 0.025 = 2.5%).
+        base_translation_step: Step size in meters for base translation.
+        base_rotation_step: Step size in radians for base yaw.
+        verbose: Whether to log pose updates.
+    """
+
+    translation_step: float = DEFAULT_TRANSLATION_STEP
+    rotation_step: float = DEFAULT_ROTATION_STEP
+    gripper_step_pct: float = DEFAULT_GRIPPER_STEP_PCT
+    base_translation_step: float = DEFAULT_BASE_TRANSLATION_STEP
+    base_rotation_step: float = DEFAULT_BASE_ROTATION_STEP
+    verbose: bool = True
 
 
 class KeyboardTeleopPolicy(Policy):
@@ -36,29 +60,31 @@ class KeyboardTeleopPolicy(Policy):
         - J/L: Yaw left/right
         - U/O: Pitch down/up
         - [/]: Close/open gripper
+        - Arrow Up/Down: Move base forward/backward (X axis)
+        - Arrow Left/Right: Strafe base left/right (Y axis)
+        - ,/. : Yaw base left/right (Z axis)
         - ESC or 'x': Quit (sets running flag to False)
 
     Args:
-        translation_step: Step size in meters for translation (default: 0.005)
-        rotation_step: Step size in radians for rotation (default: 0.05)
-        gripper_step_pct: Percentage of gripper range per keypress (default: 0.025 = 2.5%)
         robot_config: Robot configuration (default: ROBOT_CONFIG)
-        verbose: Whether to log pose updates (default: True)
+        config: Tunable policy parameters (default: KeyboardTeleopPolicyConfig())
     """
 
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
-        translation_step: float = DEFAULT_TRANSLATION_STEP,
-        rotation_step: float = DEFAULT_ROTATION_STEP,
-        gripper_step_pct: float = DEFAULT_GRIPPER_STEP_PCT,
-        verbose: bool = True,
+        config: KeyboardTeleopPolicyConfig | None = None,
     ):
         """Initialize the keyboard teleoperation policy."""
-        self.translation_step = translation_step
-        self.rotation_step = rotation_step
+        if config is None:
+            config = KeyboardTeleopPolicyConfig()
+        self.config = config
+        self.translation_step = config.translation_step
+        self.rotation_step = config.rotation_step
+        self.base_translation_step = config.base_translation_step
+        self.base_rotation_step = config.base_rotation_step
         self.robot_config = robot_config
-        self.verbose = verbose
+        self.verbose = config.verbose
 
         # Robot instance for forward kinematics
         self.robot = Robot(robot_config)
@@ -77,7 +103,7 @@ class KeyboardTeleopPolicy(Policy):
             gripper_range = self.gripper_max - self.gripper_min
 
             # Calculate step size as percentage of gripper range
-            self.gripper_step = gripper_range * gripper_step_pct
+            self.gripper_step = gripper_range * config.gripper_step_pct
 
             if self.verbose:
                 logger.info(
@@ -87,7 +113,8 @@ class KeyboardTeleopPolicy(Policy):
                 )
                 logger.info(
                     f"Gripper step: {self.gripper_step:.4f} "
-                    f"({self.gripper_step * 1000:.2f}mm, {gripper_step_pct * 100:.1f}% of range)"
+                    f"({self.gripper_step * 1000:.2f}mm, "
+                    f"{config.gripper_step_pct * 100:.1f}% of range)"
                 )
         else:
             # No gripper joints
@@ -102,7 +129,10 @@ class KeyboardTeleopPolicy(Policy):
         # Track gripper positions based on gripper_joint_indices from config
         self.gripper_positions: np.ndarray | None = None
 
-        # Thread-safe lock for accessing current_pose and gripper_positions
+        # Current target base pose (will be initialized on first observation if base_frame set)
+        self.current_base_pose: pin.SE3 | None = None
+
+        # Thread-safe lock for accessing current_pose, gripper_positions, and base pose
         self.lock = threading.Lock()
 
         # Flag to track if policy is running
@@ -111,38 +141,49 @@ class KeyboardTeleopPolicy(Policy):
         # Keyboard listener
         self.listener: keyboard.Listener | None = None
 
-        # Log configuration
         if self.verbose:
-            logger.info(f"KeyboardTeleopPolicy initialized for {robot_config.name}")
-            logger.info(f"End effector frame: {robot_config.tool_frame}")
-            if robot_config.gripper_joint_indices:
-                logger.info(f"Gripper joint indices: {robot_config.gripper_joint_indices}")
-            logger.info(
-                f"Translation step: {translation_step:.4f} m ({translation_step * 100:.2f} cm)"
-            )
-            logger.info(
-                f"Rotation step: {rotation_step:.4f} rad (~{np.rad2deg(rotation_step):.2f} degrees)"
-            )
-            logger.info("\nControls:")
-            logger.info("  Translation:")
-            logger.info("    W/S - Move right/left (Y axis)")
-            logger.info("    A/D - Move backward/forward (X axis)")
-            logger.info("    Q/E - Move down/up (Z axis)")
-            logger.info("  Rotation:")
-            logger.info("    I/K - Roll clockwise/counter-clockwise")
-            logger.info("    J/L - Yaw left/right")
-            logger.info("    U/O - Pitch down/up")
-            logger.info("  Gripper:")
-            logger.info("    [ - Close gripper")
-            logger.info("    ] - Open gripper")
-            logger.info("  ESC or 'x' - Quit")
-            logger.info("\nNote: Keyboard input works globally (terminal doesn't need focus)")
+            self._log_init_info()
+
+    def _log_init_info(self) -> None:
+        """Log initialization info and controls."""
+        logger.info(f"KeyboardTeleopPolicy initialized for {self.robot_config.name}")
+        logger.info(f"End effector frame: {self.robot_config.tool_frame}")
+        if self.robot_config.gripper_joint_indices:
+            logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
+        logger.info(
+            f"Translation step: {self.translation_step:.4f} m "
+            f"({self.translation_step * 100:.2f} cm)"
+        )
+        logger.info(
+            f"Rotation step: {self.rotation_step:.4f} rad "
+            f"(~{np.rad2deg(self.rotation_step):.2f} degrees)"
+        )
+        logger.info("\nControls:")
+        logger.info("  Translation:")
+        logger.info("    W/S - Move right/left (Y axis)")
+        logger.info("    A/D - Move backward/forward (X axis)")
+        logger.info("    Q/E - Move down/up (Z axis)")
+        logger.info("  Rotation:")
+        logger.info("    I/K - Roll clockwise/counter-clockwise")
+        logger.info("    J/L - Yaw left/right")
+        logger.info("    U/O - Pitch down/up")
+        logger.info("  Gripper:")
+        logger.info("    [ - Close gripper")
+        logger.info("    ] - Open gripper")
+        if self.robot_config.base_frame is not None:
+            logger.info("  Base:")
+            logger.info("    Up/Down arrow - Move base forward/backward (X axis)")
+            logger.info("    Left/Right arrow - Strafe base left/right (Y axis)")
+            logger.info("    , / . - Yaw base left/right")
+        logger.info("  ESC or 'x' - Quit")
+        logger.info("\nNote: Keyboard input works globally (terminal doesn't need focus)")
 
     def reset(self) -> None:
         """Reset policy state."""
         with self.lock:
             self.current_pose = None
             self.gripper_positions = None
+            self.current_base_pose = None
         self.running = True
 
         # Stop existing listener if any
@@ -170,6 +211,13 @@ class KeyboardTeleopPolicy(Policy):
             logger.info(f"Orientation (RPY): {np.rad2deg(rpy)} deg")
             if self.gripper_positions is not None:
                 logger.info(f"Gripper positions: {self.gripper_positions}")
+
+    def _log_base_pose(self) -> None:
+        """Log the current base pose (must be called with lock held)."""
+        if self.current_base_pose is not None and self.verbose:
+            rpy = pin.rpy.matrixToRpy(self.current_base_pose.rotation)
+            logger.info(f"Base position: {self.current_base_pose.translation}")
+            logger.info(f"Base orientation (RPY): {np.rad2deg(rpy)} deg")
 
     def _on_press(self, key: Any) -> bool:  # noqa: PLR0912, PLR0915
         """Handle keyboard press events.
@@ -310,6 +358,59 @@ class KeyboardTeleopPolicy(Policy):
                                 f"+{self.gripper_step * 1000:.2f}mm)"
                             )
                             logger.info(f"Gripper position: {self.gripper_positions[0]:.4f}")
+            # Base controls (only active if base_frame configured)
+            elif key == keyboard.Key.up:
+                with self.lock:
+                    if self.current_base_pose is not None:
+                        self.current_base_pose.translation[0] += self.base_translation_step
+                        if self.verbose:
+                            logger.info(f"⇧ Base forward (X+{self.base_translation_step:.4f}m)")
+                            self._log_base_pose()
+            elif key == keyboard.Key.down:
+                with self.lock:
+                    if self.current_base_pose is not None:
+                        self.current_base_pose.translation[0] -= self.base_translation_step
+                        if self.verbose:
+                            logger.info(f"⇩ Base backward (X-{self.base_translation_step:.4f}m)")
+                            self._log_base_pose()
+            elif key == keyboard.Key.left:
+                with self.lock:
+                    if self.current_base_pose is not None:
+                        self.current_base_pose.translation[1] += self.base_translation_step
+                        if self.verbose:
+                            logger.info(f"⇦ Base strafe left (Y+{self.base_translation_step:.4f}m)")
+                            self._log_base_pose()
+            elif key == keyboard.Key.right:
+                with self.lock:
+                    if self.current_base_pose is not None:
+                        self.current_base_pose.translation[1] -= self.base_translation_step
+                        if self.verbose:
+                            logger.info(
+                                f"⇨ Base strafe right (Y-{self.base_translation_step:.4f}m)"
+                            )
+                            self._log_base_pose()
+            elif key_char == ",":
+                # Yaw base left (positive rotation around Z)
+                rotation = pin.utils.rotate("z", self.base_rotation_step)
+                with self.lock:
+                    if self.current_base_pose is not None:
+                        self.current_base_pose.rotation = self.current_base_pose.rotation @ rotation
+                        if self.verbose:
+                            logger.info(
+                                f"↶ Base yaw left (+{np.rad2deg(self.base_rotation_step):.2f}°)"
+                            )
+                            self._log_base_pose()
+            elif key_char == ".":
+                # Yaw base right (negative rotation around Z)
+                rotation = pin.utils.rotate("z", -self.base_rotation_step)
+                with self.lock:
+                    if self.current_base_pose is not None:
+                        self.current_base_pose.rotation = self.current_base_pose.rotation @ rotation
+                        if self.verbose:
+                            logger.info(
+                                f"↷ Base yaw right (-{np.rad2deg(self.base_rotation_step):.2f}°)"
+                            )
+                            self._log_base_pose()
             elif key_char == "x" or key == keyboard.Key.esc:
                 if self.verbose:
                     logger.info("Exiting keyboard teleop mode...")
@@ -352,6 +453,15 @@ class KeyboardTeleopPolicy(Policy):
                         ]
                     )
 
+                # Initialize base pose from current state if base_frame is configured
+                if self.robot_config.base_frame is not None:
+                    base_pose = self.robot.get_frame_pose(
+                        self.robot_config.base_frame,
+                        observation.robot_state.joint_positions,
+                    )
+                    # Copy so subsequent FK calls don't mutate our target
+                    self.current_base_pose = pin.SE3(base_pose.rotation, base_pose.translation)
+
             if self.verbose:
                 logger.info("\nInitial end-effector pose:")
                 logger.info(f"  Position: {self.current_pose.translation}")
@@ -360,6 +470,11 @@ class KeyboardTeleopPolicy(Policy):
                 logger.info(f"  Orientation (RPY): {np.rad2deg(rpy)} deg")
                 if self.gripper_positions is not None:
                     logger.info(f"  Gripper positions: {self.gripper_positions}")
+                if self.current_base_pose is not None:
+                    logger.info("\nInitial base pose:")
+                    logger.info(f"  Position: {self.current_base_pose.translation}")
+                    base_rpy = pin.rpy.matrixToRpy(self.current_base_pose.rotation)
+                    logger.info(f"  Orientation (RPY): {np.rad2deg(base_rpy)} deg")
                 logger.info("\nReady! Use keyboard to jog the end-effector.\n")
 
             # Start keyboard listener
@@ -373,8 +488,17 @@ class KeyboardTeleopPolicy(Policy):
             gripper_positions_copy = (
                 self.gripper_positions.copy() if self.gripper_positions is not None else None
             )
+            base_pose_copy = (
+                pin.SE3(self.current_base_pose.rotation, self.current_base_pose.translation)
+                if self.current_base_pose is not None
+                else None
+            )
 
-        return Action(tool_pose=target_pose, gripper_positions=gripper_positions_copy)
+        return Action(
+            tool_pose=target_pose,
+            gripper_positions=gripper_positions_copy,
+            base_pose=base_pose_copy,
+        )
 
     def __del__(self) -> None:
         """Cleanup when policy is destroyed."""

@@ -4,11 +4,13 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.types.lcm import (
+    robot_base_command_t,
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
 )
 from humanoid.types.robot import (
+    RobotBaseCommand,
     RobotJointCommand,
     RobotState,
     RobotToolCommand,
@@ -164,4 +166,30 @@ class LCMConverter:
             timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
             pose=pose,
             gripper_positions=gripper_positions,
+        )
+
+    @staticmethod
+    def robot_base_command_to_lcm(command: RobotBaseCommand) -> robot_base_command_t:
+        """Convert RobotBaseCommand dataclass to robot_base_command_t LCM type."""
+        lcm_command = robot_base_command_t()
+        lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_command.position = command.pose.translation.tolist()
+        quat = pin.Quaternion(command.pose.rotation)
+        lcm_command.quaternion = [quat.w, quat.x, quat.y, quat.z]
+        return lcm_command
+
+    @staticmethod
+    def robot_base_command_from_lcm(lcm_command: robot_base_command_t) -> RobotBaseCommand:
+        """Convert robot_base_command_t LCM type to RobotBaseCommand dataclass."""
+        position = np.array(lcm_command.position)
+        quat = pin.Quaternion(
+            lcm_command.quaternion[0],  # w
+            lcm_command.quaternion[1],  # x
+            lcm_command.quaternion[2],  # y
+            lcm_command.quaternion[3],  # z
+        )
+        pose = pin.SE3(quat.toRotationMatrix(), position)
+        return RobotBaseCommand(
+            timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
+            pose=pose,
         )

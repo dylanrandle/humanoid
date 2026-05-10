@@ -11,6 +11,7 @@ from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.robots.base import Robot
 from humanoid.types.robot import (
+    RobotBaseCommand,
     RobotConfig,
     RobotJointCommand,
     RobotToolCommand,
@@ -49,12 +50,13 @@ class RobotController:
 
         # Set up LCM communication
         self.subscriber = Subscriber(
-            topics=[Topic.ROBOT_TOOL_COMMAND, Topic.ROBOT_STATE],
+            topics=[Topic.ROBOT_TOOL_COMMAND, Topic.ROBOT_BASE_COMMAND, Topic.ROBOT_STATE],
         )
         self.publisher = Publisher()
 
-        # Reference for current tool command
+        # Reference for current tool and base commands
         self.current_tool_command: RobotToolCommand | None = None
+        self.current_base_command: RobotBaseCommand | None = None
 
         logger.info("RobotController initialized")
 
@@ -77,19 +79,29 @@ class RobotController:
             logger.debug(f"Received tool command: {tool_command}")
             self.current_tool_command = tool_command
 
+        # Check for new base command (non-blocking)
+        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND, timeout=0)
+
+        if base_command is not None:
+            logger.debug(f"Received base command: {base_command}")
+            self.current_base_command = base_command
+
         # Control current command
         if self.current_tool_command is not None:
             # Compute joint commands using the operational space controller
             # OSC will merge gripper positions with IK-computed arm positions
+            base_target_pose = (
+                self.current_base_command.pose if self.current_base_command is not None else None
+            )
             result = self.controller.compute_control(
                 self.current_tool_command.pose,
+                base_target_pose=base_target_pose,
                 gripper_positions=self.current_tool_command.gripper_positions,
             )
 
             # Create joint command message with np.ndarray
             joint_command = RobotJointCommand(
-                timestamp=time.perf_counter(),
-                joint_positions=result.q,
+                timestamp=time.perf_counter(), joint_positions=result.q, joint_velocities=result.v
             )
 
             # Publish joint command

@@ -24,7 +24,8 @@ logger = get_logger(__name__)
 class TaskName(StrEnum):
     """Enum for task names used in the operational space controller."""
 
-    END_EFFECTOR = "end_effector"
+    TOOL = "tool"
+    BASE = "base"
     JOINT_CENTERING = "joint_centering"
     DAMPING = "damping"
 
@@ -42,8 +43,12 @@ class OperationalSpaceConfig:
     """Configuration parameters for the operational space controller."""
 
     # Task space costs (Pink uses costs instead of gains)
-    position_cost: float = 1.0  # Position tracking cost [cost] / [m]
-    orientation_cost: float = 0.1  # Orientation tracking cost [cost] / [rad]
+    tool_position_cost: float = 1.0  # Position tracking cost [cost] / [m]
+    tool_orientation_cost: float = 0.1  # Orientation tracking cost [cost] / [rad]
+
+    # Base frame task costs
+    base_position_cost: float = 0.5  # Base position tracking cost [cost] / [m]
+    base_orientation_cost: float = 0.1  # Base orientation tracking cost [cost] / [rad]
 
     # Control loop
     dt: float = 0.01  # Control timestep (seconds)
@@ -93,11 +98,21 @@ class OperationalSpaceController:
         self.tasks = {}
 
         # Create end-effector frame task
-        self.tasks[TaskName.END_EFFECTOR] = FrameTask(
+        self.tasks[TaskName.TOOL] = FrameTask(
             robot.config.tool_frame,
-            position_cost=self.config.position_cost,
-            orientation_cost=self.config.orientation_cost,
+            position_cost=self.config.tool_position_cost,
+            orientation_cost=self.config.tool_orientation_cost,
         )
+
+        # Create base frame task if base_frame is configured
+        if robot.config.base_frame is not None:
+            if not robot.model.existFrame(robot.config.base_frame):
+                raise ValueError(f"Frame '{robot.config.base_frame}' not found in URDF")
+            self.tasks[TaskName.BASE] = FrameTask(
+                robot.config.base_frame,
+                position_cost=self.config.base_position_cost,
+                orientation_cost=self.config.base_orientation_cost,
+            )
 
         # Create posture task for null space control (joint centering)
         self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
@@ -160,7 +175,10 @@ class OperationalSpaceController:
             self.configuration.update(q)
 
     def compute_control(
-        self, target_pose: pin.SE3, gripper_positions: NDArray[np.float64] | None = None
+        self,
+        tool_target_pose: pin.SE3,
+        base_target_pose: pin.SE3 | None = None,
+        gripper_positions: NDArray[np.float64] | None = None,
     ) -> ControlResult:
         """Compute joint configuration to achieve target task space pose.
 
@@ -170,7 +188,9 @@ class OperationalSpaceController:
         3. Tertiary task: Minimize joint velocities (damping task)
 
         Args:
-            target_pose: Target 6-DOF pose (SE3)
+            tool_target_pose: Target 6-DOF pose (SE3) for the end-effector
+            base_target_pose: Optional target 6-DOF pose (SE3) for the base frame.
+                Only used if the robot has a base_frame configured.
             gripper_positions: Optional gripper joint positions to override in the result
 
         Returns:
@@ -186,7 +206,11 @@ class OperationalSpaceController:
             )
 
         # Set the target for the end-effector task
-        self.tasks[TaskName.END_EFFECTOR].set_target(target_pose)
+        self.tasks[TaskName.TOOL].set_target(tool_target_pose)
+
+        # Set the target for the base task if provided and configured
+        if base_target_pose is not None and TaskName.BASE in self.tasks:
+            self.tasks[TaskName.BASE].set_target(base_target_pose)
 
         # Solve inverse kinematics using Pink
         velocity = np.zeros(self.robot.model.nv)

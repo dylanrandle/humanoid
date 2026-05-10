@@ -8,7 +8,12 @@ from humanoid.logger import get_logger
 from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
-from humanoid.types.robot import RobotJointCommand, RobotState, RobotToolCommand
+from humanoid.types.robot import (
+    RobotBaseCommand,
+    RobotJointCommand,
+    RobotState,
+    RobotToolCommand,
+)
 from humanoid.types.transition import Transition, TransitionInfo
 
 logger = get_logger(__name__)
@@ -116,6 +121,11 @@ class LCMEnvironment(Environment):
             logger.debug("Published tool command")
         else:
             raise ValueError("Action must specify either joint_positions or tool_pose")
+
+        if action.base_pose is not None:
+            base_command = RobotBaseCommand(timestamp=timestamp, pose=action.base_pose)
+            self.publisher.publish(base_command)
+            logger.debug("Published base command")
 
         # Receive next observation
         robot_state = self._receive_robot_state()

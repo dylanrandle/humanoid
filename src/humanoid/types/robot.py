@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import numpy as np
 import pinocchio as pin
 
+from humanoid.types.servo import ServoControlMode
+
 
 @dataclass
 class RobotJointCommand:
@@ -27,12 +29,20 @@ class RobotToolCommand:
 
 
 @dataclass
+class RobotBaseCommand:
+    timestamp: float
+    pose: pin.SE3
+
+
+@dataclass
 class RobotConfig:
     name: str
     tool_frame: str
     home_position: np.ndarray
     rest_position: np.ndarray
     joint_idx_to_servo_id: dict[int, int]
+    servo_control_modes: dict[int, ServoControlMode]
+    base_frame: str | None = None
     inverted_servo_ids: list[int] | None = None
     gripper_joint_indices: list[int] | None = None
 
