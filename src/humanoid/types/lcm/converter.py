@@ -32,13 +32,12 @@ class LCMConverter:
         """
         lcm_command = robot_joint_command_t()
         lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
-        lcm_command.num_joints = len(command.joint_positions)
+        lcm_command.num_positions = len(command.joint_positions)
         lcm_command.joint_positions = command.joint_positions.tolist()
         lcm_command.joint_velocities = (
-            command.joint_velocities.tolist()
-            if command.joint_velocities is not None
-            else [0.0] * lcm_command.num_joints
+            command.joint_velocities.tolist() if command.joint_velocities is not None else []
         )
+        lcm_command.num_velocities = len(lcm_command.joint_velocities)
 
         return lcm_command
 
@@ -53,7 +52,7 @@ class LCMConverter:
             RobotJointCommand dataclass
         """
         joint_positions = np.array(lcm_command.joint_positions)
-        joint_velocities = np.array(lcm_command.joint_velocities)
+        joint_velocities = np.array(lcm_command.joint_velocities) if lcm_command.joint_velocities else None
 
         return RobotJointCommand(
             timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
@@ -73,7 +72,9 @@ class LCMConverter:
         """
         lcm_state = robot_state_t()
         lcm_state.timestamp = int(state.timestamp * 1e9)  # Convert to nanoseconds
-        lcm_state.num_joints = len(state.joint_positions)
+        lcm_state.num_joints = len(state.motor_temperatures)
+        lcm_state.num_positions = len(state.joint_positions)
+        lcm_state.num_velocities = len(state.joint_velocities)
         lcm_state.joint_positions = state.joint_positions.tolist()
         lcm_state.joint_velocities = state.joint_velocities.tolist()
         lcm_state.motor_temperatures = state.motor_temperatures.tolist()

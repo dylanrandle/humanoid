@@ -97,23 +97,22 @@ class RobotDriver:
         velocities = self.controller.read_all_velocities()
         temperatures = self.controller.read_all_temperatures()
 
+        joint_idx_to_position = {
+            self.servo_id_to_joint_idx[sid]: pos for sid, pos in positions.items()
+        }
+        joint_idx_to_velocity = {
+            self.servo_id_to_joint_idx[sid]: vel for sid, vel in velocities.items()
+        }
+
         n = len(self.joint_idx_to_servo_id)
-        joint_positions = np.zeros(n)
-        for servo_id, position in positions.items():
-            joint_positions[self.servo_id_to_joint_idx[servo_id]] = position
-
-        joint_velocities = np.zeros(n)
-        for servo_id, velocity in velocities.items():
-            joint_velocities[self.servo_id_to_joint_idx[servo_id]] = velocity
-
         motor_temperatures = np.zeros(n)
         for servo_id, temperature in temperatures.items():
             motor_temperatures[self.servo_id_to_joint_idx[servo_id]] = temperature
 
         robot_state = RobotState(
             timestamp=time.perf_counter(),
-            joint_positions=joint_positions,
-            joint_velocities=joint_velocities,
+            joint_positions=self.robot.joint_positions_to_q(joint_idx_to_position),
+            joint_velocities=self.robot.joint_velocities_to_v(joint_idx_to_velocity),
             motor_temperatures=motor_temperatures,
         )
         logger.debug(f"Measured state: {robot_state}")

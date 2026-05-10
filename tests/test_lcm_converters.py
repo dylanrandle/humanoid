@@ -2,7 +2,116 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.types.lcm.converter import LCMConverter
-from humanoid.types.robot import RobotBaseCommand, RobotToolCommand
+from humanoid.types.robot import RobotBaseCommand, RobotJointCommand, RobotState, RobotToolCommand
+
+
+def test_robot_joint_command_conversion():
+    """RobotJointCommand round-trips with num_positions and num_velocities stored separately."""
+    # nq=9 (e.g. two continuous wheel joints), nv=7
+    nq = 9
+    nv = 7
+    timestamp = 2.5
+
+    q = np.random.default_rng(2).uniform(-1.0, 1.0, nq)
+    v = np.random.default_rng(3).uniform(-0.5, 0.5, nv)
+
+    cmd = RobotJointCommand(timestamp=timestamp, joint_positions=q, joint_velocities=v)
+    lcm_cmd = LCMConverter.robot_joint_command_to_lcm(cmd)
+
+    assert lcm_cmd.num_positions == nq
+    assert lcm_cmd.num_velocities == nv
+    np.testing.assert_allclose(lcm_cmd.joint_positions, q)
+    np.testing.assert_allclose(lcm_cmd.joint_velocities, v)
+
+    cmd_recovered = LCMConverter.robot_joint_command_from_lcm(lcm_cmd)
+
+    assert np.isclose(cmd_recovered.timestamp, timestamp, rtol=1e-9)
+    np.testing.assert_allclose(cmd_recovered.joint_positions, q)
+    assert cmd_recovered.joint_velocities is not None
+    np.testing.assert_allclose(cmd_recovered.joint_velocities, v)
+
+
+def test_robot_joint_command_encode_decode():
+    """RobotJointCommand survives a full binary encode/decode cycle with distinct sizes."""
+    q = np.array([1.0, 0.0, 1.0, 2.0, 3.0])  # nq=5
+    v = np.array([0.1, 0.2, 0.3, 0.4])  # nv=4
+
+    cmd = RobotJointCommand(timestamp=0.1, joint_positions=q, joint_velocities=v)
+    lcm_cmd = LCMConverter.robot_joint_command_to_lcm(cmd)
+
+    recovered = LCMConverter.robot_joint_command_from_lcm(type(lcm_cmd).decode(lcm_cmd.encode()))
+
+    np.testing.assert_allclose(recovered.joint_positions, q)
+    assert recovered.joint_velocities is not None
+    np.testing.assert_allclose(recovered.joint_velocities, v)
+
+
+def test_robot_joint_command_none_velocities():
+    """When joint_velocities is None, num_velocities=0 on the wire and decodes back to None."""
+    q = np.array([0.1, 0.2, 0.3])
+    cmd = RobotJointCommand(timestamp=0.0, joint_positions=q)
+    lcm_cmd = LCMConverter.robot_joint_command_to_lcm(cmd)
+
+    assert lcm_cmd.num_positions == len(q)
+    assert lcm_cmd.num_velocities == 0
+    assert lcm_cmd.joint_velocities == []
+
+    recovered = LCMConverter.robot_joint_command_from_lcm(type(lcm_cmd).decode(lcm_cmd.encode()))
+    assert recovered.joint_velocities is None
+
+
+def test_robot_state_conversion():
+    """RobotState round-trips with num_joints, num_positions, num_velocities stored separately."""
+    # Simulate a robot where nq=9 (e.g. planar base adds 4, two continuous wheel joints
+    # add 2 each, minus the 1 each they'd have as revolute = net +2, so 7 servos → nq=9),
+    # nv=7, and 7 physical servo joints.
+    n_joints = 7
+    nq = 9
+    nv = 7
+    timestamp = 1.23456
+
+    q = np.random.default_rng(0).uniform(-1.0, 1.0, nq)
+    v = np.random.default_rng(1).uniform(-0.5, 0.5, nv)
+    temps = np.arange(n_joints, dtype=float)
+
+    state = RobotState(
+        timestamp=timestamp, joint_positions=q, joint_velocities=v, motor_temperatures=temps
+    )
+
+    lcm_state = LCMConverter.robot_state_to_lcm(state)
+
+    assert lcm_state.num_joints == n_joints
+    assert lcm_state.num_positions == nq
+    assert lcm_state.num_velocities == nv
+    assert lcm_state.timestamp == int(timestamp * 1e9)
+    np.testing.assert_allclose(lcm_state.joint_positions, q)
+    np.testing.assert_allclose(lcm_state.joint_velocities, v)
+    np.testing.assert_allclose(lcm_state.motor_temperatures, temps)
+
+    state_recovered = LCMConverter.robot_state_from_lcm(lcm_state)
+
+    assert np.isclose(state_recovered.timestamp, timestamp, rtol=1e-9)
+    np.testing.assert_allclose(state_recovered.joint_positions, q)
+    np.testing.assert_allclose(state_recovered.joint_velocities, v)
+    np.testing.assert_allclose(state_recovered.motor_temperatures, temps)
+
+
+def test_robot_state_encode_decode():
+    """RobotState survives a full binary encode/decode cycle with distinct sizes."""
+    q = np.array([1.0, 0.0, 1.0, 2.0, 3.0])  # nq=5
+    v = np.array([0.1, 0.2, 0.3, 0.4])  # nv=4
+    temps = np.array([30.0, 31.0, 32.0])  # n_joints=3
+
+    state = RobotState(
+        timestamp=0.5, joint_positions=q, joint_velocities=v, motor_temperatures=temps
+    )
+    lcm_state = LCMConverter.robot_state_to_lcm(state)
+
+    recovered = LCMConverter.robot_state_from_lcm(type(lcm_state).decode(lcm_state.encode()))
+
+    np.testing.assert_allclose(recovered.joint_positions, q)
+    np.testing.assert_allclose(recovered.joint_velocities, v)
+    np.testing.assert_allclose(recovered.motor_temperatures, temps)
 
 
 def test_robot_tool_command_conversion():

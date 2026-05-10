@@ -3,7 +3,9 @@ package humanoid.types.lcm;
 struct robot_state_t {
     int64_t timestamp;
     int32_t num_joints;
-    double joint_positions[num_joints];
-    double joint_velocities[num_joints];
+    int32_t num_positions;
+    int32_t num_velocities;
+    double joint_positions[num_positions];
+    double joint_velocities[num_velocities];
     double motor_temperatures[num_joints];
 }

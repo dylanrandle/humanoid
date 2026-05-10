@@ -9,6 +9,7 @@ from humanoid.logger import get_logger
 from humanoid.types.robot import RobotConfig
 
 COLLISION_URDF_SUFFIX = "_collision.urdf"
+REVOLUTE_UNBOUNDED_SHORTNAME = "RUB"
 
 
 logger = get_logger(__name__)
@@ -101,11 +102,15 @@ class Robot:
         package_dirs = [robot_dir, assets_dir, *package_dirs]
         package_dirs_str = [str(p) for p in package_dirs]
 
+        # Add a planar joint if a base_frame is specified
+        root_joint = pin.JointModelPlanar() if config.base_frame else None
+
         # Load the kinematic model and visual model from main URDF
         self.model, self.visual_model = pin.buildModelsFromUrdf(
             str(urdf_path),
             package_dirs=package_dirs_str,
             geometry_types=[pin.GeometryType.VISUAL],
+            root_joint=root_joint,
             mimic=True,
         )
 
@@ -118,6 +123,7 @@ class Robot:
                 str(collision_urdf_path),
                 package_dirs=package_dirs_str,
                 geometry_types=[pin.GeometryType.COLLISION],
+                root_joint=root_joint,
                 mimic=True,
             )
         else:
@@ -126,6 +132,7 @@ class Robot:
                 str(urdf_path),
                 package_dirs=package_dirs_str,
                 geometry_types=[pin.GeometryType.COLLISION],
+                root_joint=root_joint,
                 mimic=True,
             )
 
@@ -193,14 +200,11 @@ class Robot:
 
     def print_info(self) -> None:
         """Print information about the robot model."""
-        print(f"Robot: {self.config.name}")
         print(f"Model name: {self.model.name}")
-        print(f"Number of joints (nq): {self.model.nq}")
+        # NOTE: excludes universe joint
+        print(f"Number of joints: {len(self.model.joints) - 1}")
+        print(f"Number of configuration variables (nq): {self.model.nq}")
         print(f"Number of velocity coordinates (nv): {self.model.nv}")
-        print(f"Number of configuration variables: {self.model.nq}")
-        print(f"Available frames ({len(self.model.frames)}):")
-        for i, frame in enumerate(self.model.frames):
-            print(f"  {i}: {frame.name}")
 
     def get_frame_id(self, frame_name: str) -> int:
         """Get the frame ID for a given frame name.
@@ -243,6 +247,47 @@ class Robot:
         self.forward_kinematics(q)
         frame_id = self.get_frame_id(frame_name)
         return self.data.oMf[frame_id]
+
+    def joint_positions_to_q(self, joint_idx_to_position: dict[int, float]) -> np.ndarray:
+        """Convert servo positions to a Pinocchio configuration vector q.
+
+        Joints with no entry (e.g., a planar base joint added as root_joint) are left
+        at neutral. Continuous (revolute-unbounded) joints have nq=2; their angle θ is
+        stored as [cos(θ), sin(θ)].
+
+        Args:
+            joint_idx_to_position: 0-based joint index → servo position (rad)
+
+        Returns:
+            q: Configuration vector of length model.nq
+        """
+        q = pin.neutral(self.model)
+        for joint_idx, position in joint_idx_to_position.items():
+            joint = self.model.joints[joint_idx + 1]
+            if REVOLUTE_UNBOUNDED_SHORTNAME in joint.shortname():
+                q[joint.idx_q] = np.cos(position)
+                q[joint.idx_q + 1] = np.sin(position)
+            elif joint.nq == 1:
+                q[joint.idx_q] = position
+        return q
+
+    def joint_velocities_to_v(self, joint_idx_to_velocity: dict[int, float]) -> np.ndarray:
+        """Convert servo velocities to a Pinocchio velocity vector v.
+
+        Joints with no entry (e.g., a planar base joint) are left at zero.
+
+        Args:
+            joint_idx_to_velocity: 0-based joint index → servo velocity (rad/s)
+
+        Returns:
+            v: Velocity vector of length model.nv
+        """
+        v = np.zeros(self.model.nv)
+        for joint_idx, velocity in joint_idx_to_velocity.items():
+            joint = self.model.joints[joint_idx + 1]
+            if joint.nv == 1:
+                v[joint.idx_v] = velocity
+        return v
 
     def joint_idx_to_position_idx(self, joint_idx: int) -> int:
         """Return the index into the configuration vector q for the given joint.

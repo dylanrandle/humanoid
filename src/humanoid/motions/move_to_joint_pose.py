@@ -134,8 +134,6 @@ def move_to_joint_pose(  # noqa: PLR0913
             command = RobotJointCommand(
                 timestamp=current_time,
                 joint_positions=q,
-                # NOTE: we don't move velocity-controlled joints
-                joint_velocities=np.zeros_like(q),
             )
 
             publisher.publish(command)

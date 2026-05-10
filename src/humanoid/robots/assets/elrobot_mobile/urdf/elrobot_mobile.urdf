@@ -642,26 +642,26 @@
         <parent link="base_plate_lower" />
         <child link="base_plate_upper" />
     </joint>
-    <joint name="wheel_1" type="revolute">
+    <joint name="wheel_1" type="continuous">
         <origin xyz="0 -7.11514e-18 0.007175" rpy="0 -1.5708 0.279327" />
         <axis xyz="-1 0 0" />
         <parent link="omni_wheel_mount_1" />
         <child link="omni_wheel_2" />
-        <limit upper="1e9" lower="-1e9" effort="2.94" velocity="4.71" />
+        <limit effort="2.94" velocity="4.71" />
     </joint>
-    <joint name="wheel_2" type="revolute">
+    <joint name="wheel_2" type="continuous">
         <origin xyz="-6.93889e-18 -1.38778e-17 0.007175" rpy="0 -1.5708 -1.26789" />
         <axis xyz="-1 0 0" />
         <parent link="omni_wheel_mount_2" />
         <child link="omni_wheel" />
-        <limit upper="1e9" lower="-1e9" effort="2.94" velocity="4.71" />
+        <limit effort="2.94" velocity="4.71" />
     </joint>
-    <joint name="wheel_3" type="revolute">
+    <joint name="wheel_3" type="continuous">
         <origin xyz="1.04083e-17 -1.38778e-17 0.007175" rpy="0 -1.5708 4.3619" />
         <axis xyz="-1 0 0" />
         <parent link="omni_wheel_mount" />
         <child link="omni_wheel_1" />
-        <limit upper="1e9" lower="-1e9" effort="2.94" velocity="4.71" />
+        <limit effort="2.94" velocity="4.71" />
     </joint>
     <joint name="base_to_arm" type="fixed">
         <origin xyz="0 0.036 0.007" rpy="0 0 0" />
