@@ -102,16 +102,15 @@ class LCMEnvironment(Environment):
         # Send command based on action type
         timestamp = time.time()
 
-        if action.is_joint_action:
-            assert action.joint_positions, "Joint position action is empty!"
+        if action.joint_positions is not None:
             command = RobotJointCommand(
                 timestamp=timestamp,
                 joint_positions=action.joint_positions,
             )
             self.publisher.publish(command)
             logger.debug("Published joint command")
-        elif action.is_tool_action:
-            assert action.tool_pose, "Tool pose action is empty!"
+
+        if action.tool_pose is not None:
             command = RobotToolCommand(
                 timestamp=timestamp,
                 pose=action.tool_pose,
@@ -119,8 +118,6 @@ class LCMEnvironment(Environment):
             )
             self.publisher.publish(command)
             logger.debug("Published tool command")
-        else:
-            raise ValueError("Action must specify either joint_positions or tool_pose")
 
         if action.base_pose is not None:
             base_command = RobotBaseCommand(timestamp=timestamp, pose=action.base_pose)

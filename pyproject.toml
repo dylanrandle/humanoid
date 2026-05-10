@@ -24,6 +24,9 @@ dependencies = [
 
 [project.scripts]
 start = "humanoid.start:main"
+homing = "humanoid.nodes.homing:main"
+keyboard = "humanoid.nodes.keyboard_teleop:main"
+oculus = "humanoid.nodes.oculus_teleop:main"
 
 [dependency-groups]
 dev = [
