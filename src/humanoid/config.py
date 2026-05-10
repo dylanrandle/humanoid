@@ -45,7 +45,7 @@ ROBOT_CONFIGS = {
         RobotConfig(
             name="elrobot_mobile",
             tool_frame="Gripper_Base_v1_1",
-            base_frame="base_link",
+            base_frame="root_joint",
             home_position=np.array(
                 [
                     0.0,

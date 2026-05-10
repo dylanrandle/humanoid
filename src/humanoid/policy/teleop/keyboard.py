@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 DEFAULT_TRANSLATION_STEP = 0.005  # 0.5 cm
 DEFAULT_ROTATION_STEP = 0.05  # ~2.86 degrees
 DEFAULT_GRIPPER_STEP_PCT = 0.025  # 2.5% of gripper range per keypress
-DEFAULT_BASE_TRANSLATION_STEP = 0.02  # 2 cm per keypress
+DEFAULT_BASE_TRANSLATION_STEP = 0.01  # 1 cm per keypress
 DEFAULT_BASE_ROTATION_STEP = 0.05  # ~2.86 degrees per keypress
 
 

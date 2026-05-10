@@ -47,8 +47,8 @@ class OperationalSpaceConfig:
     tool_orientation_cost: float = 0.1  # Orientation tracking cost [cost] / [rad]
 
     # Base frame task costs
-    base_position_cost: float = 0.5  # Base position tracking cost [cost] / [m]
-    base_orientation_cost: float = 0.1  # Base orientation tracking cost [cost] / [rad]
+    base_position_cost: float = 1.0  # Base position tracking cost [cost] / [m]
+    base_orientation_cost: float = 1.0  # Base orientation tracking cost [cost] / [rad]
 
     # Control loop
     dt: float = 0.01  # Control timestep (seconds)
@@ -188,7 +188,9 @@ class OperationalSpaceController:
         3. Tertiary task: Minimize joint velocities (damping task)
 
         Args:
-            tool_target_pose: Target 6-DOF pose (SE3) for the end-effector
+            tool_target_pose: Target 6-DOF pose (SE3) for the end-effector. If
+                base_target_pose is provided, this is expressed in the base frame;
+                otherwise it is expressed in the world frame.
             base_target_pose: Optional target 6-DOF pose (SE3) for the base frame.
                 Only used if the robot has a base_frame configured.
             gripper_positions: Optional gripper joint positions to override in the result
@@ -205,12 +207,23 @@ class OperationalSpaceController:
                 "Call update_state() with robot state first."
             )
 
+        if TaskName.BASE in self.tasks:
+            if base_target_pose is not None:
+                # Set the target for the base task if provided and configured
+                self.tasks[TaskName.BASE].set_target(base_target_pose)
+                # Use the commanded base target to anchor the tool target
+                T_world_base = base_target_pose
+            else:
+                # Fall back to the current base frame pose from the configuration
+                assert self.robot.config.base_frame is not None
+                T_world_base = self.configuration.get_transform_frame_to_world(
+                    self.robot.config.base_frame
+                )
+            # Resolve tool target to world frame
+            tool_target_pose = T_world_base * tool_target_pose
+
         # Set the target for the end-effector task
         self.tasks[TaskName.TOOL].set_target(tool_target_pose)
-
-        # Set the target for the base task if provided and configured
-        if base_target_pose is not None and TaskName.BASE in self.tasks:
-            self.tasks[TaskName.BASE].set_target(base_target_pose)
 
         # Solve inverse kinematics using Pink
         velocity = np.zeros(self.robot.model.nv)
