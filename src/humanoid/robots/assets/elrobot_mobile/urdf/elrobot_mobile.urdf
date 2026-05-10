@@ -23,11 +23,11 @@
     <link name="base_plate_upper">
         <inertial>
             <mass value="0.000242412" />
-            <origin xyz="-0.0909327 -0.0522353 0.0035" rpy="0 -0 0" />
+            <origin xyz="-1.71738e-15 0.000264699 0.0035" rpy="0 -0 0" />
             <inertia ixx="7.1753e-07" ixy="0" ixz="0" iyy="7.07722e-07" iyz="0" izz="1.42327e-06" />
         </inertial>
         <visual>
-            <origin xyz="-0.0909327 -0.0525 0.007" rpy="0 -0 0" />
+            <origin xyz="0 0 0.007" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://elrobot_mobile/meshes/base_plate_upper.obj" scale="1 1 1" />
             </geometry>
@@ -619,52 +619,52 @@
         <child link="sts3215_03a_v1_1" />
     </joint>
     <joint name="fastened_5_0" type="fixed">
-        <origin xyz="-0.0454 6.31089e-30 1.38778e-17" rpy="1.5708 -1.0472 -1.5708" />
-        <axis xyz="0.5 -0.866025 0" />
-        <parent link="sts3215_03a_v1_2" />
-        <child link="base_plate_upper" />
-    </joint>
-    <joint name="fastened_6_0" type="fixed">
         <origin xyz="-0.0102 3.22103e-18 0.0042" rpy="-1.2326e-32 -1.88299e-45 -5.43003e-45" />
         <axis xyz="0 0 -1" />
         <parent link="sts3215_03a_v1" />
         <child link="omni_wheel_mount_1" />
     </joint>
-    <joint name="fastened_7_0" type="fixed">
+    <joint name="fastened_6_0" type="fixed">
         <origin xyz="-0.0102 6.31089e-30 0.0042" rpy="6.77927e-32 2.18953e-46 1.36846e-47" />
         <axis xyz="0 0 1" />
         <parent link="sts3215_03a_v1_2" />
         <child link="omni_wheel_mount_2" />
     </joint>
-    <joint name="fastened_8_0" type="fixed">
+    <joint name="fastened_7_0" type="fixed">
         <origin xyz="-0.0102 6.93889e-18 0.0042" rpy="8.32667e-17 1.35751e-45 1.97058e-46" />
         <axis xyz="0 0 -1" />
         <parent link="sts3215_03a_v1_1" />
         <child link="omni_wheel_mount" />
     </joint>
-    <joint name="wheel_1" type="revolute">
+    <joint name="fastened_8_0" type="fixed">
+        <origin xyz="0 0 0.053" rpy="0 -0 0" />
+        <axis xyz="0 0 -1" />
+        <parent link="base_plate_lower" />
+        <child link="base_plate_upper" />
+    </joint>
+    <joint name="wheel_1" type="continuous">
+        <origin xyz="0 -7.11514e-18 0.007175" rpy="0 -1.5708 0.279327" />
+        <axis xyz="-1 0 0" />
+        <parent link="omni_wheel_mount_1" />
+        <child link="omni_wheel_2" />
+        <limit effort="2.94" velocity="4.71" />
+    </joint>
+    <joint name="wheel_2" type="continuous">
         <origin xyz="-6.93889e-18 -1.38778e-17 0.007175" rpy="0 -1.5708 -1.26789" />
         <axis xyz="-1 0 0" />
         <parent link="omni_wheel_mount_2" />
         <child link="omni_wheel" />
         <limit effort="2.94" velocity="4.71" />
     </joint>
-    <joint name="wheel_2" type="revolute">
-        <origin xyz="2.77556e-17 -6.93889e-18 0.007175" rpy="0 -1.5708 4.3619" />
+    <joint name="wheel_3" type="continuous">
+        <origin xyz="1.04083e-17 -1.38778e-17 0.007175" rpy="0 -1.5708 4.3619" />
         <axis xyz="-1 0 0" />
         <parent link="omni_wheel_mount" />
         <child link="omni_wheel_1" />
         <limit effort="2.94" velocity="4.71" />
     </joint>
-    <joint name="wheel_3" type="revolute">
-        <origin xyz="0 -1.2753e-17 0.007175" rpy="0 -1.5708 1.81363" />
-        <axis xyz="-1 0 0" />
-        <parent link="omni_wheel_mount_1" />
-        <child link="omni_wheel_2" />
-        <limit effort="2.94" velocity="4.71" />
-    </joint>
     <joint name="base_to_arm" type="fixed">
-        <origin xyz="-0.091 -0.016 0.007" rpy="0 0 0" />
+        <origin xyz="0 0.036 0.007" rpy="0 0 0" />
         <parent link="base_plate_upper" />
         <child link="base_link" />
     </joint>
@@ -673,7 +673,7 @@
         <parent link="base_link" />
         <child link="ST3215_1_v1_1" />
     </joint>
-    <joint name="rev_motor_01" type="revolute">
+    <joint name="arm_1" type="revolute">
         <origin xyz="0.0 0.034904 0.017505" rpy="0 0 0" />
         <parent link="ST3215_1_v1_1" />
         <child link="Joint_01_1" />
@@ -685,7 +685,7 @@
         <parent link="Joint_01_1" />
         <child link="ST3215_2_v1_1" />
     </joint>
-    <joint name="rev_motor_02" type="revolute">
+    <joint name="arm_2" type="revolute">
         <origin xyz="-0.020293 -0.000308 0.035233" rpy="0 0 0" />
         <parent link="ST3215_2_v1_1" />
         <child link="Joint_02_1" />
@@ -697,7 +697,7 @@
         <parent link="Joint_02_1" />
         <child link="ST3215_3_v1_1" />
     </joint>
-    <joint name="rev_motor_03" type="revolute">
+    <joint name="arm_3" type="revolute">
         <origin xyz="-0.019985 -0.000309 0.035408" rpy="0 0 0" />
         <parent link="ST3215_3_v1_1" />
         <child link="Joint_03_v1_1" />
@@ -709,7 +709,7 @@
         <parent link="Joint_03_v1_1" />
         <child link="ST3215_4_v1_1" />
     </joint>
-    <joint name="rev_motor_04" type="revolute">
+    <joint name="arm_4" type="revolute">
         <origin xyz="-0.02029 0.035229 0.000662" rpy="0 0 0" />
         <parent link="ST3215_4_v1_1" />
         <child link="Joint_04_v1_1" />
@@ -721,7 +721,7 @@
         <parent link="Joint_04_v1_1" />
         <child link="ST3215_5_v1_1" />
     </joint>
-    <joint name="rev_motor_05" type="revolute">
+    <joint name="arm_5" type="revolute">
         <origin xyz="0.000323 0.0172 0.010051" rpy="0 0 0" />
         <parent link="ST3215_5_v1_1" />
         <child link="Joint_05_v1_1" />
@@ -733,7 +733,7 @@
         <parent link="Joint_05_v1_1" />
         <child link="ST3215_6_v1_1" />
     </joint>
-    <joint name="rev_motor_06" type="revolute">
+    <joint name="arm_6" type="revolute">
         <origin xyz="-0.019988 0.035407 0.000351" rpy="0 0 0" />
         <parent link="ST3215_6_v1_1" />
         <child link="Joint_06_v1_1" />
@@ -745,7 +745,7 @@
         <parent link="Joint_06_v1_1" />
         <child link="ST3215_7_v1_1" />
     </joint>
-    <joint name="rev_motor_07" type="revolute">
+    <joint name="arm_7" type="revolute">
         <origin xyz="0.000473 0.017284 0.009899" rpy="0 0 0" />
         <parent link="ST3215_7_v1_1" />
         <child link="Gripper_Base_v1_1" />
@@ -757,27 +757,27 @@
         <parent link="Gripper_Base_v1_1" />
         <child link="ST3215_8_v1_1" />
     </joint>
-    <joint name="rev_motor_08" type="revolute">
+    <joint name="gripper_1" type="revolute">
         <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
         <parent link="ST3215_8_v1_1" />
         <child link="Gripper_Gear_v1_1" />
         <axis xyz="0.017144 0.999812 -0.009029" />
         <limit upper="2.2028" lower="0" effort="2.94" velocity="4.71" />
     </joint>
-    <joint name="rev_motor_08_1" type="prismatic">
+    <joint name="gripper_2" type="prismatic">
         <origin xyz="0.311734 -0.199648 0.032849" rpy="0 0 0" />
         <parent link="Gripper_Base_v1_1" />
         <child link="Gripper_Jaw_02_v1_1" />
         <axis xyz="-0.999697 0.0173 0.017525" />
         <limit upper="0.0" lower="-0.0255" effort="2.94" velocity="4.71" />
-        <mimic joint="rev_motor_08" multiplier="-0.0115" offset="0" />
+        <mimic joint="gripper_1" multiplier="-0.0115" offset="0" />
     </joint>
-    <joint name="rev_motor_08_2" type="prismatic">
+    <joint name="gripper_3" type="prismatic">
         <origin xyz="0.308573 -0.243367 -0.049391" rpy="0 0 0" />
         <parent link="Gripper_Base_v1_1" />
         <child link="Gripper_Jaw_01_v1_1" />
         <axis xyz="-0.999697 0.0173 0.017525" />
         <limit upper="0.0255" lower="0.0" effort="2.94" velocity="4.71" />
-        <mimic joint="rev_motor_08" multiplier="0.0115" offset="0" />
+        <mimic joint="gripper_1" multiplier="0.0115" offset="0" />
     </joint>
 </robot>
