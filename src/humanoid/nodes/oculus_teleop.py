@@ -13,7 +13,7 @@ from humanoid.config import ROBOT_CONFIG
 from humanoid.environment.lcm import LCMEnvironment
 from humanoid.logger import get_logger
 from humanoid.loop import loop_at_rate
-from humanoid.policy import OculusTeleopPolicy
+from humanoid.policy import OculusTeleopPolicy, OculusTeleopPolicyConfig
 from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
@@ -31,26 +31,19 @@ class OculusTeleopNode:
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
+        policy_config: OculusTeleopPolicyConfig | None = None,
         rate_hz: float = DEFAULT_RATE_HZ,
-        scale_translation: float = 1.0,
-        scale_rotation: float = 1.0,
     ):
         """Initialize the Oculus teleoperation node.
 
         Args:
             robot_config: Robot configuration
+            policy_config: Tunable parameters for the Oculus teleop policy
             rate_hz: Control loop rate in Hz
-            scale_translation: Scale factor for controller translation
-            scale_rotation: Scale factor for controller rotation
         """
         logger.info("Initializing OculusTeleopNode")
 
-        # Create policy with specified settings
-        self.policy = OculusTeleopPolicy(
-            robot_config=robot_config,
-            scale_translation=scale_translation,
-            scale_rotation=scale_rotation,
-        )
+        self.policy = OculusTeleopPolicy(robot_config=robot_config, config=policy_config)
 
         # Create environment
         self.env = LCMEnvironment()
@@ -73,7 +66,8 @@ class OculusTeleopNode:
     def run(self) -> None:
         """Run the Oculus teleoperation node main loop."""
         logger.info(f"Starting Oculus teleop loop at {self.rate_hz} Hz")
-        logger.info("Use right controller to control end-effector")
+        logger.info("Hold 'A' (dead-man) on the right controller to command motion")
+        logger.info("Use right controller pose to control end-effector")
         logger.info("Use right trigger to control gripper\n")
 
         try:

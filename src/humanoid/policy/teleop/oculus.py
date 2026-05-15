@@ -1,6 +1,7 @@
 """Oculus VR teleoperation policy for controlling robot end-effector pose."""
 
 import time
+from dataclasses import dataclass, field
 
 import numpy as np
 import pinocchio as pin
@@ -22,6 +23,30 @@ RIGHT_TRIGGER_KEY = "rightTrig"
 A_BUTTON_KEY = "A"
 
 
+@dataclass
+class OculusTeleopPolicyConfig:
+    """Tunable parameters for OculusTeleopPolicy.
+
+    Args:
+        scale_translation: Scale factor for controller translation.
+        scale_rotation: Scale factor for controller rotation.
+        oculus_to_world_rotation: 3x3 matrix mapping Oculus-frame vectors
+            into the robot's world frame. Used to reorient the controller
+            pose so headset-frame motion matches the operator's intuition
+            of the robot's world. Defaults to a Y<->Z swap so that
+            Oculus-up (y) maps to world-up (z).
+        verbose: Whether to log pose updates.
+    """
+
+    scale_translation: float = 1.0
+    scale_rotation: float = 1.0
+    oculus_to_world_rotation: np.ndarray = field(
+        # 180 degree rotation about x
+        default_factory=lambda: np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0], [0.0, 0.0, -1.0]])
+    )
+    verbose: bool = True
+
+
 class OculusTeleopPolicy(Policy):
     """Policy that uses Oculus VR controllers to control the robot's end-effector.
 
@@ -34,23 +59,23 @@ class OculusTeleopPolicy(Policy):
 
     Args:
         robot_config: Robot configuration (default: ROBOT_CONFIG)
-        scale_translation: Scale factor for controller translation (default: 1.0)
-        scale_rotation: Scale factor for controller rotation (default: 1.0)
-        verbose: Whether to log pose updates (default: True)
+        config: Tunable policy parameters (default: OculusTeleopPolicyConfig())
     """
 
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
-        scale_translation: float = 1.0,
-        scale_rotation: float = 1.0,
-        verbose: bool = True,
+        config: OculusTeleopPolicyConfig | None = None,
     ):
         """Initialize the Oculus teleoperation policy."""
+        if config is None:
+            config = OculusTeleopPolicyConfig()
+        self.config = config
         self.robot_config = robot_config
-        self.scale_translation = scale_translation
-        self.scale_rotation = scale_rotation
-        self.verbose = verbose
+        self.scale_translation = config.scale_translation
+        self.scale_rotation = config.scale_rotation
+        self.oculus_to_world = pin.SE3(config.oculus_to_world_rotation, np.zeros(3))
+        self.verbose = config.verbose
 
         # Robot instance for forward kinematics
         self.robot = Robot(robot_config)
@@ -97,12 +122,13 @@ class OculusTeleopPolicy(Policy):
             logger.info(f"End effector frame: {robot_config.tool_frame}")
             if robot_config.gripper_joint_indices:
                 logger.info(f"Gripper joint indices: {robot_config.gripper_joint_indices}")
-            logger.info(f"Translation scale: {scale_translation:.2f}")
-            logger.info(f"Rotation scale: {scale_rotation:.2f}")
+            logger.info(f"Translation scale: {self.scale_translation:.2f}")
+            logger.info(f"Rotation scale: {self.scale_rotation:.2f}")
+            logger.info(f"Oculus->world rotation:\n{self.oculus_to_world.rotation}")
             logger.info("\nControls:")
             logger.info("  Right controller pose -> End-effector pose")
             logger.info("  Right trigger -> Gripper width (0.0=closed, 1.0=open)")
-            logger.info("  'A' button -> Reset reference poses (allows free controller movement)")
+            logger.info("  'A' button -> Dead-man switch (hold to move; release to freeze)")
 
     def reset(self) -> None:
         """Reset policy state."""
@@ -186,9 +212,10 @@ class OculusTeleopPolicy(Policy):
     def __call__(self, observation: Observation) -> Action:
         """Generate an action given an observation.
 
-        On the first call, initializes the reference poses from the current robot state
-        and controller pose. When 'A' button is pressed, resets reference poses and holds
-        current position. When 'A' is released, new reference poses are set on next call.
+        On the first call (with the 'A' dead-man held), initializes the reference poses
+        from the current robot state and controller pose. While 'A' is released, the
+        policy clears its reference poses and holds the current robot position; new
+        reference poses are re-established the next time 'A' is pressed.
 
         Subsequently returns the target pose based on the controller's pose relative to
         the reference pose, with configurable scaling for translation and rotation.
@@ -206,8 +233,9 @@ class OculusTeleopPolicy(Policy):
         if not self._has_valid_controller_data(transforms, buttons):
             return self._handle_uninitialized_state(observation)
 
-        # Reset reference poses if A button is pressed
-        if buttons[A_BUTTON_KEY]:
+        # Dead-man switch: A button must be held to command motion.
+        # Releasing clears the reference poses so they re-anchor on re-engage.
+        if not buttons[A_BUTTON_KEY]:
             self.reset()
             return self._handle_uninitialized_state(observation)
 
@@ -233,6 +261,10 @@ class OculusTeleopPolicy(Policy):
         )
 
         delta_controller = ref_controller_SE3.inverse() * current_controller_SE3
+
+        # Remap the delta from the Oculus frame into the robot's world frame
+        # via similarity transform with the configured rotation.
+        delta_controller = self.oculus_to_world * delta_controller * self.oculus_to_world.inverse()
 
         # Apply scaling to translation
         scaled_translation = delta_controller.translation * self.scale_translation

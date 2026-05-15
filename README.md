@@ -118,7 +118,6 @@ humanoid/
 │   ├── environment/       # Environment interfaces (LCM, base)
 │   ├── middleware/        # Communication middleware
 │   ├── motors/           # Motor drivers (Feetech, simulation)
-│   ├── motions/          # Motion primitives
 │   ├── nodes/            # Main system nodes (driver, controller, visualizer)
 │   ├── policy/           # Control policies (keyboard teleop, etc.)
 │   ├── robots/           # Robot definitions and URDF assets
