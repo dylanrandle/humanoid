@@ -60,6 +60,7 @@ class RobotController:
 
         logger.info("RobotController initialized")
 
+    # TODO: initial tool/base commands with robot state on first update as well
     def receive_and_compute(self) -> None:
         """Receive tool command and compute joint commands."""
         # Check for robot state update (for initialization only)

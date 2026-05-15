@@ -254,6 +254,83 @@ class TestJointIdxLookup:
         assert mobile_robot.joint_idx_to_velocity_idx(0) == mobile_robot.model.joints[1].idx_v
 
 
+class TestSetGripperPositions:
+    def test_writes_at_position_index_for_fixed_base(self, panda_robot):
+        """Panda's gripper joint_idx happens to equal its position_idx (7)."""
+        gripper_joint_idx = panda_robot.config.gripper_joint_indices[0]
+        position_idx = panda_robot.joint_idx_to_position_idx(gripper_joint_idx)
+
+        q = pin.neutral(panda_robot.model)
+        value = 0.0321
+        panda_robot.set_gripper_positions(q, np.array([value]))
+
+        assert q[position_idx] == pytest.approx(value)
+
+    def test_writes_at_position_index_not_joint_index_on_mobile(self, mobile_robot):
+        """Regression: the planar base shifts q, so position_idx != joint_idx (11 vs 17)."""
+        joint_idx = mobile_robot.config.gripper_joint_indices[0]
+        position_idx = mobile_robot.joint_idx_to_position_idx(joint_idx)
+        assert joint_idx != position_idx, (
+            "Test premise: mobile robot's gripper joint_idx must differ from position_idx."
+        )
+
+        q = pin.neutral(mobile_robot.model)
+        decoy = 0.987
+        value = 0.123
+        q[joint_idx] = decoy  # value at the "wrong" slot we should NOT overwrite
+        mobile_robot.set_gripper_positions(q, np.array([value]))
+
+        assert q[position_idx] == pytest.approx(value)
+        assert q[joint_idx] == pytest.approx(decoy), (
+            "set_gripper_positions must not touch the joint_idx slot when it differs "
+            "from position_idx — that was the original bug."
+        )
+
+    def test_no_grippers_configured_is_noop(self, panda_robot):
+        no_gripper_config = replace(panda_robot.config, gripper_joint_indices=None)
+        robot = Robot.__new__(Robot)
+        robot.__dict__.update(panda_robot.__dict__)
+        robot._config = no_gripper_config
+
+        q = pin.neutral(robot.model)
+        q_before = q.copy()
+        # Passing a value despite no gripper joints should silently do nothing.
+        robot.set_gripper_positions(q, np.array([99.0]))
+
+        np.testing.assert_array_equal(q, q_before)
+
+    def test_empty_gripper_list_is_noop(self, panda_robot):
+        empty = replace(panda_robot.config, gripper_joint_indices=[])
+        robot = Robot.__new__(Robot)
+        robot.__dict__.update(panda_robot.__dict__)
+        robot._config = empty
+
+        q = pin.neutral(robot.model)
+        q_before = q.copy()
+        robot.set_gripper_positions(q, np.array([]))
+
+        np.testing.assert_array_equal(q, q_before)
+
+    def test_wrong_count_raises_assertion(self, panda_robot):
+        """gripper_positions length must match the number of configured gripper joints."""
+        q = pin.neutral(panda_robot.model)
+        with pytest.raises(AssertionError, match="invalid number of gripper_positions"):
+            panda_robot.set_gripper_positions(q, np.array([0.1, 0.2]))
+
+    def test_mutates_in_place(self, panda_robot):
+        """The function returns None and mutates the supplied q."""
+        gripper_joint_idx = panda_robot.config.gripper_joint_indices[0]
+        position_idx = panda_robot.joint_idx_to_position_idx(gripper_joint_idx)
+
+        q = pin.neutral(panda_robot.model)
+        q_id = id(q)
+        result = panda_robot.set_gripper_positions(q, np.array([0.05]))
+
+        assert result is None
+        assert id(q) == q_id
+        assert q[position_idx] == pytest.approx(0.05)
+
+
 def test_print_info_runs(panda_robot, capsys):
     """print_info shouldn't raise and should write something."""
     panda_robot.print_info()

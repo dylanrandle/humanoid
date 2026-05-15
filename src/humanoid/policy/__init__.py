@@ -3,7 +3,10 @@
 from humanoid.policy.base import Policy
 from humanoid.policy.homing import HomingPolicy
 from humanoid.policy.teleop.keyboard import KeyboardTeleopPolicy, KeyboardTeleopPolicyConfig
-from humanoid.policy.teleop.oculus import OculusTeleopPolicy, OculusTeleopPolicyConfig
+from humanoid.policy.teleop.oculus import (
+    OculusTeleopPolicy,
+    OculusTeleopPolicyConfig,
+)
 
 __all__ = [
     "HomingPolicy",

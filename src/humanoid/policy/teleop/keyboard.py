@@ -10,8 +10,7 @@ from pynput import keyboard
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
-from humanoid.policy.base import Policy
-from humanoid.robots.base import Robot
+from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.robot import RobotConfig
@@ -46,7 +45,7 @@ class KeyboardTeleopPolicyConfig:
     verbose: bool = True
 
 
-class KeyboardTeleopPolicy(Policy):
+class KeyboardTeleopPolicy(BaseTeleopPolicy):
     """Policy that allows keyboard control of the robot's end-effector pose and gripper.
 
     This policy captures keyboard input globally and updates the target end-effector
@@ -78,49 +77,22 @@ class KeyboardTeleopPolicy(Policy):
         """Initialize the keyboard teleoperation policy."""
         if config is None:
             config = KeyboardTeleopPolicyConfig()
+        super().__init__(robot_config=robot_config, verbose=config.verbose)
+
         self.config = config
         self.translation_step = config.translation_step
         self.rotation_step = config.rotation_step
         self.base_translation_step = config.base_translation_step
         self.base_rotation_step = config.base_rotation_step
-        self.robot_config = robot_config
-        self.verbose = config.verbose
 
-        # Robot instance for forward kinematics
-        self.robot = Robot(robot_config)
-
-        if robot_config.gripper_joint_indices:
-            # For keyboard teleop, we only support commanding a single gripper joint
-            assert len(robot_config.gripper_joint_indices) == 1, (
-                f"KeyboardTeleopPolicy only supports 1 gripper joint, "
-                f"but {len(robot_config.gripper_joint_indices)} were specified"
+        gripper_range = self.gripper_max - self.gripper_min
+        self.gripper_step = gripper_range * config.gripper_step_pct
+        if self.verbose and robot_config.gripper_joint_indices:
+            logger.info(
+                f"Gripper step: {self.gripper_step:.4f} "
+                f"({self.gripper_step * 1000:.2f}mm, "
+                f"{config.gripper_step_pct * 100:.1f}% of range)"
             )
-
-            # Get limits for the gripper joint
-            gripper_idx = robot_config.gripper_joint_indices[0]
-            self.gripper_min = self.robot.model.lowerPositionLimit[gripper_idx]
-            self.gripper_max = self.robot.model.upperPositionLimit[gripper_idx]
-            gripper_range = self.gripper_max - self.gripper_min
-
-            # Calculate step size as percentage of gripper range
-            self.gripper_step = gripper_range * config.gripper_step_pct
-
-            if self.verbose:
-                logger.info(
-                    f"Gripper joint {gripper_idx}: "
-                    " [{self.gripper_min:.4f}, {self.gripper_max:.4f}] "
-                    f"(range: {gripper_range:.4f}, {gripper_range * 1000:.2f}mm)"
-                )
-                logger.info(
-                    f"Gripper step: {self.gripper_step:.4f} "
-                    f"({self.gripper_step * 1000:.2f}mm, "
-                    f"{config.gripper_step_pct * 100:.1f}% of range)"
-                )
-        else:
-            # No gripper joints
-            self.gripper_step = 0.0
-            self.gripper_min = 0.0
-            self.gripper_max = 0.0
 
         # Current target pose (will be initialized on first observation)
         self.current_pose: pin.SE3 | None = None
@@ -439,26 +411,14 @@ class KeyboardTeleopPolicy(Policy):
         # Initialize pose and gripper positions on first call
         if self.current_pose is None:
             with self.lock:
-                self.current_pose = self.robot.get_frame_pose(
-                    self.robot_config.tool_frame,
-                    observation.robot_state.joint_positions,
-                )
+                self.current_pose = self._get_current_tool_pose(observation)
 
                 # Initialize gripper positions from current state
-                if self.robot_config.gripper_joint_indices:
-                    self.gripper_positions = np.array(
-                        [
-                            observation.robot_state.joint_positions[idx]
-                            for idx in self.robot_config.gripper_joint_indices
-                        ]
-                    )
+                self.gripper_positions = self._get_current_gripper_positions(observation)
 
                 # Initialize base pose from current state if base_frame is configured
-                if self.robot_config.base_frame is not None:
-                    base_pose = self.robot.get_frame_pose(
-                        self.robot_config.base_frame,
-                        observation.robot_state.joint_positions,
-                    )
+                base_pose = self._get_current_base_pose(observation)
+                if base_pose is not None:
                     # Copy so subsequent FK calls don't mutate our target
                     self.current_base_pose = pin.SE3(base_pose.rotation, base_pose.translation)
 

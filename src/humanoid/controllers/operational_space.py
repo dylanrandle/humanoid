@@ -237,9 +237,7 @@ class OperationalSpaceController:
 
         # Override gripper joint positions if provided
         # TODO: consider other ways of doing this
-        if gripper_positions is not None and self.robot.config.gripper_joint_indices is not None:
-            for i, gripper_idx in enumerate(self.robot.config.gripper_joint_indices):
-                if i < len(gripper_positions):
-                    q[gripper_idx] = gripper_positions[i]
+        if gripper_positions is not None:
+            self.robot.set_gripper_positions(q, gripper_positions)
 
         return ControlResult(q=q, v=velocity)

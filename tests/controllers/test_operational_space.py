@@ -164,6 +164,30 @@ class TestComputeControl:
         result = osc.compute_control(target, gripper_positions=np.array([gripper_pos]))
         assert not np.any(result.q == gripper_pos)
 
+    def test_gripper_override_uses_position_index_not_joint_index(self, mobile_osc, mobile_robot):
+        """Regression: gripper override must write via position index, not joint index.
+
+        On the mobile robot the planar base joint shifts the q layout, so the
+        gripper's joint index (11) differs from its position index in q (17).
+        Indexing q with the raw joint index writes to the wrong slot — this
+        test fails if that regresses.
+        """
+        joint_idx = mobile_robot.config.gripper_joint_indices[0]
+        position_idx = mobile_robot.joint_idx_to_position_idx(joint_idx)
+        assert joint_idx != position_idx, (
+            "Test setup expects joint_idx != position_idx for the mobile robot's "
+            "gripper joint; otherwise this test cannot detect the bug."
+        )
+
+        mobile_osc.update_state(mobile_robot.config.home_position)
+        target = pin.SE3(np.eye(3), np.array([0.4, 0.0, 0.4]))
+        gripper_value = mobile_robot.config.home_position[position_idx] + 0.5
+
+        result = mobile_osc.compute_control(target, gripper_positions=np.array([gripper_value]))
+
+        assert result.q[position_idx] == pytest.approx(gripper_value)
+        assert result.q[joint_idx] != pytest.approx(gripper_value)
+
     def test_base_target_pose_sets_base_task(self, mobile_osc, mobile_robot):
         """For mobile robots, base_target_pose updates the BASE task target."""
         mobile_osc.update_state(mobile_robot.config.home_position)

@@ -66,9 +66,11 @@ class OculusTeleopNode:
     def run(self) -> None:
         """Run the Oculus teleoperation node main loop."""
         logger.info(f"Starting Oculus teleop loop at {self.rate_hz} Hz")
-        logger.info("Hold 'A' (dead-man) on the right controller to command motion")
+        logger.info("Hold either grip trigger (dead-man) to command motion")
         logger.info("Use right controller pose to control end-effector")
-        logger.info("Use right trigger to control gripper\n")
+        logger.info("Use right trigger to control gripper")
+        logger.info("Use left joystick to drive the base (forward = y+, right = x+)")
+        logger.info("Use right joystick X to yaw the base (left = yaw+, right = yaw-)\n")
 
         try:
             # Reset environment and get initial observation

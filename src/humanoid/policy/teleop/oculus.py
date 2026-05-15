@@ -9,8 +9,7 @@ from oculus_reader import OculusReader
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
-from humanoid.policy.base import Policy
-from humanoid.robots.base import Robot
+from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.robot import RobotConfig
@@ -20,7 +19,10 @@ logger = get_logger(__name__)
 # Oculus controller data keys
 RIGHT_CONTROLLER_KEY = "r"
 RIGHT_TRIGGER_KEY = "rightTrig"
-A_BUTTON_KEY = "A"
+LEFT_GRIP_KEY = "LG"
+RIGHT_GRIP_KEY = "RG"
+LEFT_JOYSTICK_KEY = "leftJS"
+RIGHT_JOYSTICK_KEY = "rightJS"
 
 
 @dataclass
@@ -33,8 +35,19 @@ class OculusTeleopPolicyConfig:
         oculus_to_world_rotation: 3x3 matrix mapping Oculus-frame vectors
             into the robot's world frame. Used to reorient the controller
             pose so headset-frame motion matches the operator's intuition
-            of the robot's world. Defaults to a Y<->Z swap so that
-            Oculus-up (y) maps to world-up (z).
+            of the robot's world.
+        base_translation_matrix: 2x2 matrix mapping the left joystick
+            (jx, jy) in [-1, 1]^2 to a per-tick base (dx, dy) translation,
+            scaled by ``base_translation_step``. Default identity gives
+            stick-right (+jx) -> +base_x and stick-forward (+jy) -> +base_y.
+        base_translation_step: Meters of base translation per loop tick at
+            full joystick deflection.
+        base_rotation_step: Radians of base yaw per loop tick at full
+            right-joystick-x deflection.
+        base_yaw_scale: Scalar sign applied to right-joystick x for yaw.
+            Default -1 makes stick-right yield -yaw and stick-left +yaw.
+        base_deadzone: Per-axis joystick magnitude below which input is
+            treated as zero.
         verbose: Whether to log pose updates.
     """
 
@@ -44,18 +57,33 @@ class OculusTeleopPolicyConfig:
         # 180 degree rotation about x
         default_factory=lambda: np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0], [0.0, 0.0, -1.0]])
     )
+    base_translation_matrix: np.ndarray = field(default_factory=lambda: np.eye(2))
+    base_translation_step: float = 0.005
+    base_rotation_step: float = 0.02
+    base_yaw_scale: float = -1.0
+    base_deadzone: float = 0.1
     verbose: bool = True
 
 
-class OculusTeleopPolicy(Policy):
-    """Policy that uses Oculus VR controllers to control the robot's end-effector.
+class OculusTeleopPolicy(BaseTeleopPolicy):
+    """Policy that uses Oculus VR controllers to control the robot.
 
-    This policy uses the right controller's pose to command the tool pose and the
-    right trigger to command the gripper width.
+    The right controller's pose commands the tool pose, the right index trigger
+    commands the gripper, and (when the robot has a base frame) the joysticks
+    command base translation and yaw. Motion is gated by a grip-trigger
+    dead-man so the robot only moves while the operator is actively engaged.
 
     Controls:
-        - Right controller pose: Controls end-effector position and orientation
-        - Right trigger: Controls gripper width (0.0 = closed, 1.0 = fully open)
+        - Right controller pose: End-effector position and orientation
+        - Right index trigger: Gripper width (0.0 = closed, 1.0 = fully open)
+        - Grip trigger (either hand): Dead-man switch -- motion is only
+          commanded while held; releasing both grips clears the controller
+          and base reference poses, which re-anchor on re-engage
+        - Left joystick: Base XY translation (see ``base_translation_matrix``)
+        - Right joystick X: Base yaw (see ``base_yaw_scale``)
+
+    The raw controller pose is remapped from the Oculus frame into the robot's
+    world frame via ``oculus_to_world_rotation`` before computing the delta.
 
     Args:
         robot_config: Robot configuration (default: ROBOT_CONFIG)
@@ -70,15 +98,12 @@ class OculusTeleopPolicy(Policy):
         """Initialize the Oculus teleoperation policy."""
         if config is None:
             config = OculusTeleopPolicyConfig()
+        super().__init__(robot_config=robot_config, verbose=config.verbose)
+
         self.config = config
-        self.robot_config = robot_config
         self.scale_translation = config.scale_translation
         self.scale_rotation = config.scale_rotation
         self.oculus_to_world = pin.SE3(config.oculus_to_world_rotation, np.zeros(3))
-        self.verbose = config.verbose
-
-        # Robot instance for forward kinematics
-        self.robot = Robot(robot_config)
 
         # Oculus reader
         self.reader = OculusReader()
@@ -87,53 +112,39 @@ class OculusTeleopPolicy(Policy):
             logger.info("Waiting for Oculus data...")
             time.sleep(0.1)
 
-        # Reference poses (set on first observation or reset when 'A' button is pressed)
+        # Reference poses (set on first observation; cleared whenever the dead-man releases)
         self.reference_controller_pose: np.ndarray | None = None
         self.reference_tool_pose: pin.SE3 | None = None
 
-        # Gripper limits
-        if robot_config.gripper_joint_indices:
-            # For Oculus teleop, we only support commanding a single gripper joint
-            assert len(robot_config.gripper_joint_indices) == 1, (
-                f"OculusTeleopPolicy only supports 1 gripper joint, "
-                f"but {len(robot_config.gripper_joint_indices)} were specified"
-            )
+        # Commanded base pose (re-anchored from FK whenever the dead-man re-engages)
+        self.current_base_pose: pin.SE3 | None = None
 
-            # Get limits for the gripper joint
-            gripper_idx = robot_config.gripper_joint_indices[0]
-            self.gripper_min = self.robot.model.lowerPositionLimit[gripper_idx]
-            self.gripper_max = self.robot.model.upperPositionLimit[gripper_idx]
-            gripper_range = self.gripper_max - self.gripper_min
-
-            if self.verbose:
-                logger.info(
-                    f"Gripper joint {gripper_idx}: "
-                    f"[{self.gripper_min:.4f}, {self.gripper_max:.4f}] "
-                    f"(range: {gripper_range:.4f}, {gripper_range * 1000:.2f}mm)"
-                )
-        else:
-            # No gripper joints
-            self.gripper_min = 0.0
-            self.gripper_max = 0.0
-
-        # Log configuration
         if self.verbose:
-            logger.info(f"OculusTeleopPolicy initialized for {robot_config.name}")
-            logger.info(f"End effector frame: {robot_config.tool_frame}")
-            if robot_config.gripper_joint_indices:
-                logger.info(f"Gripper joint indices: {robot_config.gripper_joint_indices}")
-            logger.info(f"Translation scale: {self.scale_translation:.2f}")
-            logger.info(f"Rotation scale: {self.scale_rotation:.2f}")
-            logger.info(f"Oculus->world rotation:\n{self.oculus_to_world.rotation}")
-            logger.info("\nControls:")
-            logger.info("  Right controller pose -> End-effector pose")
-            logger.info("  Right trigger -> Gripper width (0.0=closed, 1.0=open)")
-            logger.info("  'A' button -> Dead-man switch (hold to move; release to freeze)")
+            self.log_configuration()
+
+    def log_configuration(self):
+        logger.info(f"OculusTeleopPolicy initialized for {self.robot_config.name}")
+        logger.info(f"End effector frame: {self.robot_config.tool_frame}")
+        if self.robot_config.gripper_joint_indices:
+            logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
+        logger.info(f"Translation scale: {self.scale_translation:.2f}")
+        logger.info(f"Rotation scale: {self.scale_rotation:.2f}")
+        logger.info(f"Oculus->world rotation:\n{self.oculus_to_world.rotation}")
+        logger.info("\nControls:")
+        logger.info("  Right controller pose -> End-effector pose")
+        logger.info("  Right trigger -> Gripper width (0.0=closed, 1.0=open)")
+        logger.info(
+            "  Grip trigger (either hand) -> Dead-man switch (hold to move; release to freeze)"
+        )
+        if self.robot_config.base_frame is not None:
+            logger.info("  Left joystick -> Base XY (default: jx -> +x, jy -> +y)")
+            logger.info(f"  Right joystick X -> Base yaw (sign {self.config.base_yaw_scale:+.0f})")
 
     def reset(self) -> None:
         """Reset policy state."""
         self.reference_controller_pose = None
         self.reference_tool_pose = None
+        self.current_base_pose = None
 
     def _has_valid_controller_data(self, transforms: dict, buttons: dict) -> bool:
         """Check if controller data is valid and contains required keys.
@@ -150,23 +161,29 @@ class OculusTeleopPolicy(Policy):
             and RIGHT_CONTROLLER_KEY in transforms
             and buttons
             and RIGHT_TRIGGER_KEY in buttons
-            and A_BUTTON_KEY in buttons
+            and LEFT_GRIP_KEY in buttons
+            and RIGHT_GRIP_KEY in buttons
         )
 
-    def _get_current_gripper_positions(self, observation: Observation) -> np.ndarray | None:
-        """Get current gripper positions from observation.
+    def _read_joystick(self, buttons: dict, key: str) -> tuple[float, float]:
+        """Read a joystick (x, y) pair with the configured deadzone applied.
 
         Args:
-            observation: Current observation from the environment
+            buttons: Dictionary of button states from OculusReader
+            key: Joystick key, e.g. ``leftJS`` or ``rightJS``
 
         Returns:
-            Array of gripper positions or None if no gripper joints
+            Tuple of (x, y) in [-1, 1], with axes inside the deadzone returned as 0.
         """
-        if self.robot_config.gripper_joint_indices:
-            gripper_idx = self.robot_config.gripper_joint_indices[0]
-            gripper_position = observation.robot_state.joint_positions[gripper_idx]
-            return np.array([gripper_position])
-        return None
+        if key not in buttons:
+            return 0.0, 0.0
+        jx, jy = buttons[key]
+        deadzone = self.config.base_deadzone
+        if abs(jx) < deadzone:
+            jx = 0.0
+        if abs(jy) < deadzone:
+            jy = 0.0
+        return float(jx), float(jy)
 
     def _initialize_reference_poses(
         self, right_controller_pose: np.ndarray, observation: Observation
@@ -178,10 +195,7 @@ class OculusTeleopPolicy(Policy):
             observation: Current observation from the environment
         """
         self.reference_controller_pose = right_controller_pose.copy()
-        self.reference_tool_pose = self.robot.get_frame_pose(
-            self.robot_config.tool_frame,
-            observation.robot_state.joint_positions,
-        )
+        self.reference_tool_pose = self._get_current_tool_pose(observation)
 
         if self.verbose:
             logger.info("\nReference poses initialized:")
@@ -190,32 +204,13 @@ class OculusTeleopPolicy(Policy):
             logger.info(f"  Tool orientation (RPY): {np.rad2deg(rpy)} deg")
             logger.info("\nReady! Move the right controller to control the robot.\n")
 
-    def _handle_uninitialized_state(self, observation: Observation) -> Action:
-        """Handle case when controller data is not yet available or 'A' button is pressed.
-
-        Returns an action based on the current robot state to maintain position
-        until valid controller data is received or while 'A' button is held.
-
-        Args:
-            observation: Current observation from the environment
-
-        Returns:
-            Action to maintain current pose
-        """
-        current_tool_pose = self.robot.get_frame_pose(
-            self.robot_config.tool_frame,
-            observation.robot_state.joint_positions,
-        )
-        gripper_positions = self._get_current_gripper_positions(observation)
-        return Action(tool_pose=current_tool_pose, gripper_positions=gripper_positions)
-
     def __call__(self, observation: Observation) -> Action:
         """Generate an action given an observation.
 
-        On the first call (with the 'A' dead-man held), initializes the reference poses
-        from the current robot state and controller pose. While 'A' is released, the
-        policy clears its reference poses and holds the current robot position; new
-        reference poses are re-established the next time 'A' is pressed.
+        On the first call (with a grip-trigger dead-man held), initializes the reference
+        poses from the current robot state and controller pose. While neither grip is
+        held, the policy clears its reference poses and holds the current robot position;
+        new reference poses are re-established the next time a grip is pressed.
 
         Subsequently returns the target pose based on the controller's pose relative to
         the reference pose, with configurable scaling for translation and rotation.
@@ -231,13 +226,13 @@ class OculusTeleopPolicy(Policy):
 
         # Check if we have valid data (OculusReader may return empty dicts on startup)
         if not self._has_valid_controller_data(transforms, buttons):
-            return self._handle_uninitialized_state(observation)
+            return self._hold_current_pose_action(observation)
 
-        # Dead-man switch: A button must be held to command motion.
-        # Releasing clears the reference poses so they re-anchor on re-engage.
-        if not buttons[A_BUTTON_KEY]:
+        # Dead-man switch: either grip trigger must be held to command motion.
+        # Releasing both clears the reference poses so they re-anchor on re-engage.
+        if not (buttons[LEFT_GRIP_KEY] or buttons[RIGHT_GRIP_KEY]):
             self.reset()
-            return self._handle_uninitialized_state(observation)
+            return self._hold_current_pose_action(observation)
 
         # Extract right controller pose (4x4 transformation matrix)
         right_controller_pose = transforms[RIGHT_CONTROLLER_KEY]
@@ -299,4 +294,42 @@ class OculusTeleopPolicy(Policy):
         else:
             gripper_positions = None
 
-        return Action(tool_pose=target_pose, gripper_positions=gripper_positions)
+        # Integrate joystick input into a commanded base pose (when a base_frame
+        # is configured). The base pose is re-anchored from FK each time the
+        # dead-man is re-engaged via reset(), so motion is incremental within
+        # one engagement.
+        base_pose_command: pin.SE3 | None = None
+        if self.robot_config.base_frame is not None:
+            if self.current_base_pose is None:
+                base_fk = self._get_current_base_pose(observation)
+                assert base_fk is not None, "base_frame configured but FK returned None"
+                self.current_base_pose = pin.SE3(
+                    base_fk.rotation.copy(), base_fk.translation.copy()
+                )
+
+            left_jx, left_jy = self._read_joystick(buttons, LEFT_JOYSTICK_KEY)
+            right_jx, _ = self._read_joystick(buttons, RIGHT_JOYSTICK_KEY)
+
+            delta_xy = (
+                self.config.base_translation_matrix
+                @ np.array([left_jx, left_jy])
+                * self.config.base_translation_step
+            )
+            self.current_base_pose.translation[0] += delta_xy[0]
+            self.current_base_pose.translation[1] += delta_xy[1]
+
+            delta_yaw = self.config.base_yaw_scale * right_jx * self.config.base_rotation_step
+            if delta_yaw != 0.0:
+                yaw_rot = pin.utils.rotate("z", delta_yaw)
+                self.current_base_pose.rotation = self.current_base_pose.rotation @ yaw_rot
+
+            base_pose_command = pin.SE3(
+                self.current_base_pose.rotation.copy(),
+                self.current_base_pose.translation.copy(),
+            )
+
+        return Action(
+            tool_pose=target_pose,
+            gripper_positions=gripper_positions,
+            base_pose=base_pose_command,
+        )

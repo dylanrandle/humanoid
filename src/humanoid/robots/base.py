@@ -320,3 +320,73 @@ class Robot:
             Starting index of this joint's velocity coordinates in v
         """
         return self.model.joints[joint_idx + 1].idx_v
+
+    def get_tool_pose(self, q: np.ndarray) -> pin.SE3:
+        """Get the pose of the configured tool frame.
+
+        Args:
+            q: Joint configuration vector
+
+        Returns:
+            SE3 transformation for ``config.tool_frame`` in the world frame
+        """
+        return self.get_frame_pose(self.config.tool_frame, q)
+
+    def get_base_pose(self, q: np.ndarray) -> pin.SE3 | None:
+        """Get the pose of the configured base frame, or None if not configured.
+
+        Args:
+            q: Joint configuration vector
+
+        Returns:
+            SE3 transformation for ``config.base_frame`` in the world frame,
+            or None if no base frame is configured.
+        """
+        if self.config.base_frame is None:
+            return None
+        return self.get_frame_pose(self.config.base_frame, q)
+
+    def get_gripper_position_indices(self) -> list[int]:
+        """Return the position indices for each configured gripper joint.
+
+        Returns an empty list when no gripper joints are configured. Each
+        joint index in ``config.gripper_joint_indices`` is mapped through
+        :meth:`joint_idx_to_position_idx`, which is the correct index into
+        ``q`` / observation arrays even when a planar base joint shifts the
+        layout.
+        """
+        if not self.config.gripper_joint_indices:
+            return []
+        return [self.joint_idx_to_position_idx(j) for j in self.config.gripper_joint_indices]
+
+    def get_gripper_limits(self) -> list[tuple[float, float]]:
+        """Return ``(lower, upper)`` position limits for each gripper joint.
+
+        Returns an empty list when no gripper joints are configured.
+        """
+        return [
+            (
+                float(self.model.lowerPositionLimit[idx]),
+                float(self.model.upperPositionLimit[idx]),
+            )
+            for idx in self.get_gripper_position_indices()
+        ]
+
+    def set_gripper_positions(self, q: np.ndarray, gripper_positions: np.ndarray) -> None:
+        """
+        Write gripper positions into ``q`` via the joint→position index mapping.
+        No-op when no gripper joints are configured.
+
+        Args:
+            q: Configuration vector mutated in place
+            gripper_positions: Target positions, one per gripper joint
+        """
+        if not self.config.gripper_joint_indices:
+            return
+        assert len(gripper_positions) == len(self.config.gripper_joint_indices), (
+            "Received invalid number of gripper_positions "
+            f"(expected: {len(self.config.gripper_joint_indices)}, "
+            f"received: {len(gripper_positions)})"
+        )
+        for i, joint_idx in enumerate(self.config.gripper_joint_indices):
+            q[self.joint_idx_to_position_idx(joint_idx)] = gripper_positions[i]
