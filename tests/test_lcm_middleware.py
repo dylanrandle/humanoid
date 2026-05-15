@@ -1,0 +1,281 @@
+from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pinocchio as pin
+import pytest
+
+from humanoid.constants import Topic
+from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.types.lcm import (
+    robot_joint_command_t,
+    robot_state_t,
+)
+from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.robot import (
+    RobotBaseCommand,
+    RobotJointCommand,
+    RobotState,
+    RobotToolCommand,
+)
+
+
+@pytest.fixture
+def mock_lcm():
+    """Patch lcm.LCM so no actual broker is needed."""
+    with patch("humanoid.middleware.lcm.lcm.LCM") as mock_cls:
+        mock_instance = MagicMock()
+        mock_cls.return_value = mock_instance
+        yield mock_instance
+
+
+def _make_joint_command():
+    return RobotJointCommand(
+        timestamp=1.0,
+        joint_positions=np.array([0.1, 0.2, 0.3]),
+        joint_velocities=np.array([0.4, 0.5, 0.6]),
+    )
+
+
+def _make_state():
+    return RobotState(
+        timestamp=2.0,
+        joint_positions=np.array([0.1, 0.2]),
+        joint_velocities=np.array([0.3, 0.4]),
+        motor_temperatures=np.array([30.0, 31.0]),
+    )
+
+
+def _make_tool_command():
+    return RobotToolCommand(timestamp=3.0, pose=pin.SE3.Identity())
+
+
+def _make_base_command():
+    return RobotBaseCommand(timestamp=4.0, pose=pin.SE3.Identity())
+
+
+class TestPublisher:
+    def test_publish_joint_command_uses_joint_topic(self, mock_lcm):
+        publisher = Publisher()
+        cmd = _make_joint_command()
+
+        publisher.publish(cmd)
+
+        mock_lcm.publish.assert_called_once()
+        channel, data_bytes = mock_lcm.publish.call_args[0]
+        assert channel == Topic.ROBOT_JOINT_COMMAND.value
+        assert isinstance(data_bytes, bytes)
+
+        # The published bytes should be decodable back to the original.
+        recovered = LCMConverter.robot_joint_command_from_lcm(
+            robot_joint_command_t.decode(data_bytes)
+        )
+        np.testing.assert_allclose(recovered.joint_positions, cmd.joint_positions)
+        np.testing.assert_allclose(recovered.joint_velocities, cmd.joint_velocities)  # ty:ignore[no-matching-overload]
+
+    def test_publish_state_uses_state_topic(self, mock_lcm):
+        publisher = Publisher()
+        state = _make_state()
+
+        publisher.publish(state)
+
+        channel, data_bytes = mock_lcm.publish.call_args[0]
+        assert channel == Topic.ROBOT_STATE.value
+        recovered = LCMConverter.robot_state_from_lcm(robot_state_t.decode(data_bytes))
+        np.testing.assert_allclose(recovered.motor_temperatures, state.motor_temperatures)
+
+    def test_publish_tool_command_uses_tool_topic(self, mock_lcm):
+        publisher = Publisher()
+        publisher.publish(_make_tool_command())
+
+        channel, _ = mock_lcm.publish.call_args[0]
+        assert channel == Topic.ROBOT_TOOL_COMMAND.value
+
+    def test_publish_base_command_uses_base_topic(self, mock_lcm):
+        publisher = Publisher()
+        publisher.publish(_make_base_command())
+
+        channel, _ = mock_lcm.publish.call_args[0]
+        assert channel == Topic.ROBOT_BASE_COMMAND.value
+
+    def test_publish_unsupported_type_raises(self, mock_lcm):
+        publisher = Publisher()
+        with pytest.raises(TypeError, match="Unsupported data type"):
+            publisher.publish("not a valid type")  # type: ignore[arg-type]
+        mock_lcm.publish.assert_not_called()
+
+
+class TestSubscriber:
+    def test_subscribes_to_each_topic(self, mock_lcm):
+        topics = [Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND]
+        Subscriber(topics=topics)
+
+        subscribed_channels = [call.args[0] for call in mock_lcm.subscribe.call_args_list]
+        assert subscribed_channels == [t.value for t in topics]
+
+    def test_sets_queue_capacity_when_provided(self, mock_lcm):
+        mock_subscription = MagicMock()
+        mock_lcm.subscribe.return_value = mock_subscription
+
+        Subscriber(topics=[Topic.ROBOT_STATE], queue_size=5)
+
+        mock_subscription.set_queue_capacity.assert_called_once_with(5)
+
+    def test_skips_queue_capacity_when_none(self, mock_lcm):
+        mock_subscription = MagicMock()
+        mock_lcm.subscribe.return_value = mock_subscription
+
+        Subscriber(topics=[Topic.ROBOT_STATE], queue_size=None)
+
+        mock_subscription.set_queue_capacity.assert_not_called()
+
+    def test_receive_with_no_message_returns_none(self, mock_lcm):
+        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+
+        result = sub.receive(Topic.ROBOT_STATE, timeout=10)
+
+        mock_lcm.handle_timeout.assert_called_once_with(10)
+        assert result is None
+
+    def test_receive_blocking_calls_handle(self, mock_lcm):
+        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+
+        sub.receive(Topic.ROBOT_STATE, timeout=None)
+
+        mock_lcm.handle.assert_called_once()
+        mock_lcm.handle_timeout.assert_not_called()
+
+    def test_handle_message_decodes_and_queues_state(self, mock_lcm):
+        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+        state = _make_state()
+        encoded = LCMConverter.robot_state_to_lcm(state).encode()
+
+        sub._handle_message(Topic.ROBOT_STATE.value, encoded)
+
+        result = sub.receive(Topic.ROBOT_STATE, timeout=10)
+        assert isinstance(result, RobotState)
+        np.testing.assert_allclose(result.joint_positions, state.joint_positions)
+        np.testing.assert_allclose(result.motor_temperatures, state.motor_temperatures)
+
+    def test_handle_message_decodes_each_supported_type(self, mock_lcm):
+        sub = Subscriber(
+            topics=[
+                Topic.ROBOT_JOINT_COMMAND,
+                Topic.ROBOT_STATE,
+                Topic.ROBOT_TOOL_COMMAND,
+                Topic.ROBOT_BASE_COMMAND,
+            ]
+        )
+
+        cases = [
+            (
+                Topic.ROBOT_JOINT_COMMAND,
+                LCMConverter.robot_joint_command_to_lcm(_make_joint_command()),
+                RobotJointCommand,
+            ),
+            (
+                Topic.ROBOT_STATE,
+                LCMConverter.robot_state_to_lcm(_make_state()),
+                RobotState,
+            ),
+            (
+                Topic.ROBOT_TOOL_COMMAND,
+                LCMConverter.robot_tool_command_to_lcm(_make_tool_command()),
+                RobotToolCommand,
+            ),
+            (
+                Topic.ROBOT_BASE_COMMAND,
+                LCMConverter.robot_base_command_to_lcm(_make_base_command()),
+                RobotBaseCommand,
+            ),
+        ]
+
+        for topic, lcm_msg, expected_type in cases:
+            sub._handle_message(topic.value, lcm_msg.encode())
+            result = sub.receive(topic, timeout=10)  # ty:ignore[no-matching-overload]
+            assert isinstance(result, expected_type), f"Expected {expected_type} for {topic}"
+
+    def test_queues_are_isolated_per_topic(self, mock_lcm):
+        sub = Subscriber(topics=[Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND])
+
+        state_bytes = LCMConverter.robot_state_to_lcm(_make_state()).encode()
+        sub._handle_message(Topic.ROBOT_STATE.value, state_bytes)
+
+        # Receiving on the other topic returns None and doesn't drain state queue.
+        assert sub.receive(Topic.ROBOT_JOINT_COMMAND, timeout=10) is None
+        # State message is still available.
+        assert isinstance(sub.receive(Topic.ROBOT_STATE, timeout=10), RobotState)
+
+    def test_queue_capacity_drops_oldest(self, mock_lcm):
+        sub = Subscriber(topics=[Topic.ROBOT_STATE], queue_size=1)
+
+        first = _make_state()
+        second = RobotState(
+            timestamp=99.0,
+            joint_positions=np.array([9.0, 9.0]),
+            joint_velocities=np.array([9.0, 9.0]),
+            motor_temperatures=np.array([99.0, 99.0]),
+        )
+
+        sub._handle_message(
+            Topic.ROBOT_STATE.value, LCMConverter.robot_state_to_lcm(first).encode()
+        )
+        sub._handle_message(
+            Topic.ROBOT_STATE.value, LCMConverter.robot_state_to_lcm(second).encode()
+        )
+
+        result = sub.receive(Topic.ROBOT_STATE, timeout=10)
+        assert result is not None
+        np.testing.assert_allclose(result.joint_positions, second.joint_positions)
+        # Queue should now be empty.
+        assert sub.receive(Topic.ROBOT_STATE, timeout=10) is None
+
+    def test_handle_message_swallows_decode_errors(self, mock_lcm):
+        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+
+        # Garbage bytes should not raise — just get logged and dropped.
+        sub._handle_message(Topic.ROBOT_STATE.value, b"not a valid lcm message")
+
+        assert sub.receive(Topic.ROBOT_STATE, timeout=10) is None
+
+    def test_receive_returns_queued_without_calling_handle(self, mock_lcm):
+        """When a message is already queued, receive shouldn't hit the LCM layer."""
+        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+        sub._handle_message(
+            Topic.ROBOT_STATE.value, LCMConverter.robot_state_to_lcm(_make_state()).encode()
+        )
+        mock_lcm.handle_timeout.reset_mock()
+        mock_lcm.handle.reset_mock()
+
+        result = sub.receive(Topic.ROBOT_STATE, timeout=10)
+
+        assert isinstance(result, RobotState)
+        mock_lcm.handle_timeout.assert_not_called()
+        mock_lcm.handle.assert_not_called()
+
+    def test_receive_returns_message_delivered_during_handle(self, mock_lcm):
+        """When LCM delivers a message during handle_timeout, receive returns it."""
+        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+        state = _make_state()
+        encoded = LCMConverter.robot_state_to_lcm(state).encode()
+
+        # Simulate LCM invoking the handler during handle_timeout.
+        mock_lcm.handle_timeout.side_effect = lambda _t: sub._handle_message(
+            Topic.ROBOT_STATE.value, encoded
+        )
+
+        result = sub.receive(Topic.ROBOT_STATE, timeout=10)
+
+        assert isinstance(result, RobotState)
+        np.testing.assert_allclose(result.joint_positions, state.joint_positions)
+
+    def test_close_unsubscribes_all(self, mock_lcm):
+        subs = [MagicMock(), MagicMock()]
+        mock_lcm.subscribe.side_effect = subs
+
+        sub = Subscriber(topics=[Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND])
+        sub.close()
+
+        assert mock_lcm.unsubscribe.call_count == len(subs)
+        unsubscribed = [c.args[0] for c in mock_lcm.unsubscribe.call_args_list]
+        assert unsubscribed == subs
+        assert sub._subscriptions == []
