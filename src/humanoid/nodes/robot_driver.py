@@ -28,6 +28,7 @@ class RobotDriver:
         logger.info(f"Initializing RobotDriver for: {robot_config.name}")
         self.joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
         self.servo_id_to_joint_idx = robot_config.servo_id_to_joint_idx
+        self.sorted_joint_indices = sorted(self.joint_idx_to_servo_id.keys())
 
         # Load robot model to access joint limits
         self.robot = Robot(robot_config)
@@ -104,10 +105,12 @@ class RobotDriver:
             self.servo_id_to_joint_idx[sid]: vel for sid, vel in velocities.items()
         }
 
-        n = len(self.joint_idx_to_servo_id)
-        motor_temperatures = np.zeros(n)
-        for servo_id, temperature in temperatures.items():
-            motor_temperatures[self.servo_id_to_joint_idx[servo_id]] = temperature
+        motor_temperatures = np.array(
+            [
+                temperatures.get(self.joint_idx_to_servo_id[joint_idx], 0.0)
+                for joint_idx in self.sorted_joint_indices
+            ]
+        )
 
         robot_state = RobotState(
             timestamp=time.perf_counter(),
