@@ -17,3 +17,7 @@ plans/
 
 # MacOS
 .DS_Store
+
+# Coverage
+.coverage
+htmlcov
