@@ -1,9 +1,15 @@
 from dataclasses import dataclass
+from enum import StrEnum
 
 import numpy as np
 import pinocchio as pin
 
 from humanoid.types.servo import ServoControlMode
+
+
+class WheelType(StrEnum):
+    REGULAR = "regular"
+    OMNI = "omni"
 
 
 @dataclass
@@ -35,6 +41,14 @@ class RobotBaseCommand:
 
 
 @dataclass
+class WheelConfig:
+    frame: str
+    floor_frame: str
+    radius: float
+    type: WheelType
+
+
+@dataclass
 class RobotConfig:
     name: str
     tool_frame: str
@@ -43,6 +57,7 @@ class RobotConfig:
     joint_idx_to_servo_id: dict[int, int]
     servo_control_modes: dict[int, ServoControlMode]
     base_frame: str | None = None
+    wheels: list[WheelConfig] | None = None
     inverted_servo_ids: list[int] | None = None
     gripper_joint_indices: list[int] | None = None
 

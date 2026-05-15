@@ -230,6 +230,11 @@ class Robot:
             )
         return self.model.getFrameId(frame_name)
 
+    def assert_frame_exists(self, frame_name: str) -> bool:
+        if not self.model.existFrame(frame_name):
+            raise ValueError(f"Frame '{frame_name}' not found in URDF")
+        return True
+
     def forward_kinematics(self, q: np.ndarray) -> None:
         """Compute forward kinematics for the given configuration.
 

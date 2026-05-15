@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from humanoid.types.robot import RobotConfig
+from humanoid.types.robot import RobotConfig, WheelConfig, WheelType
 from humanoid.types.servo import ServoControlMode
 from humanoid.types.visualizer import VisualizerConfig
 
@@ -46,6 +46,15 @@ ROBOT_CONFIGS = {
             name="elrobot_mobile",
             tool_frame="Gripper_Base_v1_1",
             base_frame="root_joint",
+            wheels=[
+                WheelConfig(
+                    frame=f"wheel_{i}",
+                    floor_frame=f"wheel_{i}_floor",
+                    radius=0.05,
+                    type=WheelType.OMNI,
+                )
+                for i in (1, 2, 3)
+            ],
             home_position=np.array(
                 [
                     0.0,

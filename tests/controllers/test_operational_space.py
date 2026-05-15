@@ -77,9 +77,6 @@ class TestConstruction:
         """configuration is deferred until first update_state call."""
         assert panda_osc.configuration is None
 
-    def test_joint_centering_target_is_home(self, panda_osc, panda_robot):
-        np.testing.assert_allclose(panda_osc.q_center, panda_robot.config.home_position)
-
 
 class TestUpdateState:
     def test_first_call_initializes_configuration(self, panda_osc, panda_robot):
@@ -178,37 +175,4 @@ class TestComputeControl:
         actual_base_target = mobile_osc.tasks[TaskName.BASE].transform_target_to_world
         np.testing.assert_allclose(
             actual_base_target.translation, base_target.translation, atol=1e-9
-        )
-
-    def test_base_target_resolves_tool_to_world(self, mobile_osc, mobile_robot):
-        """When base_target_pose is given, tool_target is interpreted in base frame."""
-        mobile_osc.update_state(mobile_robot.config.home_position)
-        base_target = pin.SE3(np.eye(3), np.array([1.0, 0.0, 0.0]))
-        # Tool target in base frame: 0.4m forward of base.
-        tool_in_base = pin.SE3(np.eye(3), np.array([0.4, 0.0, 0.4]))
-
-        mobile_osc.compute_control(tool_in_base, base_target_pose=base_target)
-
-        # World-frame tool target should be base * tool = (1.4, 0, 0.4).
-        actual_tool_target = mobile_osc.tasks[TaskName.TOOL].transform_target_to_world
-        np.testing.assert_allclose(
-            actual_tool_target.translation, np.array([1.4, 0.0, 0.4]), atol=1e-9
-        )
-
-    def test_no_base_target_uses_current_base_pose(self, mobile_osc, mobile_robot):
-        """When base_target_pose is None on a mobile robot, current base pose anchors tool."""
-        mobile_osc.update_state(mobile_robot.config.home_position)
-        tool_in_base = pin.SE3(np.eye(3), np.array([0.4, 0.0, 0.4]))
-
-        # Capture current base pose for comparison.
-        T_world_base = mobile_osc.configuration.get_transform_frame_to_world(
-            mobile_robot.config.base_frame
-        )
-        expected_tool_world = T_world_base * tool_in_base
-
-        mobile_osc.compute_control(tool_in_base, base_target_pose=None)
-
-        actual_tool_target = mobile_osc.tasks[TaskName.TOOL].transform_target_to_world
-        np.testing.assert_allclose(
-            actual_tool_target.translation, expected_tool_world.translation, atol=1e-9
         )

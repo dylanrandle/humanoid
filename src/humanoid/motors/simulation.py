@@ -54,6 +54,15 @@ class SimulatedMotorController(MotorController):
         )
         self._connected = False
         self._start_time = time.perf_counter()
+        self._last_integration_time = self._start_time
+
+    def _integrate_positions(self) -> None:
+        """Advance positions by integrating each servo's velocity over elapsed time."""
+        now = time.perf_counter()
+        dt = now - self._last_integration_time
+        self._last_integration_time = now
+        for servo_id, velocity in self._velocities.items():
+            self._positions[servo_id] += velocity * dt
 
     def connect(self) -> None:
         """Establish connection to the simulated motor controller."""
@@ -180,6 +189,9 @@ class SimulatedMotorController(MotorController):
             logger.warning("Cannot write velocities: controller not connected")
             return
 
+        # Integrate at the previous velocity before applying the new one,
+        # so position reflects motion under the command that was just superseded.
+        self._integrate_positions()
         for servo_id, velocity in velocities.items():
             if servo_id in self._velocities:
                 self._velocities[servo_id] = velocity

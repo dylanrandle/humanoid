@@ -12,11 +12,12 @@ import pink
 import pinocchio as pin
 from numpy.typing import NDArray
 from pink.barriers import SelfCollisionBarrier
-from pink.tasks import DampingTask, FrameTask, PostureTask
+from pink.tasks import DampingTask, FrameTask, OmniwheelTask, PostureTask, RollingTask
 from pink.utils import process_collision_pairs
 
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
+from humanoid.types.robot import WheelType
 
 logger = get_logger(__name__)
 
@@ -44,11 +45,14 @@ class OperationalSpaceConfig:
 
     # Task space costs (Pink uses costs instead of gains)
     tool_position_cost: float = 1.0  # Position tracking cost [cost] / [m]
-    tool_orientation_cost: float = 0.1  # Orientation tracking cost [cost] / [rad]
+    tool_orientation_cost: float = 1.0  # Orientation tracking cost [cost] / [rad]
 
     # Base frame task costs
-    base_position_cost: float = 1.0  # Base position tracking cost [cost] / [m]
-    base_orientation_cost: float = 1.0  # Base orientation tracking cost [cost] / [rad]
+    base_position_cost: float = 0.5  # Base position tracking cost [cost] / [m]
+    base_orientation_cost: float = 0.5  # Base orientation tracking cost [cost] / [rad]
+
+    # Wheel rolling/omni-wheel contact cost
+    wheel_cost: float = 10.0  # Rolling-contact tracking cost [cost] / [m]
 
     # Control loop
     dt: float = 0.01  # Control timestep (seconds)
@@ -87,10 +91,6 @@ class OperationalSpaceController:
         self.config = config or OperationalSpaceConfig()
         self.robot = robot
 
-        # Get end-effector frame ID
-        if not robot.model.existFrame(robot.config.tool_frame):
-            raise ValueError(f"Frame '{robot.config.tool_frame}' not found in URDF")
-
         # Defer configuration initialization until first state update
         self.configuration: pink.Configuration | None = None
 
@@ -98,6 +98,7 @@ class OperationalSpaceController:
         self.tasks = {}
 
         # Create end-effector frame task
+        robot.assert_frame_exists(robot.config.tool_frame)
         self.tasks[TaskName.TOOL] = FrameTask(
             robot.config.tool_frame,
             position_cost=self.config.tool_position_cost,
@@ -106,29 +107,33 @@ class OperationalSpaceController:
 
         # Create base frame task if base_frame is configured
         if robot.config.base_frame is not None:
-            if not robot.model.existFrame(robot.config.base_frame):
-                raise ValueError(f"Frame '{robot.config.base_frame}' not found in URDF")
+            robot.assert_frame_exists(robot.config.base_frame)
             self.tasks[TaskName.BASE] = FrameTask(
                 robot.config.base_frame,
                 position_cost=self.config.base_position_cost,
                 orientation_cost=self.config.base_orientation_cost,
             )
 
+            # Add wheels if defined
+            for wheel in robot.config.wheels or []:
+                robot.assert_frame_exists(wheel.frame)
+                robot.assert_frame_exists(wheel.floor_frame)
+                task_cls = OmniwheelTask if wheel.type is WheelType.OMNI else RollingTask
+                self.tasks[wheel.frame] = task_cls(
+                    wheel.frame,
+                    floor_frame=wheel.floor_frame,
+                    wheel_radius=wheel.radius,
+                    cost=self.config.wheel_cost,
+                )
+
+        # TODO: add a mask for joint centering
         # Create posture task for null space control (joint centering)
-        self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
-            cost=self.config.joint_centering_cost,
-        )
+        self.tasks[TaskName.JOINT_CENTERING] = PostureTask(cost=self.config.joint_centering_cost)
+        self.tasks[TaskName.JOINT_CENTERING].set_target(robot.config.home_position)
 
-        # Joint centering target (default to home position)
-        self.q_center: NDArray[np.float64] = robot.config.home_position
-
-        # Set initial posture target
-        self.tasks[TaskName.JOINT_CENTERING].set_target(self.q_center)
-
+        # TODO: add a mask for damping
         # Create damping task for velocity minimization
-        self.tasks[TaskName.DAMPING] = DampingTask(
-            cost=self.config.damping_cost,
-        )
+        self.tasks[TaskName.DAMPING] = DampingTask(cost=self.config.damping_cost)
 
         # Initialize barriers
         self.barriers = []
@@ -188,9 +193,7 @@ class OperationalSpaceController:
         3. Tertiary task: Minimize joint velocities (damping task)
 
         Args:
-            tool_target_pose: Target 6-DOF pose (SE3) for the end-effector. If
-                base_target_pose is provided, this is expressed in the base frame;
-                otherwise it is expressed in the world frame.
+            tool_target_pose: Target 6-DOF pose (SE3) for the end-effector.
             base_target_pose: Optional target 6-DOF pose (SE3) for the base frame.
                 Only used if the robot has a base_frame configured.
             gripper_positions: Optional gripper joint positions to override in the result
@@ -207,23 +210,12 @@ class OperationalSpaceController:
                 "Call update_state() with robot state first."
             )
 
-        if TaskName.BASE in self.tasks:
-            if base_target_pose is not None:
-                # Set the target for the base task if provided and configured
-                self.tasks[TaskName.BASE].set_target(base_target_pose)
-                # Use the commanded base target to anchor the tool target
-                T_world_base = base_target_pose
-            else:
-                # Fall back to the current base frame pose from the configuration
-                assert self.robot.config.base_frame is not None
-                T_world_base = self.configuration.get_transform_frame_to_world(
-                    self.robot.config.base_frame
-                )
-            # Resolve tool target to world frame
-            tool_target_pose = T_world_base * tool_target_pose
-
         # Set the target for the end-effector task
         self.tasks[TaskName.TOOL].set_target(tool_target_pose)
+
+        # Set the target for the base task if provided and configured
+        if TaskName.BASE in self.tasks and base_target_pose is not None:
+            self.tasks[TaskName.BASE].set_target(base_target_pose)
 
         # Solve inverse kinematics using Pink
         velocity = np.zeros(self.robot.model.nv)
