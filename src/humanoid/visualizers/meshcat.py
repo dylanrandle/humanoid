@@ -5,6 +5,7 @@ that integrates seamlessly with the Robot base class.
 """
 
 import copy
+from abc import ABC, abstractmethod
 from typing import Any
 
 import meshcat.geometry as g
@@ -19,7 +20,52 @@ from humanoid.types.visualizer import VisualizerConfig
 logger = get_logger(__name__)
 
 
-class JointCommandVisualizer:
+class CommandVisualizer(ABC):
+    """Base class for command visualizers that overlay ghost geometry.
+
+    Command visualizers layer a semi-transparent visualization on top of the
+    main robot view to show commanded state (joint positions, tool pose, etc.)
+    alongside the live robot.
+
+    Subclasses implement :meth:`initialize` to build their ghost viewer and a
+    ``display`` method whose signature reflects the commanded quantity.
+    """
+
+    def __init__(self, robot: Robot, viewer: PinocchioMeshcatVisualizer, opacity: float):
+        """Initialize the command visualizer state.
+
+        Args:
+            robot: Robot instance to visualize
+            viewer: Parent MeshcatVisualizer instance whose meshcat backend will
+                host this visualizer's geometry
+            opacity: Opacity of the ghost geometry (0.0 = transparent, 1.0 = opaque)
+        """
+        self.robot = robot
+        self._parent_viewer = viewer
+        self._opacity = opacity
+        self._viewer: PinocchioMeshcatVisualizer | None = None
+        self._initialized = False
+
+    @abstractmethod
+    def initialize(self) -> None:
+        """Build the ghost viewer and load it into the parent meshcat backend."""
+
+    def _ensure_initialized(self) -> None:
+        """Raise ``RuntimeError`` if :meth:`initialize` has not been called yet."""
+        if not self._initialized:
+            raise RuntimeError(f"{type(self).__name__} not initialized. Call initialize() first.")
+
+    def set_visible(self, visible: bool) -> None:
+        """Toggle visibility of the command visualization.
+
+        Args:
+            visible: Whether the ghost geometry should be visible
+        """
+        self._ensure_initialized()
+        self._viewer.displayVisuals(visible)  # type: ignore[union-attr]
+
+
+class JointCommandVisualizer(CommandVisualizer):
     """Visualizer for commanded joint positions (ghost robot).
 
     This creates a semi-transparent copy of the robot to show commanded
@@ -34,11 +80,7 @@ class JointCommandVisualizer:
             viewer: Parent MeshcatVisualizer instance
             opacity: Opacity of the ghost robot (0.0 = transparent, 1.0 = opaque)
         """
-        self.robot = robot
-        self._parent_viewer = viewer
-        self._opacity = opacity
-        self._viewer: PinocchioMeshcatVisualizer | None = None
-        self._initialized = False
+        super().__init__(robot, viewer, opacity)
 
     def initialize(self) -> None:
         """Initialize the joint command visualizer with a semi-transparent robot model."""
@@ -68,6 +110,9 @@ class JointCommandVisualizer:
         # Hide collisions for the joint command robot
         self._viewer.displayCollisions(False)
 
+        # Show the ghost at the home configuration until a command arrives.
+        self._viewer.display(self.robot.config.home_position)
+
         self._initialized = True
 
     def display(self, q: np.ndarray) -> None:
@@ -76,8 +121,7 @@ class JointCommandVisualizer:
         Args:
             q: Joint configuration vector (must match robot.model.nq)
         """
-        if not self._initialized:
-            raise RuntimeError("Joint command visualizer not initialized. Call initialize() first.")
+        self._ensure_initialized()
 
         if len(q) != self.robot.model.nq:
             raise ValueError(
@@ -87,19 +131,8 @@ class JointCommandVisualizer:
 
         self._viewer.display(q)  # type: ignore[union-attr]
 
-    def set_visible(self, visible: bool) -> None:
-        """Toggle visibility of the joint command robot.
 
-        Args:
-            visible: Whether the joint command robot should be visible
-        """
-        if not self._initialized:
-            raise RuntimeError("Joint command visualizer not initialized. Call initialize() first.")
-
-        self._viewer.displayVisuals(visible)  # type: ignore[union-attr]
-
-
-class ToolCommandVisualizer:
+class ToolCommandVisualizer(CommandVisualizer):
     """Visualizer for commanded tool poses (end effector ghost).
 
     This creates a semi-transparent visualization of the end effector
@@ -121,13 +154,13 @@ class ToolCommandVisualizer:
             end_effector_frame: Name of the end effector frame
             opacity: Opacity of the ghost end effector (0.0 = transparent, 1.0 = opaque)
         """
-        self.robot = robot
-        self._parent_viewer = viewer
+        super().__init__(robot, viewer, opacity)
         self._end_effector_frame = end_effector_frame
-        self._opacity = opacity
-        self._viewer: PinocchioMeshcatVisualizer | None = None
-        self._initialized = False
         self._end_effector_frame_id: int | None = None
+        # EE pose at the reference configuration used to lay out the subtree.
+        # Cached once in initialize() — display() then only needs to apply the
+        # rigid offset that maps this reference pose to the commanded tool pose.
+        self._ee_pose_at_reference: pin.SE3 | None = None
 
     def _get_end_effector_subtree_joints(self) -> set[int]:
         """Get all joint indices that are part of the end effector subtree.
@@ -201,62 +234,35 @@ class ToolCommandVisualizer:
         # Hide collisions for the tool command robot
         self._viewer.displayCollisions(False)
 
+        # Lay out the subtree once at the robot's home configuration and cache
+        # the resulting EE pose. display() then applies a rigid offset rather
+        # than recomputing kinematics every call.
+        reference_q = self.robot.config.home_position
+        self._viewer.display(reference_q)
+
+        data = self.robot.model.createData()
+        pin.forwardKinematics(self.robot.model, data, reference_q)
+        pin.updateFramePlacements(self.robot.model, data)
+        self._ee_pose_at_reference = data.oMf[self._end_effector_frame_id].copy()
+
         self._initialized = True
 
     def display(self, tool_pose: pin.SE3) -> None:
-        """Update the tool command visualizer with a new commanded tool pose.
+        """Move the tool subtree so the EE frame lands at the commanded pose.
 
-        This computes the inverse kinematics to find a configuration that places
-        the end effector at the commanded pose, then displays the end effector
-        geometry at that configuration.
+        The subtree was laid out once during initialize() at a reference
+        configuration. Here we just apply the rigid transform that maps the
+        cached reference EE pose to ``tool_pose`` — no IK, no FK.
 
         Args:
             tool_pose: Commanded SE3 pose for the end effector
         """
-        if not self._initialized:
-            raise RuntimeError("Tool command visualizer not initialized. Call initialize() first.")
+        self._ensure_initialized()
 
-        # We need to compute a configuration that places the end effector at the commanded pose
-        # For visualization purposes, we can use the current robot configuration as a starting point
-        # and just update the end effector frame's placement
-
-        # Get the current configuration (we'll use this as a base)
-        q = (
-            self.robot.data.q.copy()
-            if hasattr(self.robot.data, "q")
-            else np.zeros(self.robot.model.nq)
-        )
-
-        # Update forward kinematics
-        pin.forwardKinematics(self.robot.model, self.robot.data, q)
-        pin.updateFramePlacements(self.robot.model, self.robot.data)
-
-        # Display the robot at this configuration
-        # The actual positioning will be handled by updating the root transform
-        self._viewer.display(q)  # type: ignore[union-attr]
-
-        # Now we need to adjust the root transform so the end effector appears at tool_pose
-        # Get the current end effector pose in the robot's configuration
-        ee_pose_in_config = self.robot.data.oMf[self._end_effector_frame_id]
-
-        # Compute the transform needed to move the end effector to the commanded pose
-        # tool_pose = root_transform * ee_pose_in_config
-        # => root_transform = tool_pose * ee_pose_in_config^-1
-        root_transform = tool_pose * ee_pose_in_config.inverse()
-
-        # Apply this transform to the entire visualization
+        # tool_pose = root_transform * ee_pose_at_reference
+        # => root_transform = tool_pose * ee_pose_at_reference^-1
+        root_transform = tool_pose * self._ee_pose_at_reference.inverse()  # type: ignore[union-attr]
         self._viewer.viewer["tool_command"].set_transform(root_transform.homogeneous)  # type: ignore[union-attr]
-
-    def set_visible(self, visible: bool) -> None:
-        """Toggle visibility of the tool command visualization.
-
-        Args:
-            visible: Whether the tool command visualization should be visible
-        """
-        if not self._initialized:
-            raise RuntimeError("Tool command visualizer not initialized. Call initialize() first.")
-
-        self._viewer.displayVisuals(visible)  # type: ignore[union-attr]
 
 
 class MeshcatVisualizer:
@@ -430,6 +436,12 @@ class MeshcatVisualizer:
             )
 
         self._tool_command_viz.display(tool_pose)
+
+    def display_base_command(self, base_pose: pin.SE3) -> None:
+        if not self._initialized:
+            raise RuntimeError("Visualizer not initialized. Call initialize() first.")
+
+        self.add_frame("base_command", base_pose)
 
     def set_joint_command_visible(self, visible: bool) -> None:
         """Toggle visibility of the joint command visualization.

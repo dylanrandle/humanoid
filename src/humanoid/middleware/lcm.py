@@ -118,7 +118,7 @@ class Subscriber:
         self, topic: Literal[Topic.ROBOT_BASE_COMMAND], timeout: int | None = None
     ) -> RobotBaseCommand | None: ...
 
-    def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None:
+    def receive(self, topic: Topic, timeout: int | None = 0) -> AcceptedTypes | None:
         # Check if we have queued messages for this topic
         if self._message_queues[topic]:
             return self._message_queues[topic].popleft()

@@ -62,7 +62,7 @@ class RobotDriver:
         logger.info("RobotDriver initialized")
 
     def receive(self):
-        command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=0)
+        command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
         if command is None:
             return
 

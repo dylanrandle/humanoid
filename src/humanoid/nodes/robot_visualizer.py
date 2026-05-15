@@ -46,6 +46,7 @@ class RobotVisualizer:
         self.robot = Robot(robot_config)
 
         # Setup MeshCat visualization
+        self.viz_config = visualizer_config
         self.viz = MeshcatVisualizer(self.robot, config=visualizer_config)
         self.viz.initialize()
 
@@ -55,7 +56,12 @@ class RobotVisualizer:
 
         # Setup LCM subscriber
         self.subscriber = Subscriber(
-            [Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND, Topic.ROBOT_TOOL_COMMAND],
+            [
+                Topic.ROBOT_STATE,
+                Topic.ROBOT_JOINT_COMMAND,
+                Topic.ROBOT_TOOL_COMMAND,
+                Topic.ROBOT_BASE_COMMAND,
+            ],
         )
 
         logger.info("RobotVisualizer initialized")
@@ -66,7 +72,7 @@ class RobotVisualizer:
         robot state, joint commands, and tool command.
         """
         # Check for robot state update
-        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=0)
+        robot_state = self.subscriber.receive(Topic.ROBOT_STATE)
 
         if robot_state is not None:
             # Extract joint positions from the state
@@ -78,17 +84,20 @@ class RobotVisualizer:
             self.current_q = q
 
         # Check for joint command update
-        joint_command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=0)
-
-        if joint_command is not None:
+        joint_command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
+        if joint_command is not None and self.viz_config.show_commanded_joint_positions:
             self.viz.display_joint_command(joint_command.joint_positions)
 
         # Check for tool command update
-        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=0)
-
-        if tool_command is not None:
+        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND)
+        if tool_command is not None and self.viz_config.show_commanded_tool_pose:
             # Visualize the commanded tool pose with the end effector geometry
             self.viz.display_tool_command(tool_command.pose)
+
+        # Check for base command update
+        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
+        if base_command is not None and self.viz_config.show_commanded_base_pose:
+            self.viz.display_base_command(base_command.pose)
 
     def run(self, rate_hz: float = DEFAULT_RATE_HZ) -> None:
         """Run the visualizer main loop.

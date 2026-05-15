@@ -63,7 +63,7 @@ class RobotController:
     def receive_and_compute(self) -> None:
         """Receive tool command and compute joint commands."""
         # Check for robot state update (for initialization only)
-        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=0)
+        robot_state = self.subscriber.receive(Topic.ROBOT_STATE)
 
         # Initialize controller state from first robot state feedback
         # After initialization, use open-loop control (internal state integration)
@@ -72,7 +72,7 @@ class RobotController:
             self.controller.update_state(robot_state.joint_positions)
 
         # Check for new tool command (non-blocking)
-        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=0)
+        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND)
 
         # Update internal state from tool command
         if tool_command is not None:
@@ -80,7 +80,7 @@ class RobotController:
             self.current_tool_command = tool_command
 
         # Check for new base command (non-blocking)
-        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND, timeout=0)
+        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
 
         if base_command is not None:
             logger.debug(f"Received base command: {base_command}")

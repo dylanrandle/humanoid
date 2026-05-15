@@ -9,3 +9,4 @@ class VisualizerConfig:
     joint_command_opacity: float = 0.3
     show_commanded_tool_pose: bool = True
     tool_command_opacity: float = 0.5
+    show_commanded_base_pose: bool = True

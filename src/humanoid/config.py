@@ -109,7 +109,7 @@ ROBOT_CONFIGS = {
             },
             # NOTE: servo 8 direction is inverted
             inverted_servo_ids=[8],
-            gripper_joint_indices=[10],
+            gripper_joint_indices=[11],
         ),
     ]
 }
