@@ -9,7 +9,12 @@ from humanoid.logger import get_logger
 from humanoid.types.robot import RobotConfig
 
 COLLISION_URDF_SUFFIX = "_collision.urdf"
-REVOLUTE_UNBOUNDED_SHORTNAME = "RUB"
+
+# Pinocchio represents continuous (unbounded) revolute joints — JointModelRUBX/Y/Z
+# and JointModelRevoluteUnboundedUnaligned — with nq=2 (storing [cos θ, sin θ])
+# and nv=1. This combination uniquely identifies the family across all axes.
+REVOLUTE_UNBOUNDED_NQ = 2
+REVOLUTE_UNBOUNDED_NV = 1
 
 
 logger = get_logger(__name__)
@@ -264,7 +269,7 @@ class Robot:
         q = pin.neutral(self.model)
         for joint_idx, position in joint_idx_to_position.items():
             joint = self.model.joints[joint_idx + 1]
-            if REVOLUTE_UNBOUNDED_SHORTNAME in joint.shortname():
+            if joint.nq == REVOLUTE_UNBOUNDED_NQ and joint.nv == REVOLUTE_UNBOUNDED_NV:
                 q[joint.idx_q] = np.cos(position)
                 q[joint.idx_q + 1] = np.sin(position)
             elif joint.nq == 1:
