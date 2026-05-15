@@ -9,6 +9,7 @@ from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig, RobotJointCommand
 
 logger = get_logger(__name__)
@@ -37,17 +38,17 @@ def jog_joint(  # noqa: PLR0915
         robot_config: Robot configuration
         timeout_ms: Timeout in milliseconds for reading robot state
     """
-    num_joints = len(robot_config.home_position)
+    if joint_idx not in robot_config.joint_idx_to_servo_id:
+        valid = sorted(robot_config.joint_idx_to_servo_id.keys())
+        raise ValueError(f"Invalid joint index: {joint_idx}. Valid indices are: {valid}.")
 
-    # Validate joint index
-    if not (0 <= joint_idx < num_joints):
-        raise ValueError(
-            f"Invalid joint index: {joint_idx}. Must be between 0 and {num_joints - 1}."
-        )
+    robot = Robot(robot_config)
+    num_joints = len(robot_config.joint_idx_to_servo_id)
+    position_idx = robot.joint_idx_to_position_idx(joint_idx)
 
     logger.info(f"Starting jog mode for joint {joint_idx}")
     logger.info(f"Robot: {robot_config.name}")
-    logger.info(f"Number of joints: {num_joints}")
+    logger.info(f"Number of actuated joints: {num_joints}")
     logger.info(f"Step size: {step_size:.4f} rad (~{np.rad2deg(step_size):.2f} degrees)")
     logger.info(f"Publish rate: {publish_rate} Hz")
     logger.info("Controls:")
@@ -69,8 +70,8 @@ def jog_joint(  # noqa: PLR0915
 
     logger.info(f"Initial joint positions: {current_positions}")
     logger.info(
-        f"Initial joint {joint_idx} position: {current_positions[joint_idx]:.4f} rad "
-        f"({np.rad2deg(current_positions[joint_idx]):.2f} deg)"
+        f"Initial joint {joint_idx} position: {current_positions[position_idx]:.4f} rad "
+        f"({np.rad2deg(current_positions[position_idx]):.2f} deg)"
     )
     logger.info("Ready! Use arrow keys to jog the joint.\n")
 
@@ -96,19 +97,19 @@ def jog_joint(  # noqa: PLR0915
         try:
             if key == keyboard.Key.left:
                 # Decrease joint angle (counter-clockwise)
-                current_positions[joint_idx] -= step_size
+                current_positions[position_idx] -= step_size
                 publish_command()
                 logger.info(
-                    f"← Joint {joint_idx}: {current_positions[joint_idx]:.4f} rad "
-                    f"({np.rad2deg(current_positions[joint_idx]):.2f} deg)"
+                    f"← Joint {joint_idx}: {current_positions[position_idx]:.4f} rad "
+                    f"({np.rad2deg(current_positions[position_idx]):.2f} deg)"
                 )
             elif key == keyboard.Key.right:
                 # Increase joint angle (clockwise)
-                current_positions[joint_idx] += step_size
+                current_positions[position_idx] += step_size
                 publish_command()
                 logger.info(
-                    f"→ Joint {joint_idx}: {current_positions[joint_idx]:.4f} rad "
-                    f"({np.rad2deg(current_positions[joint_idx]):.2f} deg)"
+                    f"→ Joint {joint_idx}: {current_positions[position_idx]:.4f} rad "
+                    f"({np.rad2deg(current_positions[position_idx]):.2f} deg)"
                 )
             elif key == keyboard.Key.esc or (hasattr(key, "char") and key.char == "q"):
                 logger.info("Exiting jog mode...")
@@ -122,8 +123,8 @@ def jog_joint(  # noqa: PLR0915
             listener.join()
 
         logger.info(
-            f"Final joint {joint_idx} position: {current_positions[joint_idx]:.4f} rad "
-            f"({np.rad2deg(current_positions[joint_idx]):.2f} deg)"
+            f"Final joint {joint_idx} position: {current_positions[position_idx]:.4f} rad "
+            f"({np.rad2deg(current_positions[position_idx]):.2f} deg)"
         )
         logger.info(f"Final joint positions: {current_positions}")
 
