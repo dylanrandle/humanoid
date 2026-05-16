@@ -170,7 +170,7 @@ class LCMEnvironment(Environment):
 
         return timestamp
 
-    def _build_observation(self, timeout_ms: int | None = None) -> Observation:
+    def _build_observation(self, timeout_ms: int = 0) -> Observation:
         """Receive the latest messages from LCM and build an Observation.
 
         Each topic is cached; if receive() returns None the last known value is

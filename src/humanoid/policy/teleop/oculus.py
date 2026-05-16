@@ -58,7 +58,7 @@ class OculusTeleopPolicyConfig:
         default_factory=lambda: np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0], [0.0, 0.0, -1.0]])
     )
     base_translation_matrix: np.ndarray = field(default_factory=lambda: np.eye(2))
-    base_translation_step: float = 0.005
+    base_translation_step: float = 0.003
     base_rotation_step: float = 0.02
     base_yaw_scale: float = -1.0
     base_deadzone: float = 0.1

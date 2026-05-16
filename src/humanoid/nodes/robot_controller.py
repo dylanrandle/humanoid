@@ -1,4 +1,6 @@
 import time
+from dataclasses import asdict
+from pprint import pformat
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
@@ -7,8 +9,8 @@ from humanoid.controllers.operational_space import (
     OperationalSpaceController,
 )
 from humanoid.logger import get_logger
-from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -20,7 +22,7 @@ from humanoid.types.robot import (
 logger = get_logger(__name__)
 
 
-class RobotController:
+class RobotController(Node):
     """Node that converts task space commands to joint space commands."""
 
     def __init__(
@@ -33,15 +35,13 @@ class RobotController:
             robot_config: Robot configuration including name and end effector frame
             rate_hz: Control loop rate in Hz
         """
-        logger.info(f"Initializing RobotController for: {robot_config.name}")
-
         self.robot = Robot(robot_config)
         self.robot.print_info()
 
         # Initialize operational space controller
         config = robot_config.operational_space_config or OperationalSpaceConfig()
         self.controller = OperationalSpaceController(robot=self.robot, config=config)
-        logger.info(f"Initialized OSC with config: {config}")
+        logger.info(f"Initialized OSC with config:\n{pformat(asdict(config))}")
 
         self.rate_hz = 1 / config.dt
 
@@ -55,10 +55,11 @@ class RobotController:
         self.current_tool_command: RobotToolCommand | None = None
         self.current_base_command: RobotBaseCommand | None = None
 
-        logger.info("RobotController initialized")
+    def setup(self) -> None:
+        pass
 
-    # TODO: initial tool/base commands with robot state on first update as well
-    def receive_and_compute(self) -> None:
+    # TODO: initialize tool/base commands with robot state on first update
+    def step(self) -> None:
         """Receive tool command and compute joint commands."""
         # Check for robot state update (for initialization only)
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE)
@@ -66,7 +67,7 @@ class RobotController:
         # Initialize controller state from first robot state feedback
         # After initialization, use open-loop control (internal state integration)
         if robot_state is not None and self.controller.configuration is None:
-            logger.info(f"Initializing controller state from robot state: {robot_state}")
+            logger.debug(f"Received robot state: {robot_state}")
             self.controller.update_state(robot_state.joint_positions)
 
         # Check for new tool command (non-blocking)
@@ -106,22 +107,8 @@ class RobotController:
             logger.debug(f"Publishing joint command: {joint_command}")
             self.publisher.publish(joint_command)
 
-    def run(self) -> None:
-        """Run the controller node main loop."""
-        logger.info(f"Starting controller loop at {self.rate_hz} Hz...")
-
-        try:
-            loop_at_rate(self.receive_and_compute, rate_hz=self.rate_hz)
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user")
-        finally:
-            self.close()
-
-    def close(self) -> None:
-        """Clean up resources."""
-        logger.info("Closing RobotController...")
+    def on_close(self) -> None:
         self.subscriber.close()
-        logger.info("RobotController closed")
 
 
 def main():

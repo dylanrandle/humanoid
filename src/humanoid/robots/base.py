@@ -205,6 +205,7 @@ class Robot:
 
     def print_info(self) -> None:
         """Print information about the robot model."""
+        print("=== Robot Info ===")
         print(f"Model name: {self.model.name}")
         # NOTE: excludes universe joint
         print(f"Number of joints: {len(self.model.joints) - 1}")

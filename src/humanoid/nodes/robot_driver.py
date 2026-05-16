@@ -5,11 +5,11 @@ import numpy as np
 from humanoid.config import IS_SIMULATION, ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.logger import get_logger
-from humanoid.loop import loop_at_rate
 from humanoid.middleware.lcm import Publisher, Subscriber
 from humanoid.motors.base import MotorController
 from humanoid.motors.feetech.controller import FeetechMotorController
 from humanoid.motors.simulation import SimulatedMotorController
+from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig, RobotState
 from humanoid.types.servo import ServoControlMode
@@ -19,13 +19,13 @@ logger = get_logger(__name__)
 DEFAULT_RATE_HZ = 500.0
 
 
-class RobotDriver:
-    def __init__(self, robot_config: RobotConfig = ROBOT_CONFIG):
+class RobotDriver(Node):
+    def __init__(self, robot_config: RobotConfig = ROBOT_CONFIG, rate_hz: float = DEFAULT_RATE_HZ):
+        self.rate_hz = rate_hz
         self.subscriber = Subscriber(topics=[Topic.ROBOT_JOINT_COMMAND])
         self.publisher = Publisher()
 
         # Use robot configuration from constants
-        logger.info(f"Initializing RobotDriver for: {robot_config.name}")
         self.joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
         self.servo_id_to_joint_idx = robot_config.servo_id_to_joint_idx
         self.sorted_joint_indices = sorted(self.joint_idx_to_servo_id.keys())
@@ -59,7 +59,6 @@ class RobotDriver:
             )
 
         self.controller.connect()
-        logger.info("RobotDriver initialized")
 
     def receive(self):
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
@@ -121,22 +120,14 @@ class RobotDriver:
         logger.debug(f"Measured state: {robot_state}")
         self.publisher.publish(robot_state)
 
-    def run(self, rate_hz: float = DEFAULT_RATE_HZ) -> None:
-        logger.info(f"Starting main loop at {rate_hz} Hz...")
+    def setup(self) -> None:
+        pass
 
-        def work():
-            self.receive()
-            self.publish()
+    def step(self) -> None:
+        self.receive()
+        self.publish()
 
-        try:
-            loop_at_rate(work, rate_hz=rate_hz)
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user")
-        finally:
-            self.close()
-
-    def close(self) -> None:
-        logger.info("Closing...")
+    def on_close(self) -> None:
         self.subscriber.close()
         self.controller.disconnect()
 

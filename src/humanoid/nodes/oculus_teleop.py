@@ -7,12 +7,10 @@ Usage:
     uv run python -m humanoid.nodes.oculus_teleop
 """
 
-import sys
-
 from humanoid.config import ROBOT_CONFIG
 from humanoid.environment.lcm import LCMEnvironment
 from humanoid.logger import get_logger
-from humanoid.loop import loop_at_rate
+from humanoid.nodes.base import Node
 from humanoid.policy import OculusTeleopPolicy, OculusTeleopPolicyConfig
 from humanoid.types.robot import RobotConfig
 
@@ -21,7 +19,7 @@ logger = get_logger(__name__)
 DEFAULT_RATE_HZ = 100.0
 
 
-class OculusTeleopNode:
+class OculusTeleopNode(Node):
     """Node that runs Oculus VR teleoperation using policy and environment.
 
     This node integrates the OculusTeleopPolicy with the LCMEnvironment
@@ -41,7 +39,6 @@ class OculusTeleopNode:
             policy_config: Tunable parameters for the Oculus teleop policy
             rate_hz: Control loop rate in Hz
         """
-        logger.info("Initializing OculusTeleopNode")
 
         self.policy = OculusTeleopPolicy(robot_config=robot_config, config=policy_config)
 
@@ -49,8 +46,6 @@ class OculusTeleopNode:
         self.env = LCMEnvironment()
 
         self.rate_hz = rate_hz
-
-        logger.info(f"OculusTeleopNode initialized at {rate_hz} Hz")
 
     def step(self) -> None:
         """Execute one step of the control loop."""
@@ -63,35 +58,16 @@ class OculusTeleopNode:
         # Update observation for next iteration
         self.observation = transition.observation
 
-    def run(self) -> None:
-        """Run the Oculus teleoperation node main loop."""
-        logger.info(f"Starting Oculus teleop loop at {self.rate_hz} Hz")
+    def setup(self) -> None:
         logger.info("Hold either grip trigger (dead-man) to command motion")
         logger.info("Use right controller pose to control end-effector")
         logger.info("Use right trigger to control gripper")
         logger.info("Use left joystick to drive the base (forward = y+, right = x+)")
         logger.info("Use right joystick X to yaw the base (left = yaw+, right = yaw-)\n")
+        self.observation = self.env.reset()
 
-        try:
-            # Reset environment and get initial observation
-            self.observation = self.env.reset()
-
-            # Run control loop
-            loop_at_rate(self.step, rate_hz=self.rate_hz)
-
-        except KeyboardInterrupt:
-            logger.info("\nInterrupted by user")
-        except RuntimeError as e:
-            logger.error(f"Runtime error: {e}")
-            sys.exit(1)
-        finally:
-            self.close()
-
-    def close(self) -> None:
-        """Clean up resources."""
-        logger.info("Closing OculusTeleopNode...")
+    def on_close(self) -> None:
         self.env.close()
-        logger.info("OculusTeleopNode closed")
 
 
 def main():

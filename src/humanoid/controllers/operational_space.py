@@ -143,7 +143,7 @@ class OperationalSpaceController:
                 collision_model=collision_model,
                 collision_data=collision_data,
             )
-            logger.info(f"Initialized controller configuration with state: q={q}")
+            logger.debug(f"Initialized controller configuration with state: q={q}")
         else:
             self.configuration.update(q)
 

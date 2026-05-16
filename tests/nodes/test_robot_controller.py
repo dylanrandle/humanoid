@@ -88,7 +88,7 @@ def test_no_messages_does_nothing(controller):
     """When no commands arrive, no joint command is published."""
     controller.subscriber.receive = Mock(side_effect=_no_messages)
 
-    controller.receive_and_compute()
+    controller.step()
 
     controller.publisher.publish.assert_not_called()
     controller.controller.compute_control.assert_not_called()
@@ -105,7 +105,7 @@ def test_first_state_initializes_controller(controller):
         return None
 
     controller.subscriber.receive = Mock(side_effect=receive)
-    controller.receive_and_compute()
+    controller.step()
 
     controller.controller.update_state.assert_called_once()
     np.testing.assert_allclose(
@@ -123,7 +123,7 @@ def test_state_after_initialization_does_not_reinitialize(controller):
         return None
 
     controller.subscriber.receive = Mock(side_effect=receive)
-    controller.receive_and_compute()
+    controller.step()
 
     controller.controller.update_state.assert_not_called()
 
@@ -138,7 +138,7 @@ def test_tool_command_publishes_joint_command(controller):
         return None
 
     controller.subscriber.receive = Mock(side_effect=receive)
-    controller.receive_and_compute()
+    controller.step()
 
     controller.controller.compute_control.assert_called_once()
     call_kwargs = controller.controller.compute_control.call_args
@@ -164,7 +164,7 @@ def test_base_command_alone_does_not_publish(controller):
         return None
 
     controller.subscriber.receive = Mock(side_effect=receive)
-    controller.receive_and_compute()
+    controller.step()
 
     # Base command is stored, but no compute/publish happens without a tool command.
     assert controller.current_base_command is base_cmd
@@ -184,9 +184,9 @@ def test_tool_command_persists_across_ticks(controller):
 
     controller.subscriber.receive = Mock(side_effect=receive)
 
-    controller.receive_and_compute()  # delivers tool command
+    controller.step()  # delivers tool command
     call_count["n"] += 1
-    controller.receive_and_compute()  # no new messages, but should still publish
+    controller.step()  # no new messages, but should still publish
 
     expected_call_count = 2
 
@@ -207,7 +207,7 @@ def test_base_command_passed_to_compute_control(controller):
         return None
 
     controller.subscriber.receive = Mock(side_effect=receive)
-    controller.receive_and_compute()
+    controller.step()
 
     call = controller.controller.compute_control.call_args
     assert call.args[0] is tool_cmd.pose
@@ -225,7 +225,7 @@ def test_gripper_positions_passed_through(controller):
         return None
 
     controller.subscriber.receive = Mock(side_effect=receive)
-    controller.receive_and_compute()
+    controller.step()
 
     np.testing.assert_allclose(
         controller.controller.compute_control.call_args.kwargs["gripper_positions"], gripper
