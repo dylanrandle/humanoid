@@ -2,9 +2,11 @@ import os
 
 import numpy as np
 
-from humanoid.types.robot import RobotConfig, WheelConfig, WheelType
+from humanoid.types.controllers import OperationalSpaceConfig
+from humanoid.types.robot import RobotConfig
 from humanoid.types.servo import ServoControlMode
 from humanoid.types.visualizer import VisualizerConfig
+from humanoid.types.wheels import WheelConfig, WheelType
 
 IS_SIMULATION = os.getenv("HUMANOID_RUNTIME", "sim").lower().strip() in ("sim", "simulation")
 ROBOT_NAME = os.getenv("HUMANOID_ROBOT", "elrobot_mobile").lower().strip()
@@ -119,6 +121,12 @@ ROBOT_CONFIGS = {
             # NOTE: servo 8 direction is inverted
             inverted_servo_ids=[8],
             gripper_joint_indices=[11],
+            operational_space_config=OperationalSpaceConfig(
+                joint_centering_cost=0.01,
+                joint_centering_mask=np.array([0.0] * 3 + [1.0] * 8),
+                damping_cost=0.3,
+                damping_mask=np.array([0.0] * 3 + [1.0] * 8),
+            ),
         ),
     ]
 }

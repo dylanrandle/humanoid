@@ -17,7 +17,7 @@ from humanoid.visualizers.meshcat import MeshcatVisualizer
 logger = get_logger(__name__)
 
 
-DEFAULT_RATE_HZ = 30.0
+DEFAULT_RATE_HZ = 50.0
 
 
 class RobotVisualizer:

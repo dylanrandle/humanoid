@@ -19,8 +19,6 @@ from humanoid.types.robot import (
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 200.0
-
 
 class RobotController:
     """Node that converts task space commands to joint space commands."""
@@ -28,7 +26,6 @@ class RobotController:
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
-        rate_hz: float = DEFAULT_RATE_HZ,
     ):
         """Initialize the robot controller node.
 
@@ -38,15 +35,15 @@ class RobotController:
         """
         logger.info(f"Initializing RobotController for: {robot_config.name}")
 
-        self.rate_hz = rate_hz
-        self.dt = 1 / rate_hz
         self.robot = Robot(robot_config)
         self.robot.print_info()
 
         # Initialize operational space controller
-        logger.info(f"Initializing OSC for frame: {robot_config.tool_frame}")
-        config = OperationalSpaceConfig(dt=self.dt)
+        config = robot_config.operational_space_config or OperationalSpaceConfig()
         self.controller = OperationalSpaceController(robot=self.robot, config=config)
+        logger.info(f"Initialized OSC with config: {config}")
+
+        self.rate_hz = 1 / config.dt
 
         # Set up LCM communication
         self.subscriber = Subscriber(

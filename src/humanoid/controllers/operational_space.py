@@ -17,7 +17,8 @@ from pink.utils import process_collision_pairs
 
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
-from humanoid.types.robot import WheelType
+from humanoid.types.controllers import OperationalSpaceConfig
+from humanoid.types.wheels import WheelType
 
 logger = get_logger(__name__)
 
@@ -37,41 +38,6 @@ class ControlResult:
 
     q: NDArray[np.float64]  # joint configuration (nq,)
     v: NDArray[np.float64]  # joint velocity (nv,)
-
-
-@dataclass
-class OperationalSpaceConfig:
-    """Configuration parameters for the operational space controller."""
-
-    # Task space costs (Pink uses costs instead of gains)
-    tool_position_cost: float = 1.0  # Position tracking cost [cost] / [m]
-    tool_orientation_cost: float = 1.0  # Orientation tracking cost [cost] / [rad]
-
-    # Base frame task costs
-    base_position_cost: float = 0.5  # Base position tracking cost [cost] / [m]
-    base_orientation_cost: float = 0.5  # Base orientation tracking cost [cost] / [rad]
-
-    # Wheel rolling/omni-wheel contact cost
-    wheel_cost: float = 10.0  # Rolling-contact tracking cost [cost] / [m]
-
-    # Control loop
-    dt: float = 0.01  # Control timestep (seconds)
-
-    # Velocity and acceleration limits (per axis)
-    max_linear_velocity: float = 1.0  # Maximum linear velocity per axis (m/s)
-    max_angular_velocity: float = np.pi  # Maximum angular velocity per axis (rad/s)
-
-    # Null space control (secondary task)
-    joint_centering_cost: float = 1e-3  # Cost for posture task [cost] / [rad]
-
-    # Damping task (velocity minimization)
-    damping_cost: float = 1e-1  # Cost for damping task [cost] / [rad/s]
-
-    # QP solver
-    solver: str = "quadprog"  # QP solver to use ("quadprog", "proxqp", etc.)
-
-    # Collision avoidance
-    avoid_collisions: bool = False
 
 
 class OperationalSpaceController:
@@ -126,14 +92,16 @@ class OperationalSpaceController:
                     cost=self.config.wheel_cost,
                 )
 
-        # TODO: add a mask for joint centering
         # Create posture task for null space control (joint centering)
-        self.tasks[TaskName.JOINT_CENTERING] = PostureTask(cost=self.config.joint_centering_cost)
+        self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
+            cost=self.config.joint_centering_cost * self.config.joint_centering_mask  # ty:ignore[invalid-argument-type]
+        )
         self.tasks[TaskName.JOINT_CENTERING].set_target(robot.config.home_position)
 
-        # TODO: add a mask for damping
         # Create damping task for velocity minimization
-        self.tasks[TaskName.DAMPING] = DampingTask(cost=self.config.damping_cost)
+        self.tasks[TaskName.DAMPING] = DampingTask(
+            cost=self.config.damping_cost * self.config.damping_mask  # ty:ignore[invalid-argument-type]
+        )
 
         # Initialize barriers
         self.barriers = []

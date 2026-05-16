@@ -24,11 +24,11 @@ from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
 
-DEFAULT_TOOL_TRANSLATION_STEP = 0.005  # 0.5 cm
-DEFAULT_TOOL_ROTATION_STEP = 0.05  # ~2.86 degrees
+DEFAULT_TOOL_TRANSLATION_STEP = 0.005  # 0.5 cm per keypress
+DEFAULT_TOOL_ROTATION_STEP = 0.05  # ~2.86 degrees per keypress
 DEFAULT_GRIPPER_STEP_PCT = 0.025  # 2.5% of gripper range per keypress
 DEFAULT_BASE_TRANSLATION_STEP = 0.01  # 1 cm per keypress
-DEFAULT_BASE_ROTATION_STEP = 0.1  # ~5.73 degrees per keypress
+DEFAULT_BASE_ROTATION_STEP = 0.05  # ~2.86 degrees per keypress
 
 
 @dataclass
