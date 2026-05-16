@@ -9,8 +9,8 @@ class OperationalSpaceConfig:
 
     tool_position_cost: float = 1.0
     tool_orientation_cost: float = 1.0
-    base_position_cost: float = 0.5
-    base_orientation_cost: float = 0.5
+    base_position_cost: float = 1.0
+    base_orientation_cost: float = 1.0
     wheel_cost: float = 10.0
     dt: float = 0.005
     max_linear_velocity: float = 1.0
