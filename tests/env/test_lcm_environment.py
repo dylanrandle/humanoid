@@ -93,14 +93,39 @@ class TestReset:
         assert observation.robot_base_command is None
         calls = env.subscriber.receive.call_args_list
         assert calls[0] == ((Topic.ROBOT_STATE,), {"timeout": env.timeout_ms})
-        assert calls[1] == ((Topic.ROBOT_JOINT_COMMAND,), {})
-        assert calls[2] == ((Topic.ROBOT_TOOL_COMMAND,), {})
-        assert calls[3] == ((Topic.ROBOT_BASE_COMMAND,), {})
+        assert calls[1] == ((Topic.ROBOT_JOINT_COMMAND,), {"timeout": env.timeout_ms})
+        assert calls[2] == ((Topic.ROBOT_TOOL_COMMAND,), {"timeout": env.timeout_ms})
+        assert calls[3] == ((Topic.ROBOT_BASE_COMMAND,), {"timeout": env.timeout_ms})
 
     def test_raises_when_no_state_received(self, env):
         env.subscriber.receive = MagicMock(return_value=None)
         with pytest.raises(RuntimeError, match="Failed to receive robot state"):
             env.reset()
+
+    def test_falls_back_to_cached_state_when_receive_returns_none(self, env):
+        state = _make_state(timestamp=1.0)
+        # First reset populates the cache.
+        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None])
+        env.reset()
+
+        # Second reset: ROBOT_STATE returns None — should use cached state.
+        env.subscriber.receive = MagicMock(side_effect=[None, None, None, None])
+        observation = env.reset()
+
+        assert observation.robot_state is state
+
+    def test_falls_back_to_cached_commands_when_receive_returns_none(self, env):
+        state = _make_state()
+        joint_cmd = RobotJointCommand(timestamp=0.0, joint_positions=np.zeros(7))
+        # First reset populates the caches.
+        env.subscriber.receive = MagicMock(side_effect=[state, joint_cmd, None, None])
+        env.reset()
+
+        # Second reset: command topics return None — cached joint_cmd should be reused.
+        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None])
+        observation = env.reset()
+
+        assert observation.robot_joint_command is joint_cmd
 
     def test_clears_last_action_and_records_prev_observation(self, env):
         env.subscriber.receive = MagicMock(return_value=_make_state())

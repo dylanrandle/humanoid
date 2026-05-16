@@ -112,12 +112,10 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             logger.info("Waiting for Oculus data...")
             time.sleep(0.1)
 
-        # Reference poses (set on first observation; cleared whenever the dead-man releases)
+        # Reference poses (set on first engaged call; cleared whenever the dead-man releases)
         self.reference_controller_pose: np.ndarray | None = None
         self.reference_tool_pose: pin.SE3 | None = None
-
-        # Commanded base pose (re-anchored from FK whenever the dead-man re-engages)
-        self.current_base_pose: pin.SE3 | None = None
+        self.reference_base_pose: pin.SE3 | None = None
 
         if self.verbose:
             self.log_configuration()
@@ -144,7 +142,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         """Reset policy state."""
         self.reference_controller_pose = None
         self.reference_tool_pose = None
-        self.current_base_pose = None
+        self.reference_base_pose = None
 
     def _has_valid_controller_data(self, transforms: dict, buttons: dict) -> bool:
         """Check if controller data is valid and contains required keys.
@@ -196,12 +194,20 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         """
         self.reference_controller_pose = right_controller_pose.copy()
         self.reference_tool_pose = self._get_current_tool_pose(observation)
+        if self.robot_config.base_frame is not None:
+            base_pose = self._get_current_base_pose(observation)
+            assert base_pose is not None, "base_frame configured but FK returned None"
+            self.reference_base_pose = pin.SE3(
+                base_pose.rotation.copy(), base_pose.translation.copy()
+            )
 
         if self.verbose:
             logger.info("\nReference poses initialized:")
             logger.info(f"  Tool position: {self.reference_tool_pose.translation}")
             rpy = pin.rpy.matrixToRpy(self.reference_tool_pose.rotation)
             logger.info(f"  Tool orientation (RPY): {np.rad2deg(rpy)} deg")
+            if self.reference_base_pose is not None:
+                logger.info(f"  Base position: {self.reference_base_pose.translation}")
             logger.info("\nReady! Move the right controller to control the robot.\n")
 
     def __call__(self, observation: Observation) -> Action:
@@ -294,18 +300,9 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         else:
             gripper_positions = None
 
-        # Integrate joystick input into a commanded base pose (when a base_frame
-        # is configured). The base pose is re-anchored from FK each time the
-        # dead-man is re-engaged via reset(), so motion is incremental within
-        # one engagement.
         base_pose_command: pin.SE3 | None = None
         if self.robot_config.base_frame is not None:
-            if self.current_base_pose is None:
-                base_fk = self._get_current_base_pose(observation)
-                assert base_fk is not None, "base_frame configured but FK returned None"
-                self.current_base_pose = pin.SE3(
-                    base_fk.rotation.copy(), base_fk.translation.copy()
-                )
+            assert self.reference_base_pose is not None, "Missing reference base pose!"
 
             left_jx, left_jy = self._read_joystick(buttons, LEFT_JOYSTICK_KEY)
             right_jx, _ = self._read_joystick(buttons, RIGHT_JOYSTICK_KEY)
@@ -315,17 +312,17 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
                 @ np.array([left_jx, left_jy])
                 * self.config.base_translation_step
             )
-            self.current_base_pose.translation[0] += delta_xy[0]
-            self.current_base_pose.translation[1] += delta_xy[1]
+            self.reference_base_pose.translation[0] += delta_xy[0]
+            self.reference_base_pose.translation[1] += delta_xy[1]
 
             delta_yaw = self.config.base_yaw_scale * right_jx * self.config.base_rotation_step
             if delta_yaw != 0.0:
                 yaw_rot = pin.utils.rotate("z", delta_yaw)
-                self.current_base_pose.rotation = self.current_base_pose.rotation @ yaw_rot
+                self.reference_base_pose.rotation = self.reference_base_pose.rotation @ yaw_rot
 
             base_pose_command = pin.SE3(
-                self.current_base_pose.rotation.copy(),
-                self.current_base_pose.translation.copy(),
+                self.reference_base_pose.rotation.copy(),
+                self.reference_base_pose.translation.copy(),
             )
 
         return Action(

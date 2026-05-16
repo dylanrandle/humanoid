@@ -66,13 +66,46 @@ class BaseTeleopPolicy(Policy):
             self.gripper_min = 0.0
             self.gripper_max = 0.0
 
+    def _get_joint_positions(self, observation: Observation) -> np.ndarray:
+        """Return the best available joint positions from the observation.
+
+        Prefers commanded positions (lower latency, no sensor noise) and falls
+        back to measured positions when no command has been received yet.
+        """
+        if observation.robot_joint_command is not None:
+            return observation.robot_joint_command.joint_positions
+        return observation.robot_state.joint_positions
+
     def _get_current_tool_pose(self, observation: Observation) -> pin.SE3:
-        """Forward-kinematics tool pose at the observation's joint positions."""
-        return self.robot.get_tool_pose(observation.robot_state.joint_positions)
+        """Tool pose suitable for use as ``Action.tool_pose``.
+
+        When ``base_frame`` is configured, returns the tool in **base frame**:
+        ``Action.__post_init__`` composes ``tool_pose = base_pose * tool_pose`` to
+        recover the world pose, so the policy must work in base frame to avoid
+        applying the base transform twice. Returns world-frame otherwise.
+
+        Prefers commanded poses over FK on measured joint positions.
+        """
+        if observation.robot_tool_command is not None:
+            tool_world = observation.robot_tool_command.pose
+        else:
+            tool_world = self.robot.get_tool_pose(self._get_joint_positions(observation))
+
+        if self.robot_config.base_frame is None:
+            return tool_world
+
+        base_world = self._get_current_base_pose(observation)
+        assert base_world is not None, "base_frame configured but base pose is unavailable"
+        return base_world.inverse() * tool_world
 
     def _get_current_base_pose(self, observation: Observation) -> pin.SE3 | None:
-        """Forward-kinematics base pose, or None when no base_frame is configured."""
-        return self.robot.get_base_pose(observation.robot_state.joint_positions)
+        """Commanded base pose when available, otherwise FK on measured joint positions.
+
+        Returns None when no base_frame is configured and no command is present.
+        """
+        if observation.robot_base_command is not None:
+            return observation.robot_base_command.pose
+        return self.robot.get_base_pose(self._get_joint_positions(observation))
 
     def _get_current_gripper_positions(self, observation: Observation) -> np.ndarray | None:
         """Read current gripper positions from the observation.
@@ -84,7 +117,7 @@ class BaseTeleopPolicy(Policy):
         position_indices = self.robot.get_gripper_position_indices()
         if not position_indices:
             return None
-        joint_positions = observation.robot_state.joint_positions
+        joint_positions = self._get_joint_positions(observation)
         return np.array([joint_positions[idx] for idx in position_indices])
 
     def _hold_current_pose_action(self, observation: Observation) -> Action:

@@ -96,7 +96,7 @@ class TestFirstCallInitialization:
         action = panda_policy(obs)
 
         assert started == [True], "start_listener must run on the first call"
-        assert panda_policy.current_pose is not None
+        assert panda_policy.current_tool_pose is not None
         assert panda_policy.gripper_positions is not None
         assert action.tool_pose is not None
         # Initial target should match FK of the home position.
@@ -116,9 +116,9 @@ class TestFirstCallInitialization:
     def test_action_pose_is_a_copy(self, panda_policy):
         """Mutating action.tool_pose must not bleed into the policy's state."""
         action = panda_policy(_observation_from_q(panda_policy.robot_config.home_position))
-        before = panda_policy.current_pose.translation.copy()
+        before = panda_policy.current_tool_pose.translation.copy()
         action.tool_pose.translation[0] += 1.0
-        np.testing.assert_allclose(panda_policy.current_pose.translation, before)
+        np.testing.assert_allclose(panda_policy.current_tool_pose.translation, before)
 
 
 class TestTranslationKeys:
@@ -135,11 +135,11 @@ class TestTranslationKeys:
     )
     def test_translation_key_moves_along_expected_axis(self, panda_policy, key, axis, sign):
         panda_policy(_observation_from_q(panda_policy.robot_config.home_position))
-        before = panda_policy.current_pose.translation.copy()
+        before = panda_policy.current_tool_pose.translation.copy()
 
         panda_policy._on_press(_FakeCharKey(key))
 
-        delta = panda_policy.current_pose.translation - before
+        delta = panda_policy.current_tool_pose.translation - before
         expected = np.zeros(3)
         expected[axis] = sign * panda_policy.translation_step
         np.testing.assert_allclose(delta, expected, atol=1e-12)
@@ -147,16 +147,16 @@ class TestTranslationKeys:
 
 class TestRotationKeys:
     @pytest.mark.parametrize("key", ["i", "k", "j", "l", "u", "o"])
-    def test_rotation_key_rotates_current_pose(self, panda_policy, key):
+    def test_rotation_key_rotates_current_tool_pose(self, panda_policy, key):
         panda_policy(_observation_from_q(panda_policy.robot_config.home_position))
-        before = panda_policy.current_pose.rotation.copy()
+        before = panda_policy.current_tool_pose.rotation.copy()
 
         panda_policy._on_press(_FakeCharKey(key))
 
         # Rotation must change and remain a valid rotation matrix.
-        assert not np.allclose(panda_policy.current_pose.rotation, before)
+        assert not np.allclose(panda_policy.current_tool_pose.rotation, before)
         np.testing.assert_allclose(
-            panda_policy.current_pose.rotation @ panda_policy.current_pose.rotation.T,
+            panda_policy.current_tool_pose.rotation @ panda_policy.current_tool_pose.rotation.T,
             np.eye(3),
             atol=1e-10,
         )
@@ -242,7 +242,7 @@ class TestQuitAndReset:
 
         panda_policy.reset()
 
-        assert panda_policy.current_pose is None
+        assert panda_policy.current_tool_pose is None
         assert panda_policy.gripper_positions is None
         assert panda_policy.current_base_pose is None
         assert panda_policy.running is True

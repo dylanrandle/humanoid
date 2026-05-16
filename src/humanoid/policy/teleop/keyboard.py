@@ -94,8 +94,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 f"{config.gripper_step_pct * 100:.1f}% of range)"
             )
 
-        # Current target pose (will be initialized on first observation)
-        self.current_pose: pin.SE3 | None = None
+        # Current target tool pose (will be initialized on first observation)
+        self.current_tool_pose: pin.SE3 | None = None
 
         # Current gripper positions (will be initialized on first observation)
         # Track gripper positions based on gripper_joint_indices from config
@@ -153,7 +153,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
     def reset(self) -> None:
         """Reset policy state."""
         with self.lock:
-            self.current_pose = None
+            self.current_tool_pose = None
             self.gripper_positions = None
             self.current_base_pose = None
         self.running = True
@@ -177,9 +177,9 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
     def _log_pose(self) -> None:
         """Log the current pose and gripper positions (must be called with pose_lock held)."""
-        if self.current_pose is not None and self.verbose:
-            rpy = pin.rpy.matrixToRpy(self.current_pose.rotation)
-            logger.info(f"Position: {self.current_pose.translation}")
+        if self.current_tool_pose is not None and self.verbose:
+            rpy = pin.rpy.matrixToRpy(self.current_tool_pose.rotation)
+            logger.info(f"Position: {self.current_tool_pose.translation}")
             logger.info(f"Orientation (RPY): {np.rad2deg(rpy)} deg")
             if self.gripper_positions is not None:
                 logger.info(f"Gripper positions: {self.gripper_positions}")
@@ -200,7 +200,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         Returns:
             False to stop the listener, True to continue
         """
-        if self.current_pose is None:
+        if self.current_tool_pose is None:
             return True
 
         try:
@@ -213,42 +213,42 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
             if key_char == "w":
                 # Move right (positive Y)
                 with self.lock:
-                    self.current_pose.translation[1] += self.translation_step
+                    self.current_tool_pose.translation[1] += self.translation_step
                     if self.verbose:
                         logger.info(f"→ Right (Y+{self.translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "s":
                 # Move left (negative Y)
                 with self.lock:
-                    self.current_pose.translation[1] -= self.translation_step
+                    self.current_tool_pose.translation[1] -= self.translation_step
                     if self.verbose:
                         logger.info(f"← Left (Y-{self.translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "a":
                 # Move backward (negative X)
                 with self.lock:
-                    self.current_pose.translation[0] -= self.translation_step
+                    self.current_tool_pose.translation[0] -= self.translation_step
                     if self.verbose:
                         logger.info(f"↓ Backward (X-{self.translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "d":
                 # Move forward (positive X)
                 with self.lock:
-                    self.current_pose.translation[0] += self.translation_step
+                    self.current_tool_pose.translation[0] += self.translation_step
                     if self.verbose:
                         logger.info(f"↑ Forward (X+{self.translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "q":
                 # Move down (negative Z)
                 with self.lock:
-                    self.current_pose.translation[2] -= self.translation_step
+                    self.current_tool_pose.translation[2] -= self.translation_step
                     if self.verbose:
                         logger.info(f"⬇ Down (Z-{self.translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "e":
                 # Move up (positive Z)
                 with self.lock:
-                    self.current_pose.translation[2] += self.translation_step
+                    self.current_tool_pose.translation[2] += self.translation_step
                     if self.verbose:
                         logger.info(f"⬆ Up (Z+{self.translation_step:.4f}m)")
                         self._log_pose()
@@ -258,7 +258,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 # Roll clockwise (negative rotation around X axis)
                 rotation = pin.utils.rotate("x", -self.rotation_step)
                 with self.lock:
-                    self.current_pose.rotation = self.current_pose.rotation @ rotation
+                    self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
                         logger.info(f"↻ Roll CW (-{np.rad2deg(self.rotation_step):.2f}°)")
                         self._log_pose()
@@ -266,7 +266,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 # Roll counter-clockwise (positive rotation around X axis)
                 rotation = pin.utils.rotate("x", self.rotation_step)
                 with self.lock:
-                    self.current_pose.rotation = self.current_pose.rotation @ rotation
+                    self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
                         logger.info(f"↺ Roll CCW (+{np.rad2deg(self.rotation_step):.2f}°)")
                         self._log_pose()
@@ -274,7 +274,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 # Yaw left (positive rotation around Z axis)
                 rotation = pin.utils.rotate("z", self.rotation_step)
                 with self.lock:
-                    self.current_pose.rotation = self.current_pose.rotation @ rotation
+                    self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
                         logger.info(f"↶ Yaw left (+{np.rad2deg(self.rotation_step):.2f}°)")
                         self._log_pose()
@@ -282,7 +282,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 # Yaw right (negative rotation around Z axis)
                 rotation = pin.utils.rotate("z", -self.rotation_step)
                 with self.lock:
-                    self.current_pose.rotation = self.current_pose.rotation @ rotation
+                    self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
                         logger.info(f"↷ Yaw right (-{np.rad2deg(self.rotation_step):.2f}°)")
                         self._log_pose()
@@ -290,7 +290,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 # Pitch down (negative rotation around Y axis)
                 rotation = pin.utils.rotate("y", -self.rotation_step)
                 with self.lock:
-                    self.current_pose.rotation = self.current_pose.rotation @ rotation
+                    self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
                         logger.info(f"⤵ Pitch down (-{np.rad2deg(self.rotation_step):.2f}°)")
                         self._log_pose()
@@ -298,7 +298,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 # Pitch up (positive rotation around Y axis)
                 rotation = pin.utils.rotate("y", self.rotation_step)
                 with self.lock:
-                    self.current_pose.rotation = self.current_pose.rotation @ rotation
+                    self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
                         logger.info(f"⤴ Pitch up (+{np.rad2deg(self.rotation_step):.2f}°)")
                         self._log_pose()
@@ -409,9 +409,9 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
             Action containing the target tool pose
         """
         # Initialize pose and gripper positions on first call
-        if self.current_pose is None:
+        if self.current_tool_pose is None:
             with self.lock:
-                self.current_pose = self._get_current_tool_pose(observation)
+                self.current_tool_pose = self._get_current_tool_pose(observation)
 
                 # Initialize gripper positions from current state
                 self.gripper_positions = self._get_current_gripper_positions(observation)
@@ -424,8 +424,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
             if self.verbose:
                 logger.info("\nInitial end-effector pose:")
-                logger.info(f"  Position: {self.current_pose.translation}")
-                rpy = pin.rpy.matrixToRpy(self.current_pose.rotation)
+                logger.info(f"  Position: {self.current_tool_pose.translation}")
+                rpy = pin.rpy.matrixToRpy(self.current_tool_pose.rotation)
                 logger.info(f"  Orientation (RPY): {rpy} rad")
                 logger.info(f"  Orientation (RPY): {np.rad2deg(rpy)} deg")
                 if self.gripper_positions is not None:
@@ -443,7 +443,9 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         # Return current target pose and gripper positions
         with self.lock:
             # Create a copy of the pose to avoid race conditions
-            target_pose = pin.SE3(self.current_pose.rotation, self.current_pose.translation)
+            target_pose = pin.SE3(
+                self.current_tool_pose.rotation, self.current_tool_pose.translation
+            )
             # Copy gripper positions if available
             gripper_positions_copy = (
                 self.gripper_positions.copy() if self.gripper_positions is not None else None

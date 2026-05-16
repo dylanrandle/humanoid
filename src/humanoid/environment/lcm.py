@@ -11,6 +11,7 @@ from humanoid.types.observation import Observation
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
+    RobotState,
     RobotToolCommand,
 )
 from humanoid.types.transition import Transition, TransitionInfo
@@ -43,7 +44,7 @@ class LCMEnvironment(Environment):
         """Initialize the LCM environment.
 
         Args:
-            timeout_ms: Timeout in milliseconds for receiving messages
+            timeout_ms: Timeout in milliseconds for receiving messages on reset
             reward_fn: Optional function to compute reward
             done_fn: Optional function to determine if episode is done
             truncated_fn: Optional function to determine if episode is truncated
@@ -70,6 +71,12 @@ class LCMEnvironment(Environment):
         self._prev_observation: Observation | None = None
         self._last_action: Action | None = None
 
+        # Cache of most recently received messages; used as fallback when receive() returns None
+        self._last_robot_state: RobotState | None = None
+        self._last_joint_command: RobotJointCommand | None = None
+        self._last_tool_command: RobotToolCommand | None = None
+        self._last_base_command: RobotBaseCommand | None = None
+
         logger.info("Initialized LCMEnvironment")
 
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> Observation:
@@ -84,7 +91,7 @@ class LCMEnvironment(Environment):
         """
         logger.info("Resetting environment")
 
-        observation = self._build_observation()
+        observation = self._build_observation(timeout_ms=self.timeout_ms)
         self._prev_observation = observation
         self._last_action = None
 
@@ -163,23 +170,38 @@ class LCMEnvironment(Environment):
 
         return timestamp
 
-    def _build_observation(self) -> Observation:
-        """Receive a robot state and the latest joint command and build an Observation.
+    def _build_observation(self, timeout_ms: int | None = None) -> Observation:
+        """Receive the latest messages from LCM and build an Observation.
+
+        Each topic is cached; if receive() returns None the last known value is
+        used. Raises if robot state has never been received.
 
         Raises:
-            RuntimeError: If no robot state is received within the timeout
+            RuntimeError: If no robot state has ever been received
         """
-        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=self.timeout_ms)
-        if robot_state is None:
+        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=timeout_ms)
+        if robot_state is not None:
+            self._last_robot_state = robot_state
+        if self._last_robot_state is None:
             raise RuntimeError("Failed to receive robot state")
-        joint_command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
-        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND)
-        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
+
+        joint_command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=timeout_ms)
+        if joint_command is not None:
+            self._last_joint_command = joint_command
+
+        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=timeout_ms)
+        if tool_command is not None:
+            self._last_tool_command = tool_command
+
+        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND, timeout=timeout_ms)
+        if base_command is not None:
+            self._last_base_command = base_command
+
         return Observation(
-            robot_state=robot_state,
-            robot_joint_command=joint_command,
-            robot_tool_command=tool_command,
-            robot_base_command=base_command,
+            robot_state=self._last_robot_state,
+            robot_joint_command=self._last_joint_command,
+            robot_tool_command=self._last_tool_command,
+            robot_base_command=self._last_base_command,
         )
 
     @staticmethod

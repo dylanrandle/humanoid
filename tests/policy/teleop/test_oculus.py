@@ -274,12 +274,12 @@ class TestBasePoseFromJoysticks:
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.home_position)
         policy(obs)  # initialize base anchor
-        before = policy.current_base_pose.translation.copy()
+        before = policy.reference_base_pose.translation.copy()
 
         reader.buttons["leftJS"] = (0.0, 1.0)
         policy(obs)
 
-        delta = policy.current_base_pose.translation - before
+        delta = policy.reference_base_pose.translation - before
         np.testing.assert_allclose(
             delta,
             [0.0, policy.config.base_translation_step, 0.0],
@@ -291,12 +291,12 @@ class TestBasePoseFromJoysticks:
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.home_position)
         policy(obs)
-        before = policy.current_base_pose.translation.copy()
+        before = policy.reference_base_pose.translation.copy()
 
         reader.buttons["leftJS"] = (1.0, 0.0)
         policy(obs)
 
-        delta = policy.current_base_pose.translation - before
+        delta = policy.reference_base_pose.translation - before
         np.testing.assert_allclose(
             delta,
             [policy.config.base_translation_step, 0.0, 0.0],
@@ -308,7 +308,7 @@ class TestBasePoseFromJoysticks:
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.home_position)
         policy(obs)
-        before = policy.current_base_pose.rotation.copy()
+        before = policy.reference_base_pose.rotation.copy()
 
         reader.buttons["rightJS"] = (1.0, 0.0)
         policy(obs)
@@ -316,20 +316,20 @@ class TestBasePoseFromJoysticks:
         # base_yaw_scale defaults to -1, so +jx -> negative yaw.
         expected_dyaw = policy.config.base_yaw_scale * 1.0 * policy.config.base_rotation_step
         expected = before @ pin.utils.rotate("z", expected_dyaw)
-        np.testing.assert_allclose(policy.current_base_pose.rotation, expected, atol=1e-12)
+        np.testing.assert_allclose(policy.reference_base_pose.rotation, expected, atol=1e-12)
 
     def test_joystick_deadzone_suppresses_small_input(self, mobile_policy_and_reader):
         policy, reader = mobile_policy_and_reader
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.home_position)
         policy(obs)
-        before = policy.current_base_pose.translation.copy()
+        before = policy.reference_base_pose.translation.copy()
 
         # Well inside the default deadzone (0.1).
         reader.buttons["leftJS"] = (0.05, 0.05)
         policy(obs)
 
-        np.testing.assert_allclose(policy.current_base_pose.translation, before, atol=1e-12)
+        np.testing.assert_allclose(policy.reference_base_pose.translation, before, atol=1e-12)
 
 
 class TestReset:
@@ -338,13 +338,13 @@ class TestReset:
         reader.buttons["RG"] = True
         policy(_observation_from_q(policy.robot_config.home_position))
         assert policy.reference_controller_pose is not None
-        assert policy.current_base_pose is not None
+        assert policy.reference_base_pose is not None
 
         policy.reset()
 
         assert policy.reference_controller_pose is None
         assert policy.reference_tool_pose is None
-        assert policy.current_base_pose is None
+        assert policy.reference_base_pose is None
 
 
 def _se3_to_matrix(transform: pin.SE3) -> np.ndarray:
