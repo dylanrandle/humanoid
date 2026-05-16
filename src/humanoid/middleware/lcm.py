@@ -1,4 +1,6 @@
-from collections import deque
+import contextlib
+import queue
+import threading
 from typing import Literal, overload
 
 import lcm
@@ -20,6 +22,9 @@ from humanoid.types.robot import (
 )
 
 logger = get_logger(__name__)
+
+_NON_BLOCKING_TIMEOUT_MS = 0
+_SPIN_TIMEOUT_MS = 100
 
 
 AcceptedTypes = RobotJointCommand | RobotToolCommand | RobotBaseCommand | RobotState
@@ -64,18 +69,29 @@ class Subscriber:
         self.topics = topics
         self.queue_size = queue_size
         self._subscriptions: list[lcm.LCMSubscription] = []
-        self._message_queues: dict[Topic, deque[AcceptedTypes]] = {}
+
+        maxsize = queue_size if queue_size is not None else 0
+        self._message_queues: dict[Topic, queue.Queue[AcceptedTypes]] = {
+            topic: queue.Queue(maxsize=maxsize) for topic in topics
+        }
 
         for topic in topics:
             subscription = self.lc.subscribe(topic.value, self._handle_message)
             if queue_size is not None:
                 subscription.set_queue_capacity(queue_size)
             self._subscriptions.append(subscription)
-            self._message_queues[topic] = deque(maxlen=queue_size)
+
+        self._running = True
+        self._lcm_thread = threading.Thread(target=self._lcm_spin, daemon=True)
+        self._lcm_thread.start()
+
+    def _lcm_spin(self) -> None:
+        """Background thread that continuously drains the LCM socket."""
+        while self._running:
+            self.lc.handle_timeout(_SPIN_TIMEOUT_MS)
 
     def _handle_message(self, channel: str, data: bytes) -> None:
         try:
-            # Determine expected type from channel name
             topic = Topic(channel)
             expected_type = TOPIC_TO_TYPE.get(topic)
 
@@ -94,7 +110,11 @@ class Subscriber:
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
-            self._message_queues[topic].append(decoded_data)
+            q = self._message_queues[topic]
+            if q.full():
+                with contextlib.suppress(queue.Empty):
+                    q.get_nowait()
+            q.put_nowait(decoded_data)
         except Exception as e:
             logger.error(f"Error decoding message on channel {channel}: {e}")
 
@@ -119,24 +139,24 @@ class Subscriber:
     ) -> RobotBaseCommand | None: ...
 
     def receive(self, topic: Topic, timeout: int | None = 0) -> AcceptedTypes | None:
-        # Check if we have queued messages for this topic
-        if self._message_queues[topic]:
-            return self._message_queues[topic].popleft()
+        """Retrieve a message from the per-topic queue.
 
-        # Handle LCM messages
-        if timeout is None:
-            # Blocking receive
-            self.lc.handle()
-        else:
-            self.lc.handle_timeout(int(timeout))
-
-        # Return queued message if available for this topic
-        if self._message_queues[topic]:
-            return self._message_queues[topic].popleft()
-
-        return None
+        Args:
+            topic: Which channel to read from.
+            timeout: Milliseconds to wait. 0 returns immediately; None blocks forever.
+        """
+        try:
+            if timeout is None:
+                return self._message_queues[topic].get(block=True)
+            if timeout == _NON_BLOCKING_TIMEOUT_MS:
+                return self._message_queues[topic].get(block=False)
+            return self._message_queues[topic].get(block=True, timeout=timeout / 1000)
+        except queue.Empty:
+            return None
 
     def close(self) -> None:
+        self._running = False
+        self._lcm_thread.join(timeout=1.0)
         for subscription in self._subscriptions:
             self.lc.unsubscribe(subscription)
         self._subscriptions.clear()

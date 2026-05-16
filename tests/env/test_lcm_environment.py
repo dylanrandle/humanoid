@@ -40,13 +40,20 @@ def env() -> LCMEnvironment:
 
 
 class TestInit:
-    def test_subscribes_to_robot_state(self):
+    def test_subscribes_to_robot_state_and_joint_command(self):
         with (
             patch("humanoid.environment.lcm.Publisher"),
             patch("humanoid.environment.lcm.Subscriber") as mock_sub,
         ):
             LCMEnvironment()
-        mock_sub.assert_called_once_with(topics=[Topic.ROBOT_STATE], queue_size=1)
+        mock_sub.assert_called_once_with(
+            topics=[
+                Topic.ROBOT_STATE,
+                Topic.ROBOT_JOINT_COMMAND,
+                Topic.ROBOT_TOOL_COMMAND,
+                Topic.ROBOT_BASE_COMMAND,
+            ]
+        )
 
     def test_default_callbacks_used_when_none_provided(self, env):
         obs = Observation(robot_state=_make_state())
@@ -75,17 +82,24 @@ class TestInit:
 class TestReset:
     def test_returns_observation_from_robot_state(self, env):
         state = _make_state(timestamp=1.5)
-        env.subscriber.receive = MagicMock(return_value=state)
+        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None])
 
         observation = env.reset()
 
         assert isinstance(observation, Observation)
         assert observation.robot_state is state
-        env.subscriber.receive.assert_called_once_with(Topic.ROBOT_STATE, timeout=env.timeout_ms)
+        assert observation.robot_joint_command is None
+        assert observation.robot_tool_command is None
+        assert observation.robot_base_command is None
+        calls = env.subscriber.receive.call_args_list
+        assert calls[0] == ((Topic.ROBOT_STATE,), {"timeout": env.timeout_ms})
+        assert calls[1] == ((Topic.ROBOT_JOINT_COMMAND,), {})
+        assert calls[2] == ((Topic.ROBOT_TOOL_COMMAND,), {})
+        assert calls[3] == ((Topic.ROBOT_BASE_COMMAND,), {})
 
     def test_raises_when_no_state_received(self, env):
         env.subscriber.receive = MagicMock(return_value=None)
-        with pytest.raises(RuntimeError, match="Failed to receive robot state during reset"):
+        with pytest.raises(RuntimeError, match="Failed to receive robot state"):
             env.reset()
 
     def test_clears_last_action_and_records_prev_observation(self, env):
@@ -162,7 +176,7 @@ class TestStep:
 
     def test_raises_when_no_state_received(self, env):
         env.subscriber.receive = MagicMock(return_value=None)
-        with pytest.raises(RuntimeError, match="Failed to receive robot state after action"):
+        with pytest.raises(RuntimeError, match="Failed to receive robot state"):
             env.step(Action())
 
     def test_callbacks_invoked_with_correct_arguments(self, env):

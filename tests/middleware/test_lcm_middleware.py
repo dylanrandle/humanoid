@@ -1,3 +1,5 @@
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -130,19 +132,23 @@ class TestSubscriber:
 
     def test_receive_with_no_message_returns_none(self, mock_lcm):
         sub = Subscriber(topics=[Topic.ROBOT_STATE])
-
         result = sub.receive(Topic.ROBOT_STATE, timeout=10)
-
-        mock_lcm.handle_timeout.assert_called_once_with(10)
         assert result is None
 
-    def test_receive_blocking_calls_handle(self, mock_lcm):
+    def test_blocking_receive_returns_when_message_arrives(self, mock_lcm):
         sub = Subscriber(topics=[Topic.ROBOT_STATE])
+        state = _make_state()
+        encoded = LCMConverter.robot_state_to_lcm(state).encode()
 
-        sub.receive(Topic.ROBOT_STATE, timeout=None)
+        def deliver():
+            time.sleep(0.02)
+            sub._handle_message(Topic.ROBOT_STATE.value, encoded)
 
-        mock_lcm.handle.assert_called_once()
-        mock_lcm.handle_timeout.assert_not_called()
+        threading.Thread(target=deliver, daemon=True).start()
+        result = sub.receive(Topic.ROBOT_STATE, timeout=500)
+
+        assert isinstance(result, RobotState)
+        np.testing.assert_allclose(result.joint_positions, state.joint_positions)
 
     def test_handle_message_decodes_and_queues_state(self, mock_lcm):
         sub = Subscriber(topics=[Topic.ROBOT_STATE])
@@ -237,36 +243,16 @@ class TestSubscriber:
 
         assert sub.receive(Topic.ROBOT_STATE, timeout=10) is None
 
-    def test_receive_returns_queued_without_calling_handle(self, mock_lcm):
-        """When a message is already queued, receive shouldn't hit the LCM layer."""
+    def test_receive_returns_queued_message_immediately(self, mock_lcm):
+        """A pre-queued message is returned without waiting."""
         sub = Subscriber(topics=[Topic.ROBOT_STATE])
         sub._handle_message(
             Topic.ROBOT_STATE.value, LCMConverter.robot_state_to_lcm(_make_state()).encode()
         )
-        mock_lcm.handle_timeout.reset_mock()
-        mock_lcm.handle.reset_mock()
 
-        result = sub.receive(Topic.ROBOT_STATE, timeout=10)
+        result = sub.receive(Topic.ROBOT_STATE, timeout=0)
 
         assert isinstance(result, RobotState)
-        mock_lcm.handle_timeout.assert_not_called()
-        mock_lcm.handle.assert_not_called()
-
-    def test_receive_returns_message_delivered_during_handle(self, mock_lcm):
-        """When LCM delivers a message during handle_timeout, receive returns it."""
-        sub = Subscriber(topics=[Topic.ROBOT_STATE])
-        state = _make_state()
-        encoded = LCMConverter.robot_state_to_lcm(state).encode()
-
-        # Simulate LCM invoking the handler during handle_timeout.
-        mock_lcm.handle_timeout.side_effect = lambda _t: sub._handle_message(
-            Topic.ROBOT_STATE.value, encoded
-        )
-
-        result = sub.receive(Topic.ROBOT_STATE, timeout=10)
-
-        assert isinstance(result, RobotState)
-        np.testing.assert_allclose(result.joint_positions, state.joint_positions)
 
     def test_close_unsubscribes_all(self, mock_lcm):
         subs = [MagicMock(), MagicMock()]

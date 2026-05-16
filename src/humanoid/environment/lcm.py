@@ -11,7 +11,6 @@ from humanoid.types.observation import Observation
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
-    RobotState,
     RobotToolCommand,
 )
 from humanoid.types.transition import Transition, TransitionInfo
@@ -53,7 +52,14 @@ class LCMEnvironment(Environment):
 
         # Initialize LCM communication
         self.publisher = Publisher()
-        self.subscriber = Subscriber(topics=[Topic.ROBOT_STATE], queue_size=1)
+        self.subscriber = Subscriber(
+            topics=[
+                Topic.ROBOT_STATE,
+                Topic.ROBOT_JOINT_COMMAND,
+                Topic.ROBOT_TOOL_COMMAND,
+                Topic.ROBOT_BASE_COMMAND,
+            ],
+        )
 
         # Reward and termination functions
         self.reward_fn = reward_fn or self._default_reward
@@ -78,15 +84,11 @@ class LCMEnvironment(Environment):
         """
         logger.info("Resetting environment")
 
-        # Wait for a fresh robot state
-        robot_state = self._receive_robot_state()
-
-        if robot_state is None:
-            raise RuntimeError("Failed to receive robot state during reset")
-
-        observation = Observation(robot_state=robot_state)
+        observation = self._build_observation()
         self._prev_observation = observation
         self._last_action = None
+
+        logger.info("Environment reset!")
 
         return observation
 
@@ -99,38 +101,8 @@ class LCMEnvironment(Environment):
         Returns:
             Transition containing observation, reward, is_done, is_truncated, and info
         """
-        # Send command based on action type
-        timestamp = time.time()
-
-        if action.joint_positions is not None:
-            command = RobotJointCommand(
-                timestamp=timestamp,
-                joint_positions=action.joint_positions,
-            )
-            self.publisher.publish(command)
-            logger.debug("Published joint command")
-
-        if action.tool_pose is not None:
-            command = RobotToolCommand(
-                timestamp=timestamp,
-                pose=action.tool_pose,
-                gripper_positions=action.gripper_positions,
-            )
-            self.publisher.publish(command)
-            logger.debug("Published tool command")
-
-        if action.base_pose is not None:
-            base_command = RobotBaseCommand(timestamp=timestamp, pose=action.base_pose)
-            self.publisher.publish(base_command)
-            logger.debug("Published base command")
-
-        # Receive next observation
-        robot_state = self._receive_robot_state()
-
-        if robot_state is None:
-            raise RuntimeError("Failed to receive robot state after action")
-
-        observation = Observation(robot_state=robot_state)
+        timestamp = self._submit_action(action)
+        observation = self._build_observation()
 
         # Compute reward, done, and truncated
         reward = self.reward_fn(self._prev_observation, action, observation)
@@ -140,8 +112,8 @@ class LCMEnvironment(Environment):
         # Create info dict with timing information
         info: TransitionInfo = {
             "command_timestamp": timestamp,
-            "observation_timestamp": robot_state.timestamp,
-            "latency": robot_state.timestamp - timestamp,
+            "observation_timestamp": observation.robot_state.timestamp,
+            "latency": observation.robot_state.timestamp - timestamp,
         }
 
         # Update state
@@ -161,13 +133,54 @@ class LCMEnvironment(Environment):
         logger.info("Closing LCM environment")
         self.subscriber.close()
 
-    def _receive_robot_state(self) -> RobotState | None:
-        """Receive a robot state from LCM.
+    def _submit_action(self, action: Action) -> float:
+        """Publish LCM commands for each non-None field in action.
 
         Returns:
-            RobotState if received, None if timeout
+            Timestamp (seconds) at which the commands were published
         """
-        return self.subscriber.receive(Topic.ROBOT_STATE, timeout=self.timeout_ms)
+        timestamp = time.time()
+
+        if action.joint_positions is not None:
+            self.publisher.publish(
+                RobotJointCommand(timestamp=timestamp, joint_positions=action.joint_positions)
+            )
+            logger.debug("Published joint command")
+
+        if action.tool_pose is not None:
+            self.publisher.publish(
+                RobotToolCommand(
+                    timestamp=timestamp,
+                    pose=action.tool_pose,
+                    gripper_positions=action.gripper_positions,
+                )
+            )
+            logger.debug("Published tool command")
+
+        if action.base_pose is not None:
+            self.publisher.publish(RobotBaseCommand(timestamp=timestamp, pose=action.base_pose))
+            logger.debug("Published base command")
+
+        return timestamp
+
+    def _build_observation(self) -> Observation:
+        """Receive a robot state and the latest joint command and build an Observation.
+
+        Raises:
+            RuntimeError: If no robot state is received within the timeout
+        """
+        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=self.timeout_ms)
+        if robot_state is None:
+            raise RuntimeError("Failed to receive robot state")
+        joint_command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
+        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND)
+        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
+        return Observation(
+            robot_state=robot_state,
+            robot_joint_command=joint_command,
+            robot_tool_command=tool_command,
+            robot_base_command=base_command,
+        )
 
     @staticmethod
     def _default_reward(
