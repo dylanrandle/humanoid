@@ -1,12 +1,19 @@
 """Keyboard teleoperation policy for controlling robot end-effector pose."""
 
+from __future__ import annotations
+
 import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pinocchio as pin
-from pynput import keyboard
+
+if TYPE_CHECKING:
+    # NOTE: pynput import throws when running
+    # on Raspberry Pi (Ubuntu Server), so we
+    # guard/defer the import until needed
+    from pynput import keyboard
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
@@ -17,11 +24,11 @@ from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
 
-DEFAULT_TRANSLATION_STEP = 0.005  # 0.5 cm
-DEFAULT_ROTATION_STEP = 0.05  # ~2.86 degrees
+DEFAULT_TOOL_TRANSLATION_STEP = 0.005  # 0.5 cm
+DEFAULT_TOOL_ROTATION_STEP = 0.05  # ~2.86 degrees
 DEFAULT_GRIPPER_STEP_PCT = 0.025  # 2.5% of gripper range per keypress
 DEFAULT_BASE_TRANSLATION_STEP = 0.01  # 1 cm per keypress
-DEFAULT_BASE_ROTATION_STEP = 0.05  # ~2.86 degrees per keypress
+DEFAULT_BASE_ROTATION_STEP = 0.1  # ~5.73 degrees per keypress
 
 
 @dataclass
@@ -37,8 +44,8 @@ class KeyboardTeleopPolicyConfig:
         verbose: Whether to log pose updates.
     """
 
-    translation_step: float = DEFAULT_TRANSLATION_STEP
-    rotation_step: float = DEFAULT_ROTATION_STEP
+    tool_translation_step: float = DEFAULT_TOOL_TRANSLATION_STEP
+    tool_rotation_step: float = DEFAULT_TOOL_ROTATION_STEP
     gripper_step_pct: float = DEFAULT_GRIPPER_STEP_PCT
     base_translation_step: float = DEFAULT_BASE_TRANSLATION_STEP
     base_rotation_step: float = DEFAULT_BASE_ROTATION_STEP
@@ -80,8 +87,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         super().__init__(robot_config=robot_config, verbose=config.verbose)
 
         self.config = config
-        self.translation_step = config.translation_step
-        self.rotation_step = config.rotation_step
+        self.tool_translation_step = config.tool_translation_step
+        self.tool_rotation_step = config.tool_rotation_step
         self.base_translation_step = config.base_translation_step
         self.base_rotation_step = config.base_rotation_step
 
@@ -123,12 +130,12 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         if self.robot_config.gripper_joint_indices:
             logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
         logger.info(
-            f"Translation step: {self.translation_step:.4f} m "
-            f"({self.translation_step * 100:.2f} cm)"
+            f"Translation step: {self.tool_translation_step:.4f} m "
+            f"({self.tool_translation_step * 100:.2f} cm)"
         )
         logger.info(
-            f"Rotation step: {self.rotation_step:.4f} rad "
-            f"(~{np.rad2deg(self.rotation_step):.2f} degrees)"
+            f"Rotation step: {self.tool_rotation_step:.4f} rad "
+            f"(~{np.rad2deg(self.tool_rotation_step):.2f} degrees)"
         )
         logger.info("\nControls:")
         logger.info("  Translation:")
@@ -165,6 +172,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
     def start_listener(self) -> None:
         """Start the keyboard listener if not already running."""
+        from pynput import keyboard  # noqa: PLC0415
+
         if self.listener is None or not self.listener.running:
             self.listener = keyboard.Listener(on_press=self._on_press)
             self.listener.start()
@@ -200,6 +209,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         Returns:
             False to stop the listener, True to continue
         """
+        from pynput import keyboard  # noqa: PLC0415
+
         if self.current_tool_pose is None:
             return True
 
@@ -213,94 +224,94 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
             if key_char == "w":
                 # Move right (positive Y)
                 with self.lock:
-                    self.current_tool_pose.translation[1] += self.translation_step
+                    self.current_tool_pose.translation[1] += self.tool_translation_step
                     if self.verbose:
-                        logger.info(f"→ Right (Y+{self.translation_step:.4f}m)")
+                        logger.info(f"→ Right (Y+{self.tool_translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "s":
                 # Move left (negative Y)
                 with self.lock:
-                    self.current_tool_pose.translation[1] -= self.translation_step
+                    self.current_tool_pose.translation[1] -= self.tool_translation_step
                     if self.verbose:
-                        logger.info(f"← Left (Y-{self.translation_step:.4f}m)")
+                        logger.info(f"← Left (Y-{self.tool_translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "a":
                 # Move backward (negative X)
                 with self.lock:
-                    self.current_tool_pose.translation[0] -= self.translation_step
+                    self.current_tool_pose.translation[0] -= self.tool_translation_step
                     if self.verbose:
-                        logger.info(f"↓ Backward (X-{self.translation_step:.4f}m)")
+                        logger.info(f"↓ Backward (X-{self.tool_translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "d":
                 # Move forward (positive X)
                 with self.lock:
-                    self.current_tool_pose.translation[0] += self.translation_step
+                    self.current_tool_pose.translation[0] += self.tool_translation_step
                     if self.verbose:
-                        logger.info(f"↑ Forward (X+{self.translation_step:.4f}m)")
+                        logger.info(f"↑ Forward (X+{self.tool_translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "q":
                 # Move down (negative Z)
                 with self.lock:
-                    self.current_tool_pose.translation[2] -= self.translation_step
+                    self.current_tool_pose.translation[2] -= self.tool_translation_step
                     if self.verbose:
-                        logger.info(f"⬇ Down (Z-{self.translation_step:.4f}m)")
+                        logger.info(f"⬇ Down (Z-{self.tool_translation_step:.4f}m)")
                         self._log_pose()
             elif key_char == "e":
                 # Move up (positive Z)
                 with self.lock:
-                    self.current_tool_pose.translation[2] += self.translation_step
+                    self.current_tool_pose.translation[2] += self.tool_translation_step
                     if self.verbose:
-                        logger.info(f"⬆ Up (Z+{self.translation_step:.4f}m)")
+                        logger.info(f"⬆ Up (Z+{self.tool_translation_step:.4f}m)")
                         self._log_pose()
 
             # Rotation controls (applied in the current frame)
             elif key_char == "i":
                 # Roll clockwise (negative rotation around X axis)
-                rotation = pin.utils.rotate("x", -self.rotation_step)
+                rotation = pin.utils.rotate("x", -self.tool_rotation_step)
                 with self.lock:
                     self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
-                        logger.info(f"↻ Roll CW (-{np.rad2deg(self.rotation_step):.2f}°)")
+                        logger.info(f"↻ Roll CW (-{np.rad2deg(self.tool_rotation_step):.2f}°)")
                         self._log_pose()
             elif key_char == "k":
                 # Roll counter-clockwise (positive rotation around X axis)
-                rotation = pin.utils.rotate("x", self.rotation_step)
+                rotation = pin.utils.rotate("x", self.tool_rotation_step)
                 with self.lock:
                     self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
-                        logger.info(f"↺ Roll CCW (+{np.rad2deg(self.rotation_step):.2f}°)")
+                        logger.info(f"↺ Roll CCW (+{np.rad2deg(self.tool_rotation_step):.2f}°)")
                         self._log_pose()
             elif key_char == "j":
                 # Yaw left (positive rotation around Z axis)
-                rotation = pin.utils.rotate("z", self.rotation_step)
+                rotation = pin.utils.rotate("z", self.tool_rotation_step)
                 with self.lock:
                     self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
-                        logger.info(f"↶ Yaw left (+{np.rad2deg(self.rotation_step):.2f}°)")
+                        logger.info(f"↶ Yaw left (+{np.rad2deg(self.tool_rotation_step):.2f}°)")
                         self._log_pose()
             elif key_char == "l":
                 # Yaw right (negative rotation around Z axis)
-                rotation = pin.utils.rotate("z", -self.rotation_step)
+                rotation = pin.utils.rotate("z", -self.tool_rotation_step)
                 with self.lock:
                     self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
-                        logger.info(f"↷ Yaw right (-{np.rad2deg(self.rotation_step):.2f}°)")
+                        logger.info(f"↷ Yaw right (-{np.rad2deg(self.tool_rotation_step):.2f}°)")
                         self._log_pose()
             elif key_char == "u":
                 # Pitch down (negative rotation around Y axis)
-                rotation = pin.utils.rotate("y", -self.rotation_step)
+                rotation = pin.utils.rotate("y", -self.tool_rotation_step)
                 with self.lock:
                     self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
-                        logger.info(f"⤵ Pitch down (-{np.rad2deg(self.rotation_step):.2f}°)")
+                        logger.info(f"⤵ Pitch down (-{np.rad2deg(self.tool_rotation_step):.2f}°)")
                         self._log_pose()
             elif key_char == "o":
                 # Pitch up (positive rotation around Y axis)
-                rotation = pin.utils.rotate("y", self.rotation_step)
+                rotation = pin.utils.rotate("y", self.tool_rotation_step)
                 with self.lock:
                     self.current_tool_pose.rotation = self.current_tool_pose.rotation @ rotation
                     if self.verbose:
-                        logger.info(f"⤴ Pitch up (+{np.rad2deg(self.rotation_step):.2f}°)")
+                        logger.info(f"⤴ Pitch up (+{np.rad2deg(self.tool_rotation_step):.2f}°)")
                         self._log_pose()
             elif key_char == "[":
                 # Close gripper (decrease gripper position)

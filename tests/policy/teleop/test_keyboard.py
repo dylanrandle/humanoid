@@ -141,7 +141,7 @@ class TestTranslationKeys:
 
         delta = panda_policy.current_tool_pose.translation - before
         expected = np.zeros(3)
-        expected[axis] = sign * panda_policy.translation_step
+        expected[axis] = sign * panda_policy.tool_translation_step
         np.testing.assert_allclose(delta, expected, atol=1e-12)
 
 
