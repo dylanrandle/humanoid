@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class VisualizerConfig:
-    open_browser: bool = True
+    open_browser: bool = False
     show_collisions: bool = False
     show_commanded_joint_positions: bool = True
     joint_command_opacity: float = 0.3

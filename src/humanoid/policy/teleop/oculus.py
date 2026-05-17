@@ -37,9 +37,12 @@ class OculusTeleopPolicyConfig:
             pose so headset-frame motion matches the operator's intuition
             of the robot's world.
         base_translation_matrix: 2x2 matrix mapping the left joystick
-            (jx, jy) in [-1, 1]^2 to a per-tick base (dx, dy) translation,
-            scaled by ``base_translation_step``. Default identity gives
-            stick-right (+jx) -> +base_x and stick-forward (+jy) -> +base_y.
+            (jx, jy) in [-1, 1]^2 to a per-tick (dx, dy) translation in the
+            base's local frame, scaled by ``base_translation_step``. The
+            result is rotated into world coordinates by the base's current
+            yaw, so "forward stick" always means forward along the base's
+            current heading. Default identity gives stick-right (+jx) ->
+            +base-local x and stick-forward (+jy) -> +base-local y.
         base_translation_step: Meters of base translation per loop tick at
             full joystick deflection.
         base_rotation_step: Radians of base yaw per loop tick at full
@@ -135,7 +138,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             "  Grip trigger (either hand) -> Dead-man switch (hold to move; release to freeze)"
         )
         if self.robot_config.base_frame is not None:
-            logger.info("  Left joystick -> Base XY (default: jx -> +x, jy -> +y)")
+            logger.info("  Left joystick -> Base XY in base frame (default: jx -> +x, jy -> +y)")
             logger.info(f"  Right joystick X -> Base yaw (sign {self.config.base_yaw_scale:+.0f})")
 
     def reset(self) -> None:
@@ -307,13 +310,18 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             left_jx, left_jy = self._read_joystick(buttons, LEFT_JOYSTICK_KEY)
             right_jx, _ = self._read_joystick(buttons, RIGHT_JOYSTICK_KEY)
 
-            delta_xy = (
+            delta_xy_base = (
                 self.config.base_translation_matrix
                 @ np.array([left_jx, left_jy])
                 * self.config.base_translation_step
             )
-            self.reference_base_pose.translation[0] += delta_xy[0]
-            self.reference_base_pose.translation[1] += delta_xy[1]
+            # Translate in the base's local frame: rotate by current base
+            # orientation so "forward stick" follows the base's heading.
+            delta_xyz_world = self.reference_base_pose.rotation @ np.array(
+                [delta_xy_base[0], delta_xy_base[1], 0.0]
+            )
+            self.reference_base_pose.translation[0] += delta_xyz_world[0]
+            self.reference_base_pose.translation[1] += delta_xyz_world[1]
 
             delta_yaw = self.config.base_yaw_scale * right_jx * self.config.base_rotation_step
             if delta_yaw != 0.0:
