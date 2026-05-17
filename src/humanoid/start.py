@@ -1,6 +1,6 @@
 import signal
 import sys
-from multiprocessing import Process
+from multiprocessing import Process, set_start_method
 
 from humanoid.logger import get_logger
 from humanoid.nodes.robot_controller import RobotController
@@ -18,6 +18,9 @@ class NodeManager:
     def start(self):
         logger.info("Starting node manager")
         self.running = True
+
+        # Ensure consistent start behavior (spawn) across platforms (e.g. Linux + Darwin)
+        set_start_method("spawn")
 
         for cls in [RobotDriver, RobotController, RobotVisualizer]:
             p = Process(target=cls.main, name=cls.__name__)
