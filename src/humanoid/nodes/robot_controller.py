@@ -16,6 +16,7 @@ from humanoid.types.robot import (
     RobotBaseCommand,
     RobotConfig,
     RobotJointCommand,
+    RobotState,
     RobotToolCommand,
 )
 
@@ -58,17 +59,42 @@ class RobotController(Node):
     def setup(self) -> None:
         pass
 
-    # TODO: initialize tool/base commands with robot state on first update
+    def _initialize_commands_from_state(self, robot_state: RobotState) -> None:
+        """Seed current_tool_command/current_base_command from the current robot state.
+
+        Runs FK on the reported joint configuration so the controller holds the
+        robot's current pose until an external command arrives.
+        """
+        q = robot_state.joint_positions
+        timestamp = time.perf_counter()
+
+        gripper_indices = self.robot.get_gripper_position_indices()
+        gripper_positions = q[gripper_indices] if gripper_indices else None
+
+        self.current_tool_command = RobotToolCommand(
+            timestamp=timestamp,
+            pose=self.robot.get_tool_pose(q),
+            gripper_positions=gripper_positions,
+        )
+
+        base_pose = self.robot.get_base_pose(q)
+        if base_pose is not None:
+            self.current_base_command = RobotBaseCommand(timestamp=timestamp, pose=base_pose)
+
     def step(self) -> None:
         """Receive tool command and compute joint commands."""
         # Check for robot state update (for initialization only)
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE)
 
-        # Initialize controller state from first robot state feedback
-        # After initialization, use open-loop control (internal state integration)
-        if robot_state is not None and self.controller.configuration is None:
+        # Initialize controller state from robot state feedback until
+        # the first command is received, and run open-loop thereafter
+        if robot_state is not None and (
+            self.controller.configuration is None or self.current_tool_command is None
+        ):
             logger.debug(f"Received robot state: {robot_state}")
             self.controller.update_state(robot_state.joint_positions)
+            # TODO: enable once we handle policy multiplexing
+            # self._initialize_commands_from_state(robot_state)
 
         # Check for new tool command (non-blocking)
         tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND)

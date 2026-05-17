@@ -113,9 +113,27 @@ def test_first_state_initializes_controller(controller):
     )
 
 
-def test_state_after_initialization_does_not_reinitialize(controller):
-    """Once configuration is set, subsequent RobotState messages don't re-init."""
+def test_state_updates_continuously_until_first_tool_command(controller):
+    """RobotState keeps driving update_state until a tool command arrives."""
     controller.controller.configuration = MagicMock()  # already initialized
+
+    def receive(topic, timeout=0):
+        if topic == Topic.ROBOT_STATE:
+            return _make_state()
+        return None
+
+    controller.subscriber.receive = Mock(side_effect=receive)
+    controller.step()
+    controller.step()
+
+    expected_update_calls = 2
+    assert controller.controller.update_state.call_count == expected_update_calls
+
+
+def test_state_does_not_update_after_tool_command(controller):
+    """Once a tool command has been received, RobotState no longer re-inits."""
+    controller.controller.configuration = MagicMock()  # already initialized
+    controller.current_tool_command = _make_tool_cmd()
 
     def receive(topic, timeout=0):
         if topic == Topic.ROBOT_STATE:
