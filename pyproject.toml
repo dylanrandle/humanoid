@@ -41,7 +41,7 @@ dev = [
 line-length = 100
 target-version = "py313"
 exclude = [
-    "src/humanoid/types/lcm/*.py",  # Auto-generated LCM types
+    "src/humanoid/types/lcm/*_t.py",  # Auto-generated LCM types
 ]
 
 [tool.ruff.lint]
@@ -68,7 +68,7 @@ known-first-party = ["humanoid"]
 
 [tool.ty.src]
 exclude = [
-    "src/humanoid/types/lcm/*.py",  # Auto-generated LCM types
+    "src/humanoid/types/lcm/*_t.py",  # Auto-generated LCM types
 ]
 
 [tool.ty.environment]
