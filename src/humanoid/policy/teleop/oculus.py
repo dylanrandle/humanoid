@@ -18,11 +18,12 @@ logger = get_logger(__name__)
 
 # Oculus controller data keys
 RIGHT_CONTROLLER_KEY = "r"
-RIGHT_TRIGGER_KEY = "rightTrig"
 LEFT_GRIP_KEY = "LG"
 RIGHT_GRIP_KEY = "RG"
 LEFT_JOYSTICK_KEY = "leftJS"
 RIGHT_JOYSTICK_KEY = "rightJS"
+A_BUTTON_KEY = "A"
+B_BUTTON_KEY = "B"
 
 
 @dataclass
@@ -51,6 +52,11 @@ class OculusTeleopPolicyConfig:
             Default -1 makes stick-right yield -yaw and stick-left +yaw.
         base_deadzone: Per-axis joystick magnitude below which input is
             treated as zero.
+        gripper_step: Fraction of the gripper's joint range
+            (``gripper_max - gripper_min``) added (A held) or subtracted
+            (B held) from the commanded gripper position per loop tick.
+            Larger values close/open faster; commanded position is clamped
+            to the joint limits.
         verbose: Whether to log pose updates.
     """
 
@@ -65,23 +71,27 @@ class OculusTeleopPolicyConfig:
     base_rotation_step: float = 0.02
     base_yaw_scale: float = -1.0
     base_deadzone: float = 0.1
+    gripper_step: float = 0.01
     verbose: bool = True
 
 
 class OculusTeleopPolicy(BaseTeleopPolicy):
     """Policy that uses Oculus VR controllers to control the robot.
 
-    The right controller's pose commands the tool pose, the right index trigger
-    commands the gripper, and (when the robot has a base frame) the joysticks
-    command base translation and yaw. Motion is gated by a grip-trigger
-    dead-man so the robot only moves while the operator is actively engaged.
+    The right controller's pose commands the tool pose, the A and B buttons
+    command the gripper (push-and-hold), and (when the robot has a base frame)
+    the joysticks command base translation and yaw. All commands are gated by
+    a grip-trigger dead-man so the robot only moves while the operator is
+    actively engaged.
 
     Controls:
         - Right controller pose: End-effector position and orientation
-        - Right index trigger: Gripper width (0.0 = closed, 1.0 = fully open)
-        - Grip trigger (either hand): Dead-man switch -- motion is only
-          commanded while held; releasing both grips clears the controller
-          and base reference poses, which re-anchor on re-engage
+        - A button (hold): Close gripper; release to freeze at current width
+        - B button (hold): Open gripper; release to freeze at current width
+        - Grip trigger (either hand): Dead-man switch -- all motion is
+          only commanded while held; releasing both grips clears the
+          controller, base, and gripper reference state, which re-anchor
+          from the current robot state on re-engage
         - Left joystick: Base XY translation (see ``base_translation_matrix``)
         - Right joystick X: Base yaw (see ``base_yaw_scale``)
 
@@ -120,6 +130,10 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.reference_tool_pose: pin.SE3 | None = None
         self.reference_base_pose: pin.SE3 | None = None
 
+        # Integrated gripper command. Seeded from the observation on first
+        # tick, then nudged by gripper_step while A or B is held.
+        self.commanded_gripper_position: float | None = None
+
         if self.verbose:
             self.log_configuration()
 
@@ -133,9 +147,11 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         logger.info(f"Oculus->world rotation:\n{self.oculus_to_world.rotation}")
         logger.info("\nControls:")
         logger.info("  Right controller pose -> End-effector pose")
-        logger.info("  Right trigger -> Gripper width (0.0=closed, 1.0=open)")
+        logger.info("  A button (hold) -> Close gripper (release to freeze)")
+        logger.info("  B button (hold) -> Open gripper (release to freeze)")
         logger.info(
-            "  Grip trigger (either hand) -> Dead-man switch (hold to move; release to freeze)"
+            "  Grip trigger (either hand) -> Dead-man switch "
+            "(hold for any command; release to freeze)"
         )
         if self.robot_config.base_frame is not None:
             logger.info("  Left joystick -> Base XY in base frame (default: jx -> +x, jy -> +y)")
@@ -146,6 +162,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.reference_controller_pose = None
         self.reference_tool_pose = None
         self.reference_base_pose = None
+        self.commanded_gripper_position = None
 
     def _has_valid_controller_data(self, transforms: dict, buttons: dict) -> bool:
         """Check if controller data is valid and contains required keys.
@@ -161,7 +178,6 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             transforms
             and RIGHT_CONTROLLER_KEY in transforms
             and buttons
-            and RIGHT_TRIGGER_KEY in buttons
             and LEFT_GRIP_KEY in buttons
             and RIGHT_GRIP_KEY in buttons
         )
@@ -185,6 +201,41 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         if abs(jy) < deadzone:
             jy = 0.0
         return float(jx), float(jy)
+
+    def _compute_gripper_positions(
+        self, buttons: dict, observation: Observation
+    ) -> np.ndarray | None:
+        """Compute the gripper command from the A/B buttons.
+
+        The commanded position is integrated across ticks: holding A adds
+        ``gripper_step * range`` per tick (close), holding B subtracts it
+        (open), where ``range = gripper_max - gripper_min``. Releasing both
+        holds the last commanded value. On the first call, the commanded
+        position is seeded from the observation so motion starts from where
+        the gripper currently is. The result is clamped to the gripper's
+        joint limits. A takes priority if both are held.
+
+        Returns None when the robot has no gripper joint configured.
+        """
+        if not self.robot_config.gripper_joint_indices:
+            return None
+
+        if self.commanded_gripper_position is None:
+            current = self._get_current_gripper_positions(observation)
+            if current is None or len(current) == 0:
+                return None
+            self.commanded_gripper_position = float(current[0])
+
+        step = self.config.gripper_step * (self.gripper_max - self.gripper_min)
+        if bool(buttons.get(A_BUTTON_KEY, False)):
+            self.commanded_gripper_position += step
+        elif bool(buttons.get(B_BUTTON_KEY, False)):
+            self.commanded_gripper_position -= step
+
+        self.commanded_gripper_position = float(
+            np.clip(self.commanded_gripper_position, self.gripper_min, self.gripper_max)
+        )
+        return np.array([self.commanded_gripper_position])
 
     def _initialize_reference_poses(
         self, right_controller_pose: np.ndarray, observation: Observation
@@ -237,8 +288,9 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         if not self._has_valid_controller_data(transforms, buttons):
             return self._hold_current_pose_action(observation)
 
-        # Dead-man switch: either grip trigger must be held to command motion.
-        # Releasing both clears the reference poses so they re-anchor on re-engage.
+        # Dead-man switch: either grip trigger must be held to command any
+        # motion. Releasing both clears the reference poses so they re-anchor
+        # on re-engage.
         if not (buttons[LEFT_GRIP_KEY] or buttons[RIGHT_GRIP_KEY]):
             self.reset()
             return self._hold_current_pose_action(observation)
@@ -288,20 +340,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         # Apply delta to reference tool pose
         target_pose = self.reference_tool_pose * scaled_delta
 
-        # Get gripper position from right trigger
-        # rightTrig is a tuple with one element (trigger value from 0.0 to 1.0)
-        trigger_value = buttons[RIGHT_TRIGGER_KEY][0]
-
-        # Map trigger value to gripper position
-        # trigger 0.0 (not pressed) -> gripper_min (closed)
-        # trigger 1.0 (fully pressed) -> gripper_max (open)
-        if self.robot_config.gripper_joint_indices:
-            gripper_position = self.gripper_min + trigger_value * (
-                self.gripper_max - self.gripper_min
-            )
-            gripper_positions = np.array([gripper_position])
-        else:
-            gripper_positions = None
+        gripper_positions = self._compute_gripper_positions(buttons, observation)
 
         base_pose_command: pin.SE3 | None = None
         if self.robot_config.base_frame is not None:
