@@ -16,8 +16,6 @@ from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 100.0
-
 
 class OculusTeleopNode(Node):
     """Node that runs Oculus VR teleoperation using policy and environment.
@@ -30,22 +28,23 @@ class OculusTeleopNode(Node):
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
         policy_config: OculusTeleopPolicyConfig | None = None,
-        rate_hz: float = DEFAULT_RATE_HZ,
     ):
         """Initialize the Oculus teleoperation node.
 
         Args:
             robot_config: Robot configuration
-            policy_config: Tunable parameters for the Oculus teleop policy
-            rate_hz: Control loop rate in Hz
+            policy_config: Tunable parameters for the Oculus teleop policy.
+                Its ``dt`` field sets the control loop period.
         """
+        if policy_config is None:
+            policy_config = OculusTeleopPolicyConfig()
 
         self.policy = OculusTeleopPolicy(robot_config=robot_config, config=policy_config)
 
         # Create environment
         self.env = LCMEnvironment()
 
-        self.rate_hz = rate_hz
+        self.rate_hz = 1.0 / policy_config.dt
 
     def step(self) -> None:
         """Execute one step of the control loop."""

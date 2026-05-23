@@ -175,7 +175,7 @@ class TestControllerDeltaApplied:
         policy, reader = _make_policy(
             config=OculusTeleopPolicyConfig(
                 verbose=False,
-                scale_translation=3.0,
+                tool_translation_scale=3.0,
                 oculus_to_world_rotation=np.eye(3),
             ),
         )
@@ -244,7 +244,7 @@ class TestGripper:
         reader.buttons["A"] = True
         action = policy(obs)
 
-        step = policy.config.gripper_step * (policy.gripper_max - policy.gripper_min)
+        step = policy.gripper_step
         expected = seeded_gripper + step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
@@ -262,7 +262,7 @@ class TestGripper:
         reader.buttons["B"] = True
         action = policy(obs)
 
-        step = policy.config.gripper_step * (policy.gripper_max - policy.gripper_min)
+        step = policy.gripper_step
         expected = seeded_gripper - step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
@@ -282,7 +282,7 @@ class TestGripper:
         for _ in range(num_ticks):
             action = policy(obs)
 
-        step = policy.config.gripper_step * (policy.gripper_max - policy.gripper_min)
+        step = policy.gripper_step
         expected = seeded_gripper + num_ticks * step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
@@ -310,7 +310,7 @@ class TestGripper:
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
         # Seed near the upper limit so a single step would overshoot.
-        step = policy.config.gripper_step * (policy.gripper_max - policy.gripper_min)
+        step = policy.gripper_step
         policy.commanded_gripper_position = policy.gripper_max - 0.5 * step
 
         reader.buttons["A"] = True
@@ -322,7 +322,7 @@ class TestGripper:
         """B opens (subtracts step), so it clamps at the lower joint limit."""
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
-        step = policy.config.gripper_step * (policy.gripper_max - policy.gripper_min)
+        step = policy.gripper_step
         policy.commanded_gripper_position = policy.gripper_min + 0.5 * step
 
         reader.buttons["B"] = True
@@ -344,7 +344,7 @@ class TestGripper:
         reader.buttons["B"] = True
         action = policy(obs)
 
-        step = policy.config.gripper_step * (policy.gripper_max - policy.gripper_min)
+        step = policy.gripper_step
         expected = seeded_gripper + step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
@@ -390,7 +390,7 @@ class TestGripper:
         # Re-engaging with A still held seeds from observation, then steps once.
         reader.buttons["RG"] = True
         action = policy(obs)
-        step = policy.config.gripper_step * (policy.gripper_max - policy.gripper_min)
+        step = policy.gripper_step
         assert action.gripper_positions[0] == pytest.approx(seeded_gripper + step)
 
     def test_no_gripper_indices_yields_none(self):
@@ -439,10 +439,11 @@ class TestBasePoseFromJoysticks:
         reader.buttons["leftJS"] = (0.0, 1.0)
         policy(obs)
 
+        translation_step = policy.config.base_translation_velocity * policy.config.dt
         delta = policy.reference_base_pose.translation - before
         np.testing.assert_allclose(
             delta,
-            [0.0, policy.config.base_translation_step, 0.0],
+            [0.0, translation_step, 0.0],
             atol=1e-12,
         )
 
@@ -456,10 +457,11 @@ class TestBasePoseFromJoysticks:
         reader.buttons["leftJS"] = (1.0, 0.0)
         policy(obs)
 
+        translation_step = policy.config.base_translation_velocity * policy.config.dt
         delta = policy.reference_base_pose.translation - before
         np.testing.assert_allclose(
             delta,
-            [policy.config.base_translation_step, 0.0, 0.0],
+            [translation_step, 0.0, 0.0],
             atol=1e-12,
         )
 
@@ -474,7 +476,8 @@ class TestBasePoseFromJoysticks:
         policy(obs)
 
         # base_yaw_scale defaults to -1, so +jx -> negative yaw.
-        expected_dyaw = policy.config.base_yaw_scale * 1.0 * policy.config.base_rotation_step
+        rotation_step = policy.config.base_rotation_velocity * policy.config.dt
+        expected_dyaw = policy.config.base_yaw_scale * 1.0 * rotation_step
         expected = before @ pin.utils.rotate("z", expected_dyaw)
         np.testing.assert_allclose(policy.reference_base_pose.rotation, expected, atol=1e-12)
 

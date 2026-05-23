@@ -69,10 +69,9 @@ class TestConstruction:
         assert isinstance(policy.config, KeyboardTeleopPolicyConfig)
 
     def test_gripper_step_derived_from_range(self, panda_policy):
-        # gripper_step = gripper_range * gripper_step_pct
-        expected = (panda_policy.gripper_max - panda_policy.gripper_min) * (
-            panda_policy.config.gripper_step_pct
-        )
+        # gripper_step = gripper_range * dt / gripper_close_time
+        gripper_range = panda_policy.gripper_max - panda_policy.gripper_min
+        expected = gripper_range * panda_policy.config.dt / panda_policy.config.gripper_close_time
         assert panda_policy.gripper_step == pytest.approx(expected)
 
     def test_no_gripper_config_zeroes_step_and_limits(self):

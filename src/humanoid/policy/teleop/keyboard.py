@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -21,35 +20,9 @@ from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.robot import RobotConfig
+from humanoid.types.teleop import KeyboardTeleopPolicyConfig
 
 logger = get_logger(__name__)
-
-DEFAULT_TOOL_TRANSLATION_STEP = 0.005  # 0.5 cm per keypress
-DEFAULT_TOOL_ROTATION_STEP = 0.05  # ~2.86 degrees per keypress
-DEFAULT_GRIPPER_STEP_PCT = 0.025  # 2.5% of gripper range per keypress
-DEFAULT_BASE_TRANSLATION_STEP = 0.01  # 1 cm per keypress
-DEFAULT_BASE_ROTATION_STEP = 0.05  # ~2.86 degrees per keypress
-
-
-@dataclass
-class KeyboardTeleopPolicyConfig:
-    """Tunable parameters for KeyboardTeleopPolicy.
-
-    Args:
-        translation_step: Step size in meters for end-effector translation.
-        rotation_step: Step size in radians for end-effector rotation.
-        gripper_step_pct: Percentage of gripper range per keypress (e.g. 0.025 = 2.5%).
-        base_translation_step: Step size in meters for base translation.
-        base_rotation_step: Step size in radians for base yaw.
-        verbose: Whether to log pose updates.
-    """
-
-    tool_translation_step: float = DEFAULT_TOOL_TRANSLATION_STEP
-    tool_rotation_step: float = DEFAULT_TOOL_ROTATION_STEP
-    gripper_step_pct: float = DEFAULT_GRIPPER_STEP_PCT
-    base_translation_step: float = DEFAULT_BASE_TRANSLATION_STEP
-    base_rotation_step: float = DEFAULT_BASE_ROTATION_STEP
-    verbose: bool = True
 
 
 class KeyboardTeleopPolicy(BaseTeleopPolicy):
@@ -87,18 +60,18 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         super().__init__(robot_config=robot_config, verbose=config.verbose)
 
         self.config = config
-        self.tool_translation_step = config.tool_translation_step
-        self.tool_rotation_step = config.tool_rotation_step
-        self.base_translation_step = config.base_translation_step
-        self.base_rotation_step = config.base_rotation_step
+        self.tool_translation_step = config.tool_translation_velocity * config.dt
+        self.tool_rotation_step = config.tool_rotation_velocity * config.dt
+        self.base_translation_step = config.base_translation_velocity * config.dt
+        self.base_rotation_step = config.base_rotation_velocity * config.dt
 
         gripper_range = self.gripper_max - self.gripper_min
-        self.gripper_step = gripper_range * config.gripper_step_pct
+        self.gripper_step = gripper_range * config.dt / config.gripper_close_time
         if self.verbose and robot_config.gripper_joint_indices:
             logger.info(
                 f"Gripper step: {self.gripper_step:.4f} "
                 f"({self.gripper_step * 1000:.2f}mm, "
-                f"{config.gripper_step_pct * 100:.1f}% of range)"
+                f"{config.gripper_close_time:.2f}s to close)"
             )
 
         # Current target tool pose (will be initialized on first observation)
