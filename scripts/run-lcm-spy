@@ -6,7 +6,7 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Define JAR path
-JAR_FILE="${PROJECT_ROOT}/src/humanoid/types/lcm/types.jar"
+JAR_FILE="${PROJECT_ROOT}/lcm-java/types.jar"
 
 # Check if JAR exists
 if [ ! -f "${JAR_FILE}" ]; then

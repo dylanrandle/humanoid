@@ -9,7 +9,6 @@ description = "Small household humanoid robot"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "alive-progress>=3.3.0",
     "lcm>=1.5.2",
     "meshcat>=0.3.2",
     "numpy>=2.0.0",

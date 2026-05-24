@@ -9,7 +9,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LCM_DIR="${PROJECT_ROOT}/src/humanoid/types/lcm"
 LCM_OUTPUT="${PROJECT_ROOT}/src"
 JAVA_OUTPUT="${PROJECT_ROOT}/lcm-java"
-JAR_OUTPUT="${LCM_DIR}/types.jar"
+JAR_OUTPUT="${JAVA_OUTPUT}/types.jar"
 
 echo "LCM definitions directory: ${LCM_DIR}"
 echo "Generating LCM Python types..."

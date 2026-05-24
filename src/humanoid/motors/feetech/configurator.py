@@ -1,5 +1,3 @@
-from alive_progress import alive_it
-
 from humanoid.logger import get_logger
 from humanoid.motors.feetech.controller import (
     FeetechMotorController,
@@ -21,10 +19,11 @@ class FeetechMotorConfigurator:
     def scan(cls) -> list[int]:
         found_ids = []
         possible_ids = list(range(ID_MIN, ID_MAX + 1))
-        for id in alive_it(possible_ids):
+        for id in possible_ids:
             with FeetechMotorController(servo_ids=[id]) as controller:
                 if controller.ping(id):
                     found_ids.append(id)
+            logger.info(f"Checked: {id}/{ID_MAX + 1}\n")
         return found_ids
 
     @classmethod
