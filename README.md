@@ -115,7 +115,7 @@ uv run pytest
 humanoid/
 ├── src/humanoid/
 │   ├── controllers/       # Control algorithms (operational space, etc.)
-│   ├── environment/       # Environment interfaces (LCM, base)
+│   ├── environment/       # Environment interfaces (realtime, base)
 │   ├── middleware/        # Communication middleware
 │   ├── motors/           # Motor drivers (Feetech, simulation)
 │   ├── nodes/            # Main system nodes (driver, controller, visualizer)

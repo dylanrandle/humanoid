@@ -1,6 +1,6 @@
 """Keyboard teleoperation node for controlling robot end-effector pose.
 
-This node uses the KeyboardTeleopPolicy with the LCMEnvironment to provide
+This node uses the KeyboardTeleopPolicy with the RealtimeEnvironment to provide
 keyboard-based control of the robot's end-effector pose.
 
 Usage:
@@ -8,7 +8,7 @@ Usage:
 """
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.environment.lcm import LCMEnvironment
+from humanoid.environment.realtime import RealtimeEnvironment
 from humanoid.logger import get_logger
 from humanoid.nodes.base import Node
 from humanoid.policy import KeyboardTeleopPolicy, KeyboardTeleopPolicyConfig
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class KeyboardTeleopNode(Node):
     """Node that runs keyboard teleoperation using policy and environment.
 
-    This node integrates the KeyboardTeleopPolicy with the LCMEnvironment
+    This node integrates the KeyboardTeleopPolicy with the RealtimeEnvironment
     to provide a clean, modular approach to keyboard-based robot control.
     """
 
@@ -41,7 +41,7 @@ class KeyboardTeleopNode(Node):
 
         self.policy = KeyboardTeleopPolicy(robot_config=robot_config, config=policy_config)
 
-        self.env = LCMEnvironment()
+        self.env = RealtimeEnvironment()
 
         self.rate_hz = 1.0 / policy_config.dt
 

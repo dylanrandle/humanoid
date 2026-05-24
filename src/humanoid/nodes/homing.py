@@ -1,7 +1,7 @@
 import argparse
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.environment.lcm import LCMEnvironment
+from humanoid.environment.realtime import RealtimeEnvironment
 from humanoid.logger import get_logger
 from humanoid.nodes.base import Node
 from humanoid.policy.homing import HomingPolicy
@@ -28,7 +28,7 @@ class HomingNode(Node):
             speed=speed,
             dt=1.0 / rate_hz,
         )
-        self.env = LCMEnvironment()
+        self.env = RealtimeEnvironment()
 
     def setup(self) -> None:
         self.observation = self.env.reset()

@@ -25,12 +25,13 @@ DoneFunction = Callable[[Observation], bool]
 TruncatedFunction = Callable[[Observation], bool]
 
 
-class LCMEnvironment(Environment):
-    """Environment implementation using LCM for robot communication.
+class RealtimeEnvironment(Environment):
+    """Environment that talks to a running robot (or simulator) over LCM.
 
     This environment:
     - Subscribes to ROBOT_STATE topic to receive observations
-    - Publishes to ROBOT_JOINT_COMMAND or ROBOT_TOOL_COMMAND based on action type
+    - Publishes to ROBOT_JOINT_COMMAND, ROBOT_TOOL_COMMAND, or ROBOT_BASE_COMMAND
+      based on which fields of the action are set
     - Implements the standard Environment interface with reset() and step()
     """
 
@@ -41,7 +42,7 @@ class LCMEnvironment(Environment):
         done_fn: DoneFunction | None = None,
         truncated_fn: TruncatedFunction | None = None,
     ):
-        """Initialize the LCM environment.
+        """Initialize the environment.
 
         Args:
             timeout_ms: Timeout in milliseconds for receiving messages on reset
@@ -77,7 +78,7 @@ class LCMEnvironment(Environment):
         self._last_tool_command: RobotToolCommand | None = None
         self._last_base_command: RobotBaseCommand | None = None
 
-        logger.info("Initialized LCMEnvironment")
+        logger.info("Initialized environment")
 
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> Observation:
         """Reset the environment to an initial state.
@@ -137,11 +138,11 @@ class LCMEnvironment(Environment):
 
     def close(self) -> None:
         """Clean up environment resources."""
-        logger.info("Closing LCM environment")
+        logger.info("Closing environment")
         self.subscriber.close()
 
     def _submit_action(self, action: Action) -> float:
-        """Publish LCM commands for each non-None field in action.
+        """Publish commands for each non-None field in action.
 
         Returns:
             Timestamp (seconds) at which the commands were published
@@ -171,7 +172,7 @@ class LCMEnvironment(Environment):
         return timestamp
 
     def _build_observation(self, timeout_ms: int = 0) -> Observation:
-        """Receive the latest messages from LCM and build an Observation.
+        """Receive the latest messages and build an Observation.
 
         Each topic is cached; if receive() returns None the last known value is
         used. Raises if robot state has never been received.

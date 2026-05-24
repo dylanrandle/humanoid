@@ -5,7 +5,7 @@ import pinocchio as pin
 import pytest
 
 from humanoid.constants import Topic
-from humanoid.environment.lcm import LCMEnvironment
+from humanoid.environment.realtime import RealtimeEnvironment
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.robot import (
@@ -25,27 +25,27 @@ def _make_state(timestamp: float = 0.0) -> RobotState:
     )
 
 
-def _make_env() -> LCMEnvironment:
-    """Build an LCMEnvironment with mocked Publisher and Subscriber."""
+def _make_env() -> RealtimeEnvironment:
+    """Build a RealtimeEnvironment with mocked Publisher and Subscriber."""
     with (
-        patch("humanoid.environment.lcm.Publisher"),
-        patch("humanoid.environment.lcm.Subscriber"),
+        patch("humanoid.environment.realtime.Publisher"),
+        patch("humanoid.environment.realtime.Subscriber"),
     ):
-        return LCMEnvironment()
+        return RealtimeEnvironment()
 
 
 @pytest.fixture
-def env() -> LCMEnvironment:
+def env() -> RealtimeEnvironment:
     return _make_env()
 
 
 class TestInit:
     def test_subscribes_to_robot_state_and_joint_command(self):
         with (
-            patch("humanoid.environment.lcm.Publisher"),
-            patch("humanoid.environment.lcm.Subscriber") as mock_sub,
+            patch("humanoid.environment.realtime.Publisher"),
+            patch("humanoid.environment.realtime.Subscriber") as mock_sub,
         ):
-            LCMEnvironment()
+            RealtimeEnvironment()
         mock_sub.assert_called_once_with(
             topics=[
                 Topic.ROBOT_STATE,
@@ -65,10 +65,10 @@ class TestInit:
     def test_custom_callbacks_are_used(self):
         reward_val = 5.0
         with (
-            patch("humanoid.environment.lcm.Publisher"),
-            patch("humanoid.environment.lcm.Subscriber"),
+            patch("humanoid.environment.realtime.Publisher"),
+            patch("humanoid.environment.realtime.Subscriber"),
         ):
-            env = LCMEnvironment(
+            env = RealtimeEnvironment(
                 reward_fn=lambda prev, a, o: reward_val,
                 done_fn=lambda o: True,
                 truncated_fn=lambda o: True,
@@ -241,7 +241,7 @@ class TestStep:
         state = _make_state(timestamp=obs_timestamp)
         env.subscriber.receive = MagicMock(return_value=state)
 
-        with patch("humanoid.environment.lcm.time.time", return_value=command_timestamp):
+        with patch("humanoid.environment.realtime.time.time", return_value=command_timestamp):
             transition = env.step(Action())
 
         assert transition.info["command_timestamp"] == command_timestamp

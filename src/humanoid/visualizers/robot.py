@@ -11,7 +11,7 @@ from typing import Any
 import meshcat.geometry as g
 import numpy as np
 import pinocchio as pin
-from pinocchio.visualize import MeshcatVisualizer as PinocchioMeshcatVisualizer
+from pinocchio.visualize import MeshcatVisualizer
 
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
@@ -31,7 +31,7 @@ class CommandVisualizer(ABC):
     ``display`` method whose signature reflects the commanded quantity.
     """
 
-    def __init__(self, robot: Robot, viewer: PinocchioMeshcatVisualizer, opacity: float):
+    def __init__(self, robot: Robot, viewer: MeshcatVisualizer, opacity: float):
         """Initialize the command visualizer state.
 
         Args:
@@ -43,7 +43,7 @@ class CommandVisualizer(ABC):
         self.robot = robot
         self._parent_viewer = viewer
         self._opacity = opacity
-        self._viewer: PinocchioMeshcatVisualizer | None = None
+        self._viewer: MeshcatVisualizer | None = None
         self._initialized = False
 
     @abstractmethod
@@ -72,7 +72,7 @@ class JointCommandVisualizer(CommandVisualizer):
     joint positions alongside the actual robot state.
     """
 
-    def __init__(self, robot: Robot, viewer: PinocchioMeshcatVisualizer, opacity: float = 0.3):
+    def __init__(self, robot: Robot, viewer: MeshcatVisualizer, opacity: float = 0.3):
         """Initialize the joint command visualizer.
 
         Args:
@@ -96,7 +96,7 @@ class JointCommandVisualizer(CommandVisualizer):
             geom.overrideMaterial = True
 
         # Create a separate visualizer for the commanded positions
-        self._viewer = PinocchioMeshcatVisualizer(
+        self._viewer = MeshcatVisualizer(
             self.robot.model,
             self.robot.collision_model,
             visual_model_copy,
@@ -142,7 +142,7 @@ class ToolCommandVisualizer(CommandVisualizer):
     def __init__(
         self,
         robot: Robot,
-        viewer: PinocchioMeshcatVisualizer,
+        viewer: MeshcatVisualizer,
         end_effector_frame: str,
         opacity: float = 0.5,
     ):
@@ -221,7 +221,7 @@ class ToolCommandVisualizer(CommandVisualizer):
         collision_model_copy = pin.GeometryModel()
 
         # Create a separate visualizer for the tool command
-        self._viewer = PinocchioMeshcatVisualizer(
+        self._viewer = MeshcatVisualizer(
             self.robot.model,
             collision_model_copy,
             visual_model_copy,
@@ -265,7 +265,7 @@ class ToolCommandVisualizer(CommandVisualizer):
         self._viewer.viewer["tool_command"].set_transform(root_transform.homogeneous)  # type: ignore[union-attr]
 
 
-class MeshcatVisualizer:
+class RobotVisualizer:
     """Wrapper around Pinocchio's MeshcatVisualizer for easy robot visualization.
 
     This class simplifies the process of visualizing robots by automatically
@@ -274,7 +274,7 @@ class MeshcatVisualizer:
 
     Example:
         >>> from humanoid.robots.base import Robot
-        >>> from humanoid.visualizers.meshcat import MeshcatVisualizer
+        >>> from humanoid.visualizers.robot import RobotVisualizer
         >>> from humanoid.types.visualizer import VisualizerConfig
         >>>
         >>> # Load robot
@@ -282,7 +282,7 @@ class MeshcatVisualizer:
         >>>
         >>> # Create and initialize visualizer
         >>> config = VisualizerConfig(open_browser=True, show_collisions=False)
-        >>> viz = MeshcatVisualizer(robot, config=config)
+        >>> viz = RobotVisualizer(robot, config=config)
         >>> viz.initialize()
         >>>
         >>> # Update robot configuration
@@ -295,7 +295,7 @@ class MeshcatVisualizer:
     """
 
     def __init__(self, robot: Robot, config: VisualizerConfig):
-        """Initialize the MeshCat visualizer wrapper.
+        """Initialize the robot visualizer.
 
         Args:
             robot: Robot instance to visualize
@@ -303,13 +303,13 @@ class MeshcatVisualizer:
         """
         self.robot = robot
         self._config = config
-        self._viewer: PinocchioMeshcatVisualizer | None = None
+        self._viewer: MeshcatVisualizer | None = None
         self._joint_command_viz: JointCommandVisualizer | None = None
         self._tool_command_viz: ToolCommandVisualizer | None = None
         self._initialized = False
 
     @property
-    def viewer(self) -> PinocchioMeshcatVisualizer:
+    def viewer(self) -> MeshcatVisualizer:
         """Get the underlying Pinocchio MeshcatVisualizer.
 
         Returns:
@@ -329,7 +329,7 @@ class MeshcatVisualizer:
         and loads the robot's visual and collision models.
         """
         # Create the Pinocchio MeshcatVisualizer
-        self._viewer = PinocchioMeshcatVisualizer(
+        self._viewer = MeshcatVisualizer(
             self.robot.model,
             self.robot.collision_model,
             self.robot.visual_model,

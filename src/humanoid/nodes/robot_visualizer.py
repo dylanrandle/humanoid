@@ -12,12 +12,9 @@ from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig
 from humanoid.types.visualizer import VisualizerConfig
-from humanoid.visualizers.meshcat import MeshcatVisualizer
+from humanoid.visualizers.robot import RobotVisualizer as _RobotVisualizer
 
 logger = get_logger(__name__)
-
-
-DEFAULT_RATE_HZ = 50.0
 
 
 class RobotVisualizer(Node):
@@ -39,16 +36,15 @@ class RobotVisualizer(Node):
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
         visualizer_config: VisualizerConfig = VISUALIZER_CONFIG,
-        rate_hz: float = DEFAULT_RATE_HZ,
     ):
-        self.rate_hz = rate_hz
+        self.rate_hz = 1 / visualizer_config.dt
 
         # Load robot model
         self.robot = Robot(robot_config)
 
         # Setup MeshCat visualization
         self.viz_config = visualizer_config
-        self.viz = MeshcatVisualizer(self.robot, config=visualizer_config)
+        self.viz = _RobotVisualizer(self.robot, config=visualizer_config)
         self.viz.initialize()
 
         # Initialize with home position

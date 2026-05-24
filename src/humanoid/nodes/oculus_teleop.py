@@ -1,6 +1,6 @@
 """Oculus VR teleoperation node for controlling robot end-effector pose.
 
-This node uses the OculusTeleopPolicy with the LCMEnvironment to provide
+This node uses the OculusTeleopPolicy with the RealtimeEnvironment to provide
 Oculus VR controller-based control of the robot's end-effector pose.
 
 Usage:
@@ -8,7 +8,7 @@ Usage:
 """
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.environment.lcm import LCMEnvironment
+from humanoid.environment.realtime import RealtimeEnvironment
 from humanoid.logger import get_logger
 from humanoid.nodes.base import Node
 from humanoid.policy import OculusTeleopPolicy, OculusTeleopPolicyConfig
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class OculusTeleopNode(Node):
     """Node that runs Oculus VR teleoperation using policy and environment.
 
-    This node integrates the OculusTeleopPolicy with the LCMEnvironment
+    This node integrates the OculusTeleopPolicy with the RealtimeEnvironment
     to provide a clean, modular approach to VR-based robot control.
     """
 
@@ -42,7 +42,7 @@ class OculusTeleopNode(Node):
         self.policy = OculusTeleopPolicy(robot_config=robot_config, config=policy_config)
 
         # Create environment
-        self.env = LCMEnvironment()
+        self.env = RealtimeEnvironment()
 
         self.rate_hz = 1.0 / policy_config.dt
 
