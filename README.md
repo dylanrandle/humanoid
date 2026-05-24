@@ -91,14 +91,14 @@ uv run python -m humanoid.motors.feetech.scripts.set_gains
 
 Control the robot using keyboard input:
 ```bash
-uv run python -m humanoid.nodes.keyboard_teleop
+uv run keyboard
 ```
 
 ### Oculus Teleoperation
 
 Control the robot using Oculus VR controllers for intuitive, immersive teleoperation:
 ```bash
-uv run python -m humanoid.nodes.oculus_teleop
+uv run oculus
 ```
 
 **Device Setup**: For instructions on setting up your Oculus device, refer to the [oculus_reader](https://github.com/rail-berkeley/oculus_reader) repository.

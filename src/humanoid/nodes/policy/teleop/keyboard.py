@@ -2,9 +2,6 @@
 
 This node uses the KeyboardTeleopPolicy with the RealtimeEnvironment to provide
 keyboard-based control of the robot's end-effector pose.
-
-Usage:
-    uv run python -m humanoid.nodes.keyboard_teleop
 """
 
 from humanoid.config import ROBOT_CONFIG

@@ -2,9 +2,6 @@
 
 This node uses the OculusTeleopPolicy with the RealtimeEnvironment to provide
 Oculus VR controller-based control of the robot's end-effector pose.
-
-Usage:
-    uv run python -m humanoid.nodes.oculus_teleop
 """
 
 from humanoid.config import ROBOT_CONFIG
