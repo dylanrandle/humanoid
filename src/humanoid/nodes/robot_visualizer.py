@@ -7,7 +7,7 @@ current joint positions using MeshCat.
 from humanoid.config import ROBOT_CONFIG, VISUALIZER_CONFIG
 from humanoid.constants import Topic
 from humanoid.logger import get_logger
-from humanoid.middleware.lcm import Subscriber
+from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig

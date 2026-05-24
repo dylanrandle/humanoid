@@ -5,7 +5,8 @@ from typing import Any
 from humanoid.constants import Topic
 from humanoid.environment.base import Environment
 from humanoid.logger import get_logger
-from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.middleware.publisher import Publisher
+from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.robot import (

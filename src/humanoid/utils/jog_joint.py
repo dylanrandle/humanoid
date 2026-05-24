@@ -8,7 +8,8 @@ from pynput import keyboard
 from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.logger import get_logger
-from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.middleware.publisher import Publisher
+from humanoid.middleware.subscriber import Subscriber
 from humanoid.robots.base import Robot
 from humanoid.types.robot import RobotConfig, RobotJointCommand
 

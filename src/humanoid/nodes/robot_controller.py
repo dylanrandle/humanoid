@@ -9,7 +9,8 @@ from humanoid.controllers.operational_space import (
     OperationalSpaceController,
 )
 from humanoid.logger import get_logger
-from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.middleware.publisher import Publisher
+from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
 from humanoid.types.robot import (

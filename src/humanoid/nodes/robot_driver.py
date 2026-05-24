@@ -5,7 +5,8 @@ import numpy as np
 from humanoid.config import IS_SIMULATION, ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.logger import get_logger
-from humanoid.middleware.lcm import Publisher, Subscriber
+from humanoid.middleware.publisher import Publisher
+from humanoid.middleware.subscriber import Subscriber
 from humanoid.motors.base import MotorController
 from humanoid.motors.feetech.controller import FeetechMotorController
 from humanoid.motors.simulation import SimulatedMotorController
