@@ -3,14 +3,22 @@
 import numpy as np
 import pinocchio as pin
 
+from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
+    homing_target_t,
+    orchestrator_event_t,
     orchestrator_mode_t,
     robot_base_command_t,
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
 )
-from humanoid.types.orchestrator import Mode, OrchestratorMode
+from humanoid.types.orchestrator import (
+    EventKind,
+    Mode,
+    OrchestratorEvent,
+    OrchestratorMode,
+)
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -215,4 +223,37 @@ class LCMConverter:
         return OrchestratorMode(
             timestamp=lcm_msg.timestamp / 1e9,  # Convert from nanoseconds
             mode=Mode(lcm_msg.mode),
+        )
+
+    @staticmethod
+    def orchestrator_event_to_lcm(msg: OrchestratorEvent) -> orchestrator_event_t:
+        """Convert OrchestratorEvent dataclass to orchestrator_event_t LCM type."""
+        lcm_msg = orchestrator_event_t()
+        lcm_msg.timestamp = int(msg.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_msg.kind = msg.kind.value
+        return lcm_msg
+
+    @staticmethod
+    def orchestrator_event_from_lcm(lcm_msg: orchestrator_event_t) -> OrchestratorEvent:
+        """Convert orchestrator_event_t LCM type to OrchestratorEvent dataclass."""
+        return OrchestratorEvent(
+            timestamp=lcm_msg.timestamp / 1e9,  # Convert from nanoseconds
+            kind=EventKind(lcm_msg.kind),
+        )
+
+    @staticmethod
+    def homing_target_to_lcm(msg: HomingTarget) -> homing_target_t:
+        """Convert HomingTarget dataclass to homing_target_t LCM type."""
+        lcm_msg = homing_target_t()
+        lcm_msg.timestamp = int(msg.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_msg.num_positions = len(msg.target_position)
+        lcm_msg.target_position = msg.target_position.tolist()
+        return lcm_msg
+
+    @staticmethod
+    def homing_target_from_lcm(lcm_msg: homing_target_t) -> HomingTarget:
+        """Convert homing_target_t LCM type to HomingTarget dataclass."""
+        return HomingTarget(
+            timestamp=lcm_msg.timestamp / 1e9,  # Convert from nanoseconds
+            target_position=np.array(lcm_msg.target_position),
         )

@@ -4,6 +4,8 @@ DO NOT MODIFY BY HAND!!!!
 lcm-gen 1.5.2
 """
 
+from .homing_target_t import homing_target_t as homing_target_t
+from .orchestrator_event_t import orchestrator_event_t as orchestrator_event_t
 from .orchestrator_mode_t import orchestrator_mode_t as orchestrator_mode_t
 from .robot_base_command_t import robot_base_command_t as robot_base_command_t
 from .robot_joint_command_t import robot_joint_command_t as robot_joint_command_t

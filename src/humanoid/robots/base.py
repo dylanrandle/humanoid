@@ -300,6 +300,22 @@ class Robot:
                 v[joint.idx_v] = velocity
         return v
 
+    def get_root_q_slice(self) -> slice | None:
+        """Return the slice of q owned by the planar root joint, or None.
+
+        A planar root joint is inserted as the first joint after universe when
+        ``config.base_frame`` is configured (see :meth:`__init__`); its q
+        coordinates are ``[x, y, cos(theta), sin(theta)]`` (nq=4).
+
+        Returns:
+            ``slice(idx_q, idx_q + nq)`` for the root joint, or ``None`` for
+            fixed-base robots.
+        """
+        if self.config.base_frame is None:
+            return None
+        root = self.model.joints[1]
+        return slice(root.idx_q, root.idx_q + root.nq)
+
     def joint_idx_to_position_idx(self, joint_idx: int) -> int:
         """Return the index into the configuration vector q for the given joint.
 

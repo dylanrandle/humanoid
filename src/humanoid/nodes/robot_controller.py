@@ -106,7 +106,7 @@ class RobotController(Node):
         mode_msg = self.subscriber.receive(Topic.ORCHESTRATOR_MODE)
         if mode_msg is not None:
             if mode_msg.mode != self.current_mode:
-                logger.info(f"Orchestrator mode: {self.current_mode} -> {mode_msg.mode}")
+                logger.debug(f"Updated mode: {self.current_mode} -> {mode_msg.mode}")
             self.current_mode = mode_msg.mode
 
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE)

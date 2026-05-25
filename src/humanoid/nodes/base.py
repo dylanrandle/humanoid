@@ -3,7 +3,7 @@ import sys
 from abc import ABC, abstractmethod
 
 from humanoid.logger import get_logger
-from humanoid.loop import loop_at_rate
+from humanoid.utils.loop import loop_at_rate
 
 logger = get_logger(__name__)
 

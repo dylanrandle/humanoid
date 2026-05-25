@@ -1,6 +1,7 @@
 import time
 
 import numpy as np
+import pinocchio as pin
 
 from humanoid.config import IS_SIMULATION, ROBOT_CONFIG
 from humanoid.constants import Topic
@@ -61,12 +62,27 @@ class RobotDriver(Node):
 
         self.controller.connect()
 
+        # Open-loop base-state echo: without an IMU we have no real measurement
+        # for the planar root joint, so we publish the most-recently-commanded
+        # root q in RobotState. Seed it at neutral until the first command.
+        self._root_q_slice = self.robot.get_root_q_slice()
+        self._last_root_q: np.ndarray | None = (
+            pin.neutral(self.robot.model)[self._root_q_slice].copy()
+            if self._root_q_slice is not None
+            else None
+        )
+
     def receive(self):
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
         if command is None:
             return
 
         logger.debug(f"Received command: {command}")
+
+        # Cache the planar root joint's commanded q so we can echo it back in
+        # the published RobotState (no hardware feedback for the base).
+        if self._root_q_slice is not None:
+            self._last_root_q = command.joint_positions[self._root_q_slice].copy()
 
         # Clamp joint positions to respect limits
         clamped_positions = np.clip(
@@ -112,9 +128,13 @@ class RobotDriver(Node):
             ]
         )
 
+        q = self.robot.joint_positions_to_q(joint_idx_to_position)
+        if self._root_q_slice is not None and self._last_root_q is not None:
+            q[self._root_q_slice] = self._last_root_q
+
         robot_state = RobotState(
             timestamp=time.perf_counter(),
-            joint_positions=self.robot.joint_positions_to_q(joint_idx_to_position),
+            joint_positions=q,
             joint_velocities=self.robot.joint_velocities_to_v(joint_idx_to_velocity),
             motor_temperatures=motor_temperatures,
         )

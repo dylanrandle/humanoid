@@ -29,6 +29,8 @@ def _make_driver(
         mock_robot.model.velocityLimit = velocity_limit
         mock_robot.joint_idx_to_position_idx.side_effect = lambda i: i
         mock_robot.joint_idx_to_velocity_idx.side_effect = lambda i: i
+        # Fixed-base mock — no planar root joint to echo.
+        mock_robot.get_root_q_slice.return_value = None
         mock_robot_cls.return_value = mock_robot
 
         mock_controller_instance = MagicMock()

@@ -7,7 +7,10 @@ import lcm
 
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
+from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
+    homing_target_t,
+    orchestrator_event_t,
     orchestrator_mode_t,
     robot_base_command_t,
     robot_joint_command_t,
@@ -16,7 +19,7 @@ from humanoid.types.lcm import (
 )
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.middleware import AcceptedTypes
-from humanoid.types.orchestrator import OrchestratorMode
+from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -83,6 +86,12 @@ class Subscriber:
             elif expected_type is OrchestratorMode:
                 lcm_msg = orchestrator_mode_t.decode(data)
                 decoded_data = LCMConverter.orchestrator_mode_from_lcm(lcm_msg)
+            elif expected_type is OrchestratorEvent:
+                lcm_msg = orchestrator_event_t.decode(data)
+                decoded_data = LCMConverter.orchestrator_event_from_lcm(lcm_msg)
+            elif expected_type is HomingTarget:
+                lcm_msg = homing_target_t.decode(data)
+                decoded_data = LCMConverter.homing_target_from_lcm(lcm_msg)
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
@@ -136,6 +145,16 @@ class Subscriber:
     def receive(
         self, topic: Literal[Topic.ORCHESTRATOR_MODE], timeout: int | None = None
     ) -> OrchestratorMode | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.ORCHESTRATOR_EVENT], timeout: int | None = None
+    ) -> OrchestratorEvent | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.HOMING_TARGET], timeout: int | None = None
+    ) -> HomingTarget | None: ...
 
     @overload
     def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None: ...

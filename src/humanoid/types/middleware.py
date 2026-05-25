@@ -1,4 +1,5 @@
-from humanoid.types.orchestrator import OrchestratorMode
+from humanoid.types.homing import HomingTarget
+from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -7,5 +8,11 @@ from humanoid.types.robot import (
 )
 
 AcceptedTypes = (
-    RobotJointCommand | RobotToolCommand | RobotBaseCommand | RobotState | OrchestratorMode
+    RobotJointCommand
+    | RobotToolCommand
+    | RobotBaseCommand
+    | RobotState
+    | OrchestratorMode
+    | OrchestratorEvent
+    | HomingTarget
 )

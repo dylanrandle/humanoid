@@ -19,3 +19,26 @@ class Mode(StrEnum):
 class OrchestratorMode:
     timestamp: float
     mode: Mode
+
+
+class EventKind(StrEnum):
+    """Events that drive orchestrator FSM transitions."""
+
+    REQUEST_HOMING = "request_homing"
+    REQUEST_OCULUS = "request_oculus"
+    REQUEST_KEYBOARD = "request_keyboard"
+    REQUEST_IDLE = "request_idle"
+    COMPLETE = "complete"
+
+
+@dataclass
+class OrchestratorEvent:
+    """A pure signal published to ORCHESTRATOR_EVENT.
+
+    Events that have parameters (e.g., ``REQUEST_HOMING`` needs a target) ship
+    those parameters on a dedicated topic in the same call — see
+    :mod:`humanoid.orchestrator_client`.
+    """
+
+    timestamp: float
+    kind: EventKind

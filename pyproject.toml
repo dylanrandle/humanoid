@@ -23,9 +23,7 @@ dependencies = [
 
 [project.scripts]
 start = "humanoid.start:main"
-visualizer = "humanoid.nodes.robot_visualizer:main"
-orchestrator = "humanoid.nodes.orchestrator:main"
-homing = "humanoid.nodes.policy.homing:main"
+fsm = "humanoid.orchestrator.cli:main"
 keyboard = "humanoid.nodes.policy.teleop.keyboard:main"
 oculus = "humanoid.nodes.policy.teleop.oculus:main"
 
