@@ -107,9 +107,8 @@ class OperationalSpaceController:
         self.barriers = []
 
         if self.config.avoid_collisions:
-            # Process collision pairs from SRDF to set up collision data
-            # Note: This modifies robot.collision_data in place
-            process_collision_pairs(
+            # NOTE: must update robot with collision data returned by process_collision_pairs
+            self.robot.collision_data = process_collision_pairs(
                 self.robot.model, self.robot.collision_model, str(self.robot.srdf_path)
             )
 

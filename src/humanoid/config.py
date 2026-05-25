@@ -22,6 +22,7 @@ ROBOT_CONFIGS = {
             joint_idx_to_servo_id={i: i for i in range(8)},
             servo_control_modes=dict.fromkeys(range(8), ServoControlMode.POSITION),
             gripper_joint_indices=[7],
+            operational_space_config=OperationalSpaceConfig(avoid_collisions=True),
         ),
         RobotConfig(
             name="so101",
