@@ -8,6 +8,7 @@ import lcm
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
 from humanoid.types.lcm import (
+    orchestrator_mode_t,
     robot_base_command_t,
     robot_joint_command_t,
     robot_state_t,
@@ -15,6 +16,7 @@ from humanoid.types.lcm import (
 )
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.middleware import AcceptedTypes
+from humanoid.types.orchestrator import OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -66,18 +68,21 @@ class Subscriber:
             topic = Topic(channel)
             expected_type = TOPIC_TO_TYPE.get(topic)
 
-            if expected_type == RobotJointCommand:
+            if expected_type is RobotJointCommand:
                 lcm_msg = robot_joint_command_t.decode(data)
                 decoded_data = LCMConverter.robot_joint_command_from_lcm(lcm_msg)
-            elif expected_type == RobotState:
+            elif expected_type is RobotState:
                 lcm_msg = robot_state_t.decode(data)
                 decoded_data = LCMConverter.robot_state_from_lcm(lcm_msg)
-            elif expected_type == RobotToolCommand:
+            elif expected_type is RobotToolCommand:
                 lcm_msg = robot_tool_command_t.decode(data)
                 decoded_data = LCMConverter.robot_tool_command_from_lcm(lcm_msg)
-            elif expected_type == RobotBaseCommand:
+            elif expected_type is RobotBaseCommand:
                 lcm_msg = robot_base_command_t.decode(data)
                 decoded_data = LCMConverter.robot_base_command_from_lcm(lcm_msg)
+            elif expected_type is OrchestratorMode:
+                lcm_msg = orchestrator_mode_t.decode(data)
+                decoded_data = LCMConverter.orchestrator_mode_from_lcm(lcm_msg)
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
@@ -91,7 +96,13 @@ class Subscriber:
 
     @overload
     def receive(
-        self, topic: Literal[Topic.ROBOT_JOINT_COMMAND], timeout: int | None = None
+        self,
+        topic: Literal[
+            Topic.ROBOT_JOINT_COMMAND,
+            Topic.CONTROLLER_JOINT_COMMAND,
+            Topic.HOMING_JOINT_COMMAND,
+        ],
+        timeout: int | None = None,
     ) -> RobotJointCommand | None: ...
 
     @overload
@@ -101,13 +112,33 @@ class Subscriber:
 
     @overload
     def receive(
-        self, topic: Literal[Topic.ROBOT_TOOL_COMMAND], timeout: int | None = None
+        self,
+        topic: Literal[
+            Topic.ROBOT_TOOL_COMMAND,
+            Topic.OCULUS_TOOL_COMMAND,
+            Topic.KEYBOARD_TOOL_COMMAND,
+        ],
+        timeout: int | None = None,
     ) -> RobotToolCommand | None: ...
 
     @overload
     def receive(
-        self, topic: Literal[Topic.ROBOT_BASE_COMMAND], timeout: int | None = None
+        self,
+        topic: Literal[
+            Topic.ROBOT_BASE_COMMAND,
+            Topic.OCULUS_BASE_COMMAND,
+            Topic.KEYBOARD_BASE_COMMAND,
+        ],
+        timeout: int | None = None,
     ) -> RobotBaseCommand | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.ORCHESTRATOR_MODE], timeout: int | None = None
+    ) -> OrchestratorMode | None: ...
+
+    @overload
+    def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None: ...
 
     def receive(self, topic: Topic, timeout: int | None = 0) -> AcceptedTypes | None:
         """Retrieve a message from the per-topic queue.

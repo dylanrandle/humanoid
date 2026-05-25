@@ -3,6 +3,7 @@ import numpy as np
 from humanoid.policy.base import Policy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
+from humanoid.types.orchestrator import Mode
 
 
 def _smooth_step(t: float) -> float:
@@ -32,6 +33,8 @@ class HomingPolicy(Policy):
     observation, so reset() allows re-homing from a new starting pose.
     """
 
+    mode = Mode.HOMING
+
     def __init__(
         self,
         target_position: np.ndarray,
@@ -57,7 +60,7 @@ class HomingPolicy(Policy):
         self._trajectory = []
         self._step = 0
 
-    def __call__(self, observation: Observation) -> Action:
+    def step(self, observation: Observation) -> Action:
         if not self._trajectory:
             q_start = observation.robot_state.joint_positions
             self._trajectory = _generate_trajectory(

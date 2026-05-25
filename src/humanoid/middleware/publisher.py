@@ -1,9 +1,10 @@
 import lcm
 
-from humanoid.constants import DEFAULT_LCM_URL, TYPE_TO_TOPIC
+from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.middleware import AcceptedTypes
+from humanoid.types.orchestrator import OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -19,23 +20,22 @@ class Publisher:
         self.lc = lcm.LCM(url)
         self.url = url
 
-    def publish(self, data: AcceptedTypes) -> None:
-        # Convert to LCM type based on data type
+    def publish(self, data: AcceptedTypes, topic: Topic) -> None:
+        expected_type = TOPIC_TO_TYPE.get(topic)
+        if expected_type is not type(data):
+            raise TypeError(f"Topic {topic} expects {expected_type}, but got {type(data).__name__}")
+
         if isinstance(data, RobotJointCommand):
             lcm_data = LCMConverter.robot_joint_command_to_lcm(data)
-            topic = TYPE_TO_TOPIC[RobotJointCommand]
         elif isinstance(data, RobotState):
             lcm_data = LCMConverter.robot_state_to_lcm(data)
-            topic = TYPE_TO_TOPIC[RobotState]
         elif isinstance(data, RobotToolCommand):
             lcm_data = LCMConverter.robot_tool_command_to_lcm(data)
-            topic = TYPE_TO_TOPIC[RobotToolCommand]
         elif isinstance(data, RobotBaseCommand):
             lcm_data = LCMConverter.robot_base_command_to_lcm(data)
-            topic = TYPE_TO_TOPIC[RobotBaseCommand]
+        elif isinstance(data, OrchestratorMode):
+            lcm_data = LCMConverter.orchestrator_mode_to_lcm(data)
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 
-        # Encode and publish
-        data_bytes = lcm_data.encode()
-        self.lc.publish(topic.value, data_bytes)
+        self.lc.publish(topic.value, lcm_data.encode())

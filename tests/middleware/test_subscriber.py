@@ -141,7 +141,7 @@ class TestSubscriber:
 
         for topic, lcm_msg, expected_type in cases:
             sub._handle_message(topic.value, lcm_msg.encode())
-            result = sub.receive(topic, timeout=10)  # ty:ignore[no-matching-overload]
+            result = sub.receive(topic, timeout=10)
             assert isinstance(result, expected_type), f"Expected {expected_type} for {topic}"
 
     def test_queues_are_isolated_per_topic(self, mock_lcm):

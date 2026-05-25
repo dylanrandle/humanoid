@@ -4,6 +4,7 @@ DO NOT MODIFY BY HAND!!!!
 lcm-gen 1.5.2
 """
 
+from .orchestrator_mode_t import orchestrator_mode_t as orchestrator_mode_t
 from .robot_base_command_t import robot_base_command_t as robot_base_command_t
 from .robot_joint_command_t import robot_joint_command_t as robot_joint_command_t
 from .robot_state_t import robot_state_t as robot_state_t

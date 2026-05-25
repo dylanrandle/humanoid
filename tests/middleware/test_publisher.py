@@ -7,10 +7,12 @@ import pytest
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
 from humanoid.types.lcm import (
+    orchestrator_mode_t,
     robot_joint_command_t,
     robot_state_t,
 )
 from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -53,11 +55,11 @@ def _make_base_command():
 
 
 class TestPublisher:
-    def test_publish_joint_command_uses_joint_topic(self, mock_lcm):
+    def test_publishes_to_explicit_topic(self, mock_lcm):
         publisher = Publisher()
         cmd = _make_joint_command()
 
-        publisher.publish(cmd)
+        publisher.publish(cmd, topic=Topic.ROBOT_JOINT_COMMAND)
 
         mock_lcm.publish.assert_called_once()
         channel, data_bytes = mock_lcm.publish.call_args[0]
@@ -71,33 +73,64 @@ class TestPublisher:
         np.testing.assert_allclose(recovered.joint_positions, cmd.joint_positions)
         np.testing.assert_allclose(recovered.joint_velocities, cmd.joint_velocities)  # ty:ignore[no-matching-overload]
 
-    def test_publish_state_uses_state_topic(self, mock_lcm):
+    def test_publishes_same_type_to_different_topics(self, mock_lcm):
+        """A joint command can be published to multiple distinct topics."""
+        publisher = Publisher()
+        cmd = _make_joint_command()
+
+        publisher.publish(cmd, topic=Topic.CONTROLLER_JOINT_COMMAND)
+        publisher.publish(cmd, topic=Topic.HOMING_JOINT_COMMAND)
+
+        channels = [call.args[0] for call in mock_lcm.publish.call_args_list]
+        assert channels == [
+            Topic.CONTROLLER_JOINT_COMMAND.value,
+            Topic.HOMING_JOINT_COMMAND.value,
+        ]
+
+    def test_publish_state(self, mock_lcm):
         publisher = Publisher()
         state = _make_state()
 
-        publisher.publish(state)
+        publisher.publish(state, topic=Topic.ROBOT_STATE)
 
         channel, data_bytes = mock_lcm.publish.call_args[0]
         assert channel == Topic.ROBOT_STATE.value
         recovered = LCMConverter.robot_state_from_lcm(robot_state_t.decode(data_bytes))
         np.testing.assert_allclose(recovered.motor_temperatures, state.motor_temperatures)
 
-    def test_publish_tool_command_uses_tool_topic(self, mock_lcm):
+    def test_publish_tool_command(self, mock_lcm):
         publisher = Publisher()
-        publisher.publish(_make_tool_command())
+        publisher.publish(_make_tool_command(), topic=Topic.OCULUS_TOOL_COMMAND)
 
         channel, _ = mock_lcm.publish.call_args[0]
-        assert channel == Topic.ROBOT_TOOL_COMMAND.value
+        assert channel == Topic.OCULUS_TOOL_COMMAND.value
 
-    def test_publish_base_command_uses_base_topic(self, mock_lcm):
+    def test_publish_base_command(self, mock_lcm):
         publisher = Publisher()
-        publisher.publish(_make_base_command())
+        publisher.publish(_make_base_command(), topic=Topic.KEYBOARD_BASE_COMMAND)
 
         channel, _ = mock_lcm.publish.call_args[0]
-        assert channel == Topic.ROBOT_BASE_COMMAND.value
+        assert channel == Topic.KEYBOARD_BASE_COMMAND.value
+
+    def test_publish_orchestrator_mode(self, mock_lcm):
+        publisher = Publisher()
+        mode = OrchestratorMode(timestamp=5.0, mode=Mode.OCULUS)
+
+        publisher.publish(mode, topic=Topic.ORCHESTRATOR_MODE)
+
+        channel, data_bytes = mock_lcm.publish.call_args[0]
+        assert channel == Topic.ORCHESTRATOR_MODE.value
+        recovered = LCMConverter.orchestrator_mode_from_lcm(orchestrator_mode_t.decode(data_bytes))
+        assert recovered.mode is Mode.OCULUS
+
+    def test_publish_topic_type_mismatch_raises(self, mock_lcm):
+        publisher = Publisher()
+        with pytest.raises(TypeError, match="expects"):
+            publisher.publish(_make_joint_command(), topic=Topic.ROBOT_TOOL_COMMAND)
+        mock_lcm.publish.assert_not_called()
 
     def test_publish_unsupported_type_raises(self, mock_lcm):
         publisher = Publisher()
-        with pytest.raises(TypeError, match="Unsupported data type"):
-            publisher.publish("not a valid type")  # type: ignore[arg-type]
+        with pytest.raises(TypeError):
+            publisher.publish("not a valid type", topic=Topic.ROBOT_STATE)  # type: ignore[arg-type]
         mock_lcm.publish.assert_not_called()

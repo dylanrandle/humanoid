@@ -11,6 +11,7 @@ from humanoid.logger import get_logger
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
+from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig
 from humanoid.types.teleop import OculusTeleopPolicyConfig
 
@@ -53,6 +54,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         robot_config: Robot configuration (default: ROBOT_CONFIG)
         config: Tunable policy parameters (default: OculusTeleopPolicyConfig())
     """
+
+    mode = Mode.OCULUS
 
     def __init__(
         self,
@@ -220,7 +223,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
                 logger.info(f"  Base position: {self.reference_base_pose.translation}")
             logger.info("\nReady! Move the right controller to control the robot.\n")
 
-    def __call__(self, observation: Observation) -> Action:
+    def step(self, observation: Observation) -> Action:
         """Generate an action given an observation.
 
         On the first call (with a grip-trigger dead-man held), initializes the reference

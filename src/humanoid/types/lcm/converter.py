@@ -4,11 +4,13 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.types.lcm import (
+    orchestrator_mode_t,
     robot_base_command_t,
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
 )
+from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -197,4 +199,20 @@ class LCMConverter:
         return RobotBaseCommand(
             timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
             pose=pose,
+        )
+
+    @staticmethod
+    def orchestrator_mode_to_lcm(msg: OrchestratorMode) -> orchestrator_mode_t:
+        """Convert OrchestratorMode dataclass to orchestrator_mode_t LCM type."""
+        lcm_msg = orchestrator_mode_t()
+        lcm_msg.timestamp = int(msg.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_msg.mode = msg.mode.value
+        return lcm_msg
+
+    @staticmethod
+    def orchestrator_mode_from_lcm(lcm_msg: orchestrator_mode_t) -> OrchestratorMode:
+        """Convert orchestrator_mode_t LCM type to OrchestratorMode dataclass."""
+        return OrchestratorMode(
+            timestamp=lcm_msg.timestamp / 1e9,  # Convert from nanoseconds
+            mode=Mode(lcm_msg.mode),
         )

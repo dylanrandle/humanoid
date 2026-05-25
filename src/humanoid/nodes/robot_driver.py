@@ -119,7 +119,7 @@ class RobotDriver(Node):
             motor_temperatures=motor_temperatures,
         )
         logger.debug(f"Measured state: {robot_state}")
-        self.publisher.publish(robot_state)
+        self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
 
     def setup(self) -> None:
         pass

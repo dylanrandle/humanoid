@@ -1,7 +1,8 @@
 import argparse
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.environment.realtime import RealtimeEnvironment
+from humanoid.constants import Topic
+from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.logger import get_logger
 from humanoid.nodes.base import Node
 from humanoid.policy.homing import HomingPolicy
@@ -28,7 +29,7 @@ class HomingNode(Node):
             speed=speed,
             dt=1.0 / rate_hz,
         )
-        self.env = RealtimeEnvironment()
+        self.env = RealtimeEnvironment(action_topics=ActionTopics(joint=Topic.HOMING_JOINT_COMMAND))
 
     def setup(self) -> None:
         self.observation = self.env.reset()

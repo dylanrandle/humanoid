@@ -19,6 +19,7 @@ from humanoid.logger import get_logger
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
+from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig
 from humanoid.types.teleop import KeyboardTeleopPolicyConfig
 
@@ -48,6 +49,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         robot_config: Robot configuration (default: ROBOT_CONFIG)
         config: Tunable policy parameters (default: KeyboardTeleopPolicyConfig())
     """
+
+    mode = Mode.KEYBOARD
 
     def __init__(
         self,
@@ -378,7 +381,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
         return True
 
-    def __call__(self, observation: Observation) -> Action:
+    def step(self, observation: Observation) -> Action:
         """Generate an action given an observation.
 
         On the first call, initializes the target pose and gripper positions

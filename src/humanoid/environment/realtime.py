@@ -1,5 +1,6 @@
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from humanoid.constants import Topic
@@ -9,6 +10,7 @@ from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
+from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -26,18 +28,34 @@ DoneFunction = Callable[[Observation], bool]
 TruncatedFunction = Callable[[Observation], bool]
 
 
+@dataclass
+class ActionTopics:
+    """Per-source topics each action field is published to.
+
+    A policy that only emits joint commands sets ``joint``; a teleop policy that
+    emits tool/base commands sets ``tool`` and ``base``. A field left as None
+    must not appear on actions submitted to this environment.
+    """
+
+    joint: Topic | None = None
+    tool: Topic | None = None
+    base: Topic | None = None
+
+
 class RealtimeEnvironment(Environment):
     """Environment that talks to a running robot (or simulator) over LCM.
 
     This environment:
-    - Subscribes to ROBOT_STATE topic to receive observations
-    - Publishes to ROBOT_JOINT_COMMAND, ROBOT_TOOL_COMMAND, or ROBOT_BASE_COMMAND
-      based on which fields of the action are set
-    - Implements the standard Environment interface with reset() and step()
+    - Subscribes to ROBOT_STATE for observations and to the final ROBOT_*
+      command topics so observations reflect what's actually being commanded.
+    - Publishes each action field to its configured per-source topic in
+      ``action_topics``. The orchestrator decides which per-source topic
+      currently feeds each final ROBOT_* topic.
     """
 
     def __init__(
         self,
+        action_topics: ActionTopics,
         timeout_ms: int = 100,
         reward_fn: RewardFunction | None = None,
         done_fn: DoneFunction | None = None,
@@ -46,11 +64,13 @@ class RealtimeEnvironment(Environment):
         """Initialize the environment.
 
         Args:
+            action_topics: Per-source topics to publish each action field on.
             timeout_ms: Timeout in milliseconds for receiving messages on reset
             reward_fn: Optional function to compute reward
             done_fn: Optional function to determine if episode is done
             truncated_fn: Optional function to determine if episode is truncated
         """
+        self.action_topics = action_topics
         self.timeout_ms = timeout_ms
 
         # Initialize LCM communication
@@ -61,6 +81,7 @@ class RealtimeEnvironment(Environment):
                 Topic.ROBOT_JOINT_COMMAND,
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
+                Topic.ORCHESTRATOR_MODE,
             ],
         )
 
@@ -78,6 +99,7 @@ class RealtimeEnvironment(Environment):
         self._last_joint_command: RobotJointCommand | None = None
         self._last_tool_command: RobotToolCommand | None = None
         self._last_base_command: RobotBaseCommand | None = None
+        self._last_mode: Mode | None = None
 
         logger.info("Initialized environment")
 
@@ -151,23 +173,34 @@ class RealtimeEnvironment(Environment):
         timestamp = time.time()
 
         if action.joint_positions is not None:
+            if self.action_topics.joint is None:
+                raise RuntimeError("action.joint_positions set but action_topics.joint is None")
             self.publisher.publish(
-                RobotJointCommand(timestamp=timestamp, joint_positions=action.joint_positions)
+                RobotJointCommand(timestamp=timestamp, joint_positions=action.joint_positions),
+                topic=self.action_topics.joint,
             )
             logger.debug("Published joint command")
 
         if action.tool_pose is not None:
+            if self.action_topics.tool is None:
+                raise RuntimeError("action.tool_pose set but action_topics.tool is None")
             self.publisher.publish(
                 RobotToolCommand(
                     timestamp=timestamp,
                     pose=action.tool_pose,
                     gripper_positions=action.gripper_positions,
-                )
+                ),
+                topic=self.action_topics.tool,
             )
             logger.debug("Published tool command")
 
         if action.base_pose is not None:
-            self.publisher.publish(RobotBaseCommand(timestamp=timestamp, pose=action.base_pose))
+            if self.action_topics.base is None:
+                raise RuntimeError("action.base_pose set but action_topics.base is None")
+            self.publisher.publish(
+                RobotBaseCommand(timestamp=timestamp, pose=action.base_pose),
+                topic=self.action_topics.base,
+            )
             logger.debug("Published base command")
 
         return timestamp
@@ -199,11 +232,16 @@ class RealtimeEnvironment(Environment):
         if base_command is not None:
             self._last_base_command = base_command
 
+        mode_msg = self.subscriber.receive(Topic.ORCHESTRATOR_MODE, timeout=timeout_ms)
+        if mode_msg is not None:
+            self._last_mode = mode_msg.mode
+
         return Observation(
             robot_state=self._last_robot_state,
             robot_joint_command=self._last_joint_command,
             robot_tool_command=self._last_tool_command,
             robot_base_command=self._last_base_command,
+            mode=self._last_mode,
         )
 
     @staticmethod

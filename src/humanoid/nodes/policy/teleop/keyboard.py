@@ -5,7 +5,8 @@ keyboard-based control of the robot's end-effector pose.
 """
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.environment.realtime import RealtimeEnvironment
+from humanoid.constants import Topic
+from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.logger import get_logger
 from humanoid.nodes.base import Node
 from humanoid.policy import KeyboardTeleopPolicy, KeyboardTeleopPolicyConfig
@@ -38,7 +39,12 @@ class KeyboardTeleopNode(Node):
 
         self.policy = KeyboardTeleopPolicy(robot_config=robot_config, config=policy_config)
 
-        self.env = RealtimeEnvironment()
+        self.env = RealtimeEnvironment(
+            action_topics=ActionTopics(
+                tool=Topic.KEYBOARD_TOOL_COMMAND,
+                base=Topic.KEYBOARD_BASE_COMMAND,
+            )
+        )
 
         self.rate_hz = 1.0 / policy_config.dt
 

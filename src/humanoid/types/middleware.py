@@ -1,3 +1,4 @@
+from humanoid.types.orchestrator import OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -5,4 +6,6 @@ from humanoid.types.robot import (
     RobotToolCommand,
 )
 
-AcceptedTypes = RobotJointCommand | RobotToolCommand | RobotBaseCommand | RobotState
+AcceptedTypes = (
+    RobotJointCommand | RobotToolCommand | RobotBaseCommand | RobotState | OrchestratorMode
+)

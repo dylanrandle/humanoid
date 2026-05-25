@@ -91,7 +91,7 @@ def jog_joint(  # noqa: PLR0915
                 timestamp=current_time,
                 joint_positions=current_positions,
             )
-            publisher.publish(command)
+            publisher.publish(command, topic=Topic.ROBOT_JOINT_COMMAND)
             last_publish_time = current_time
 
     def on_press(key):

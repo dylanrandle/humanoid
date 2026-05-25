@@ -5,7 +5,8 @@ Oculus VR controller-based control of the robot's end-effector pose.
 """
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.environment.realtime import RealtimeEnvironment
+from humanoid.constants import Topic
+from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.logger import get_logger
 from humanoid.nodes.base import Node
 from humanoid.policy import OculusTeleopPolicy, OculusTeleopPolicyConfig
@@ -39,7 +40,12 @@ class OculusTeleopNode(Node):
         self.policy = OculusTeleopPolicy(robot_config=robot_config, config=policy_config)
 
         # Create environment
-        self.env = RealtimeEnvironment()
+        self.env = RealtimeEnvironment(
+            action_topics=ActionTopics(
+                tool=Topic.OCULUS_TOOL_COMMAND,
+                base=Topic.OCULUS_BASE_COMMAND,
+            )
+        )
 
         self.rate_hz = 1.0 / policy_config.dt
 

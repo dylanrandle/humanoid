@@ -10,13 +10,16 @@ from humanoid.config import ROBOT_CONFIGS
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
+from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotState
 
 
 class _DummyTeleopPolicy(BaseTeleopPolicy):
     """Concrete subclass so we can instantiate the otherwise-abstract base."""
 
-    def __call__(self, observation: Observation) -> Action:
+    mode = Mode.OCULUS
+
+    def step(self, observation: Observation) -> Action:
         return self._hold_current_pose_action(observation)
 
 
