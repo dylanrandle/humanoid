@@ -19,6 +19,12 @@
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0 0 0.007" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/base_plate_lower.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="base_plate_upper">
         <inertial>
@@ -33,6 +39,12 @@
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0 0 0.007" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/base_plate_upper.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="omni_wheel">
         <inertial>
@@ -44,10 +56,16 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/Omni_Wheel.obj" scale="1 1 1" />
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="omni_wheel_1">
         <inertial>
@@ -59,10 +77,16 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/Omni_Wheel.obj" scale="1 1 1" />
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="omni_wheel_2">
         <inertial>
@@ -74,10 +98,16 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/Omni_Wheel.obj" scale="1 1 1" />
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="omni_wheel_mount">
         <inertial>
@@ -92,6 +122,12 @@
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel_mount.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="omni_wheel_mount_1">
         <inertial>
@@ -106,6 +142,12 @@
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel_mount.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="omni_wheel_mount_2">
         <inertial>
@@ -120,6 +162,12 @@
             </geometry>
             <material name="silver" />
         </visual>
+        <collision>
+            <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/omni_wheel_mount.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="root" />
     <link name="wheel_1_floor" />
@@ -154,6 +202,12 @@
             </geometry>
             <material name="black" />
         </visual>
+        <collision>
+            <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/STS3215_03a_v1.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="sts3215_03a_v1_1">
         <inertial>
@@ -169,6 +223,12 @@
             </geometry>
             <material name="black" />
         </visual>
+        <collision>
+            <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/STS3215_03a_v1.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="sts3215_03a_v1_2">
         <inertial>
@@ -184,6 +244,12 @@
             </geometry>
             <material name="black" />
         </visual>
+        <collision>
+            <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://elrobot_mobile/meshes/STS3215_03a_v1.obj" scale="1 1 1" />
+            </geometry>
+        </collision>
     </link>
     <link name="base_link">
         <inertial>
