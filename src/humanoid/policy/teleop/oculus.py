@@ -200,6 +200,17 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         )
         return np.array([self.commanded_gripper_position])
 
+    def _homing_target_preserving_gripper(
+        self, target_position: np.ndarray, observation: Observation
+    ) -> np.ndarray:
+        """Return a copy of ``target_position`` with the gripper slots overwritten
+        by the current observation, so X/Y homing leaves the gripper where it is."""
+        target = target_position.copy()
+        current_gripper = self._get_current_gripper_positions(observation)
+        if current_gripper is not None:
+            self.robot.set_gripper_positions(target, current_gripper)
+        return target
+
     def _initialize_reference_poses(
         self, right_controller_pose: np.ndarray, observation: Observation
     ) -> None:
@@ -252,11 +263,17 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             return self._hold_current_pose_action(observation)
 
         if buttons[X_BUTTON_KEY]:
-            self.orchestrator_client.request_homing(self.robot_config.home_position)
+            target = self._homing_target_preserving_gripper(
+                self.robot_config.home_position, observation
+            )
+            self.orchestrator_client.request_homing(target)
             return self._hold_current_pose_action(observation)
 
         if buttons[Y_BUTTON_KEY]:
-            self.orchestrator_client.request_homing(self.robot_config.rest_position)
+            target = self._homing_target_preserving_gripper(
+                self.robot_config.rest_position, observation
+            )
+            self.orchestrator_client.request_homing(target)
             return self._hold_current_pose_action(observation)
 
         # Dead-man switch: either grip trigger must be held to command any

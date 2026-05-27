@@ -514,16 +514,23 @@ class TestHomingButtons:
         policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
         reader.buttons["X"] = True
 
-        obs = _observation_from_q(policy.robot_config.home_position)
+        # Observation gripper differs from home's gripper slot — homing must
+        # preserve the observation value, not snap the gripper to home.
+        q = policy.robot_config.home_position.copy()
+        gripper_position_idx = policy.robot.get_gripper_position_indices()[0]
+        observed_gripper = 0.025
+        q[gripper_position_idx] = observed_gripper
+        obs = _observation_from_q(q)
+
         action = policy(obs)
 
         expected_call_count = 1
         assert len(stub_client.homing_calls) == expected_call_count
-        np.testing.assert_array_equal(
-            stub_client.homing_calls[0], policy.robot_config.home_position
-        )
+        expected_target = policy.robot_config.home_position.copy()
+        expected_target[gripper_position_idx] = observed_gripper
+        np.testing.assert_array_equal(stub_client.homing_calls[0], expected_target)
         # Returns the hold action, not a teleop'd target.
-        expected_tool = policy.robot.get_tool_pose(policy.robot_config.home_position)
+        expected_tool = policy.robot.get_tool_pose(q)
         np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
 
     def test_y_button_requests_homing_to_rest_position(self, panda_policy_and_reader):
@@ -532,16 +539,51 @@ class TestHomingButtons:
         policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
         reader.buttons["Y"] = True
 
-        obs = _observation_from_q(policy.robot_config.home_position)
+        q = policy.robot_config.home_position.copy()
+        gripper_position_idx = policy.robot.get_gripper_position_indices()[0]
+        observed_gripper = 0.025
+        q[gripper_position_idx] = observed_gripper
+        obs = _observation_from_q(q)
+
         action = policy(obs)
 
         expected_call_count = 1
         assert len(stub_client.homing_calls) == expected_call_count
-        np.testing.assert_array_equal(
-            stub_client.homing_calls[0], policy.robot_config.rest_position
-        )
-        expected_tool = policy.robot.get_tool_pose(policy.robot_config.home_position)
+        expected_target = policy.robot_config.rest_position.copy()
+        expected_target[gripper_position_idx] = observed_gripper
+        np.testing.assert_array_equal(stub_client.homing_calls[0], expected_target)
+        expected_tool = policy.robot.get_tool_pose(q)
         np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
+
+    def test_homing_target_does_not_mutate_config(self, panda_policy_and_reader):
+        """The policy must copy the config arrays before overwriting gripper slots."""
+        policy, reader = panda_policy_and_reader
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        reader.buttons["X"] = True
+
+        original_home = policy.robot_config.home_position.copy()
+        q = policy.robot_config.home_position.copy()
+        gripper_position_idx = policy.robot.get_gripper_position_indices()[0]
+        q[gripper_position_idx] = 0.025
+        policy(_observation_from_q(q))
+
+        np.testing.assert_array_equal(policy.robot_config.home_position, original_home)
+
+    def test_homing_passes_through_when_no_gripper_configured(self):
+        """With no gripper joints, the target equals the config array verbatim."""
+        cfg = replace(ROBOT_CONFIGS["panda"], gripper_joint_indices=None)
+        policy = OculusTeleopPolicy(
+            robot_config=cfg,
+            config=OculusTeleopPolicyConfig(verbose=False, oculus_to_world_rotation=np.eye(3)),
+        )
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        policy.reader.buttons["X"] = True  # ty:ignore[unresolved-attribute]
+
+        policy(_observation_from_q(cfg.home_position))
+
+        np.testing.assert_array_equal(stub_client.homing_calls[0], cfg.home_position)
 
     def test_x_takes_priority_over_y(self, panda_policy_and_reader):
         """When both X and Y are held, X (home) wins and Y is not requested."""
