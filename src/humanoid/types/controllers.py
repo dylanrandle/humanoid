@@ -31,6 +31,8 @@ class OperationalSpaceConfig:
             ``"quadprog"``).
         avoid_collisions: Whether to enable self-collision avoidance
             barriers using the robot's collision model and SRDF pairs.
+        min_collision_distance: Minimum distance between any collision pairs.
+            Defaults to 0.02.
         joint_centering_mask: Per-joint multiplier on
             ``joint_centering_cost``. A scalar applies the same weight to
             all joints; an array selectively centers some joints (e.g. arm)
@@ -49,5 +51,6 @@ class OperationalSpaceConfig:
     damping_cost: float = 1e-1
     solver: str = "quadprog"
     avoid_collisions: bool = False
+    min_collision_distance: float = 0.02
     joint_centering_mask: np.ndarray | float = 1.0
     damping_mask: np.ndarray | float = 1.0

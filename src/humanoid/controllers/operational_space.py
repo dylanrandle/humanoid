@@ -115,6 +115,7 @@ class OperationalSpaceController:
             # Create self-collision barrier
             collision_barrier = SelfCollisionBarrier(
                 n_collision_pairs=len(self.robot.collision_model.collisionPairs),
+                d_min=self.config.min_collision_distance,
             )
             self.barriers.append(collision_barrier)
             logger.info(

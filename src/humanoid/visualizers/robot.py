@@ -341,8 +341,17 @@ class RobotVisualizer:
         # Load the robot model into the viewer
         self._viewer.loadViewerModel()
 
-        # Configure collision visibility
-        self._viewer.displayCollisions(self._config.show_collisions)
+        # Always keep display_collisions=True so that MeshcatVisualizer.display(q)
+        # updates collision placements every frame. Pinocchio's display() skips
+        # updatePlacements(COLLISION) when this flag is False, which leaves the
+        # collision geometries stuck at the identity transform — so toggling
+        # collisions on (in config or via the MeshCat UI checkbox) would show
+        # them all stacked at the origin. Visibility is controlled separately
+        # via the scene-tree property below, which is also what the UI toggles.
+        self._viewer.display_collisions = True
+        self._viewer.viewer[self._viewer.viewerCollisionGroupName].set_property(
+            "visible", self._config.show_collisions
+        )
 
         # Initialize joint command visualizer if enabled
         if self._config.show_commanded_joint_positions:
@@ -486,7 +495,9 @@ class RobotVisualizer:
         if not self._initialized:
             raise RuntimeError("Visualizer not initialized. Call initialize() first.")
 
-        self.viewer.displayCollisions(visible)
+        # Toggle only the scene-tree visibility; leave display_collisions=True
+        # so placements continue to update — see initialize() for context.
+        self.viewer.viewer[self.viewer.viewerCollisionGroupName].set_property("visible", visible)
 
     def display_visuals(self, visible: bool) -> None:
         """Toggle visibility of visual geometries.

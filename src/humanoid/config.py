@@ -123,9 +123,11 @@ ROBOT_CONFIGS = {
             inverted_servo_ids=[8],
             gripper_joint_indices=[11],
             operational_space_config=OperationalSpaceConfig(
-                joint_centering_cost=0.01,
+                avoid_collisions=True,
+                min_collision_distance=5e-3,
+                joint_centering_cost=5e-3,
                 joint_centering_mask=np.array([0.0] * 3 + [1.0] * 8),
-                damping_cost=0.5,
+                damping_cost=0.1,
                 damping_mask=np.array([0.0] * 3 + [1.0] * 8),
             ),
         ),

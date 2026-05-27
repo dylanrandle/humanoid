@@ -8,6 +8,7 @@ from oculus_reader import OculusReader
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
+from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
@@ -25,6 +26,8 @@ LEFT_JOYSTICK_KEY = "leftJS"
 RIGHT_JOYSTICK_KEY = "rightJS"
 A_BUTTON_KEY = "A"
 B_BUTTON_KEY = "B"
+X_BUTTON_KEY = "X"
+Y_BUTTON_KEY = "Y"
 
 
 class OculusTeleopPolicy(BaseTeleopPolicy):
@@ -74,6 +77,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.gripper_step = (
             (self.gripper_max - self.gripper_min) * self.config.dt / self.config.gripper_close_time
         )
+        self.orchestrator_client = OrchestratorClient()
 
         # Oculus reader
         self.reader = OculusReader()
@@ -245,6 +249,14 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
         # Check if we have valid data (OculusReader may return empty dicts on startup)
         if not self._has_valid_controller_data(transforms, buttons):
+            return self._hold_current_pose_action(observation)
+
+        if buttons[X_BUTTON_KEY]:
+            self.orchestrator_client.request_homing(self.robot_config.home_position)
+            return self._hold_current_pose_action(observation)
+
+        if buttons[Y_BUTTON_KEY]:
+            self.orchestrator_client.request_homing(self.robot_config.rest_position)
             return self._hold_current_pose_action(observation)
 
         # Dead-man switch: either grip trigger must be held to command any

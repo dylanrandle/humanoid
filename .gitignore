@@ -21,3 +21,6 @@ plans/
 # Coverage
 .coverage
 htmlcov
+
+# VS Code
+.vscode

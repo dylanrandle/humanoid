@@ -34,6 +34,8 @@ class StubOculusReader:
         self.buttons: dict = {
             "A": False,
             "B": False,
+            "X": False,
+            "Y": False,
             "LG": False,
             "RG": False,
             "leftJS": (0.0, 0.0),
@@ -42,6 +44,16 @@ class StubOculusReader:
 
     def get_transformations_and_buttons(self):
         return self.transforms, self.buttons
+
+
+class StubOrchestratorClient:
+    """Stand-in for OrchestratorClient that records ``request_homing`` calls."""
+
+    def __init__(self):
+        self.homing_calls: list[np.ndarray] = []
+
+    def request_homing(self, target_position: np.ndarray) -> None:
+        self.homing_calls.append(np.asarray(target_position).copy())
 
 
 @pytest.fixture(autouse=True)
@@ -493,6 +505,86 @@ class TestBasePoseFromJoysticks:
         policy(obs)
 
         np.testing.assert_allclose(policy.reference_base_pose.translation, before, atol=1e-12)
+
+
+class TestHomingButtons:
+    def test_x_button_requests_homing_to_home_position(self, panda_policy_and_reader):
+        policy, reader = panda_policy_and_reader
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        reader.buttons["X"] = True
+
+        obs = _observation_from_q(policy.robot_config.home_position)
+        action = policy(obs)
+
+        expected_call_count = 1
+        assert len(stub_client.homing_calls) == expected_call_count
+        np.testing.assert_array_equal(
+            stub_client.homing_calls[0], policy.robot_config.home_position
+        )
+        # Returns the hold action, not a teleop'd target.
+        expected_tool = policy.robot.get_tool_pose(policy.robot_config.home_position)
+        np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
+
+    def test_y_button_requests_homing_to_rest_position(self, panda_policy_and_reader):
+        policy, reader = panda_policy_and_reader
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        reader.buttons["Y"] = True
+
+        obs = _observation_from_q(policy.robot_config.home_position)
+        action = policy(obs)
+
+        expected_call_count = 1
+        assert len(stub_client.homing_calls) == expected_call_count
+        np.testing.assert_array_equal(
+            stub_client.homing_calls[0], policy.robot_config.rest_position
+        )
+        expected_tool = policy.robot.get_tool_pose(policy.robot_config.home_position)
+        np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
+
+    def test_x_takes_priority_over_y(self, panda_policy_and_reader):
+        """When both X and Y are held, X (home) wins and Y is not requested."""
+        policy, reader = panda_policy_and_reader
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        reader.buttons["X"] = True
+        reader.buttons["Y"] = True
+
+        policy(_observation_from_q(policy.robot_config.home_position))
+
+        expected_call_count = 1
+        assert len(stub_client.homing_calls) == expected_call_count
+        np.testing.assert_array_equal(
+            stub_client.homing_calls[0], policy.robot_config.home_position
+        )
+
+    def test_x_short_circuits_before_grip_teleop(self, panda_policy_and_reader):
+        """X with grip held still triggers homing and skips reference-pose setup."""
+        policy, reader = panda_policy_and_reader
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        reader.buttons["RG"] = True
+        reader.buttons["X"] = True
+        # A non-identity controller pose would normally seed reference poses.
+        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.1, 0.0, 0.0])))}
+
+        policy(_observation_from_q(policy.robot_config.home_position))
+
+        expected_call_count = 1
+        assert len(stub_client.homing_calls) == expected_call_count
+        assert policy.reference_controller_pose is None
+        assert policy.reference_tool_pose is None
+
+    def test_no_button_pressed_does_not_request_homing(self, panda_policy_and_reader):
+        policy, reader = panda_policy_and_reader
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        reader.buttons["RG"] = True
+
+        policy(_observation_from_q(policy.robot_config.home_position))
+
+        assert stub_client.homing_calls == []
 
 
 class TestReset:

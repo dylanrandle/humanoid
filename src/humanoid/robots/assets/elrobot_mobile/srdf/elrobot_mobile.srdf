@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<robot name="elrobot_mobile">
+    <disable_collisions link1="omni_wheel" link2="base_link" reason="Adjacent" />
+    <disable_collisions link1="omni_wheel_1" link2="base_link" reason="Adjacent" />
+    <disable_collisions link1="base_link" link2="Joint_01_1" reason="Adjacent" />
+    <disable_collisions link1="Joint_01_1" link2="Joint_02_1" reason="Adjacent" />
+    <disable_collisions link1="Joint_02_1" link2="Joint_04_1" reason="Adjacent" />
+    <disable_collisions link1="Joint_04_v1_1" link2="Joint_06_v1_1" reason="Adjacent" />
+    <disable_collisions link1="Joint_06_v1_1" link2="ST3215_8_v1_1" reason="Adjacent" />
+    <disable_collisions link1="Joint_06_v1_1" link2="Gripper_Base_v1_1" reason="Adjacent" />
+    <disable_collisions link1="ST3215_8_v1_1" link2="Gripper_Base_v1_1" reason="Adjacent" />
+</robot>
