@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -e
+
+# Channels to replay from the log file.
+CHANNEL_LIST=(
+    "ROBOT/JOINT_COMMAND"
+    "ROBOT/TOOL_COMMAND"
+    "ROBOT/BASE_COMMAND"
+    "ORCHESTRATOR/MODE"
+)
+CHANNELS=$(IFS="|"; echo "${CHANNEL_LIST[*]}")
+
+if [ -z "$1" ]; then
+    echo "Usage: $(basename "$0") <log_file_path>"
+    exit 1
+fi
+
+LOG_FILE="$1"
+
+if [ ! -f "${LOG_FILE}" ]; then
+    echo "Error: LCM log file not found at ${LOG_FILE}"
+    exit 1
+fi
+
+echo "Replaying channels: ${CHANNELS}"
+echo "Log file: ${LOG_FILE}"
+
+lcm-logplayer -e "${CHANNELS}" "${LOG_FILE}"

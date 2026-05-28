@@ -1,3 +1,4 @@
+import argparse
 import signal
 import sys
 import time
@@ -16,23 +17,32 @@ from humanoid.nodes.robot_visualizer import RobotVisualizer
 
 logger = get_logger(__name__)
 
-TIMEOUT_SECONDS = 10
-TIMEOUT_INTERVAL = 0.1
+DEFAULT_TIMEOUT_SECONDS = 10
+DEFAULT_TIMEOUT_INTERVAL = 0.1
 
 
 class NodeManager:
-    def __init__(self, state_timeout_seconds: float = 10, state_timeout_interval: float = 0.1):
+    def __init__(
+        self,
+        state_timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        state_timeout_interval: float = DEFAULT_TIMEOUT_INTERVAL,
+    ):
         self.processes: list[Process] = []
         self.running = False
         self.state_timeout_seconds = state_timeout_seconds
         self.state_timeout_interval = state_timeout_interval
 
-    def start(self):
+    def start(self, replay: bool = False):
         logger.info("Starting node manager")
         self.running = True
 
         # Ensure consistent start behavior (spawn) across platforms (e.g. Linux + Darwin)
         set_start_method("spawn")
+
+        # In replay mode, we only run the driver and visualizer
+        if replay:
+            self._start_nodes([RobotDriver, RobotVisualizer])
+            return
 
         self._start_nodes(
             [
@@ -70,9 +80,9 @@ class NodeManager:
         elapsed = 0
         while not sub.receive(Topic.ROBOT_STATE):
             logger.debug("Waiting for robot state")
-            time.sleep(TIMEOUT_INTERVAL)
-            elapsed += TIMEOUT_INTERVAL
-            if elapsed > TIMEOUT_SECONDS:
+            time.sleep(self.state_timeout_interval)
+            elapsed += self.state_timeout_interval
+            if elapsed > self.state_timeout_seconds:
                 raise RuntimeError("Timed out waiting for robot state")
 
         sub.close()
@@ -85,6 +95,14 @@ class NodeManager:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Start the humanoid node graph.")
+    parser.add_argument(
+        "--replay",
+        action="store_true",
+        help="Run in replay mode: only start RobotDriver and RobotVisualizer.",
+    )
+    args = parser.parse_args()
+
     manager = NodeManager()
 
     def signal_handler(sig, frame):
@@ -94,7 +112,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    manager.start()
+    manager.start(replay=args.replay)
     manager.wait()
 
 
