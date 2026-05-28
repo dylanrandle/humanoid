@@ -10,6 +10,8 @@ from dataclasses import replace
 import numpy as np
 import pinocchio as pin
 import pytest
+
+pytest.importorskip("pynput", reason="pynput not available on this platform")
 from pynput import keyboard as pynput_keyboard
 
 from humanoid.config import ROBOT_CONFIGS
