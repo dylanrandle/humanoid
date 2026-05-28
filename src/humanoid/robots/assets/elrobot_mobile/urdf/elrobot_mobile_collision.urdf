@@ -44,7 +44,7 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
+                <mesh filename="package://elrobot_mobile/meshes/Omni_Wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
@@ -65,7 +65,7 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
+                <mesh filename="package://elrobot_mobile/meshes/Omni_Wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
@@ -86,7 +86,7 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/omni_wheel.obj" scale="1 1 1" />
+                <mesh filename="package://elrobot_mobile/meshes/Omni_Wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
