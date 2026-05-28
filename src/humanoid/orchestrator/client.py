@@ -52,6 +52,12 @@ class OrchestratorClient:
         """Signal that the current policy has finished (homing → return mode)."""
         self._send(EventKind.COMPLETE)
 
+    def start_logging(self) -> None:
+        self._send(EventKind.START_LOGGING)
+
+    def stop_logging(self) -> None:
+        self._send(EventKind.STOP_LOGGING)
+
     def _send(self, kind: EventKind) -> None:
         self.publisher.publish(
             OrchestratorEvent(timestamp=time.time(), kind=kind),

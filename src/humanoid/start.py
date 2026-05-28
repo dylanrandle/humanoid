@@ -7,6 +7,7 @@ from humanoid.constants import Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
+from humanoid.nodes.data_logger import DataLoggerNode
 from humanoid.nodes.orchestrator import OrchestratorNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.robot_controller import RobotController
@@ -33,7 +34,15 @@ class NodeManager:
         # Ensure consistent start behavior (spawn) across platforms (e.g. Linux + Darwin)
         set_start_method("spawn")
 
-        self._start_nodes([RobotDriver, RobotController, RobotVisualizer, OrchestratorNode])
+        self._start_nodes(
+            [
+                RobotDriver,
+                RobotController,
+                RobotVisualizer,
+                OrchestratorNode,
+                DataLoggerNode,
+            ]
+        )
 
         # Wait for first RobotState messages before spawning remaining nodes
         self._wait_for_robot_state()

@@ -35,6 +35,8 @@ def main():
     sub.add_parser("oculus", help="Request OCULUS mode")
     sub.add_parser("keyboard", help="Request KEYBOARD mode")
     sub.add_parser("idle", help="Request IDLE mode")
+    sub.add_parser("start-logging", help="Start data logging")
+    sub.add_parser("stop-logging", help="Stop data logging")
 
     args = parser.parse_args()
 
@@ -47,6 +49,10 @@ def main():
         client.request_keyboard()
     elif args.event == "idle":
         client.request_idle()
+    elif args.event == "start-logging":
+        client.start_logging()
+    elif args.event == "stop-logging":
+        client.stop_logging()
 
 
 if __name__ == "__main__":

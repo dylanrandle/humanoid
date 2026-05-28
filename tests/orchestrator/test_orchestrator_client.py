@@ -80,3 +80,21 @@ def test_complete_publishes_single_event():
     call = publisher.publish.call_args
     assert call.kwargs["topic"] is Topic.ORCHESTRATOR_EVENT
     assert call.args[0].kind is EventKind.COMPLETE
+
+
+def test_start_logging_publishes_single_event():
+    client, publisher = _make_client()
+    client.start_logging()
+
+    call = publisher.publish.call_args
+    assert call.kwargs["topic"] is Topic.ORCHESTRATOR_EVENT
+    assert call.args[0].kind is EventKind.START_LOGGING
+
+
+def test_stop_logging_publishes_single_event():
+    client, publisher = _make_client()
+    client.stop_logging()
+
+    call = publisher.publish.call_args
+    assert call.kwargs["topic"] is Topic.ORCHESTRATOR_EVENT
+    assert call.args[0].kind is EventKind.STOP_LOGGING

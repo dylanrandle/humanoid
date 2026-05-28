@@ -128,6 +128,8 @@ class OrchestratorNode(Node):
             next_mode = self.return_mode or Mode.IDLE
             self.return_mode = None
             self._transition_to(next_mode)
+        elif kind in {EventKind.START_LOGGING, EventKind.STOP_LOGGING}:
+            logger.info(f"Orchestrator received logging event: {kind}")
 
     def _transition_to(self, new_mode: Mode) -> None:
         if new_mode is self.mode:

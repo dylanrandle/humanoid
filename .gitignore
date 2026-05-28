@@ -12,9 +12,6 @@ wheels/
 # LCM Java types
 lcm-java
 
-# AI agents
-plans/
-
 # MacOS
 .DS_Store
 
@@ -24,3 +21,6 @@ htmlcov
 
 # VS Code
 .vscode
+
+# Logging
+logs/

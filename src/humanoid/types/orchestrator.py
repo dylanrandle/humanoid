@@ -29,6 +29,8 @@ class EventKind(StrEnum):
     REQUEST_KEYBOARD = "request_keyboard"
     REQUEST_IDLE = "request_idle"
     COMPLETE = "complete"
+    START_LOGGING = "start_logging"
+    STOP_LOGGING = "stop_logging"
 
 
 @dataclass
