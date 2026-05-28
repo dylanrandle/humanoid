@@ -78,6 +78,19 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             (self.gripper_max - self.gripper_min) * self.config.dt / self.config.gripper_close_time
         )
         self.orchestrator_client = OrchestratorClient()
+        self.previous_button_states: dict[str, bool] = {}
+        self.is_logging = False
+        self.required_transform_keys = [RIGHT_CONTROLLER_KEY]
+        self.required_button_keys = [
+            LEFT_GRIP_KEY,
+            RIGHT_GRIP_KEY,
+            LEFT_JOYSTICK_KEY,
+            RIGHT_JOYSTICK_KEY,
+            A_BUTTON_KEY,
+            B_BUTTON_KEY,
+            X_BUTTON_KEY,
+            Y_BUTTON_KEY,
+        ]
 
         # Oculus reader
         self.reader = OculusReader()
@@ -125,6 +138,12 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.reference_base_pose = None
         self.commanded_gripper_position = None
 
+    def _is_rising_edge(self, current_pressed: bool, key: str) -> bool:
+        """Check if button transitioned False -> True. Stores the state for future checks."""
+        previous = self.previous_button_states.get(key, False)
+        self.previous_button_states[key] = current_pressed
+        return current_pressed and not previous
+
     def _has_valid_controller_data(self, transforms: dict, buttons: dict) -> bool:
         """Check if controller data is valid and contains required keys.
 
@@ -137,10 +156,9 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         """
         return bool(
             transforms
-            and RIGHT_CONTROLLER_KEY in transforms
+            and all(key in transforms for key in self.required_transform_keys)
             and buttons
-            and LEFT_GRIP_KEY in buttons
-            and RIGHT_GRIP_KEY in buttons
+            and all(key in buttons for key in self.required_button_keys)
         )
 
     def _read_joystick(self, buttons: dict, key: str) -> tuple[float, float]:
@@ -262,19 +280,23 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         if not self._has_valid_controller_data(transforms, buttons):
             return self._hold_current_pose_action(observation)
 
-        if buttons[X_BUTTON_KEY]:
+        # Handle X button homing (edge-triggered)
+        if self._is_rising_edge(bool(buttons.get(X_BUTTON_KEY, False)), X_BUTTON_KEY):
             target = self._homing_target_preserving_gripper(
                 self.robot_config.home_position, observation
             )
             self.orchestrator_client.request_homing(target)
-            return self._hold_current_pose_action(observation)
 
-        if buttons[Y_BUTTON_KEY]:
-            target = self._homing_target_preserving_gripper(
-                self.robot_config.rest_position, observation
-            )
-            self.orchestrator_client.request_homing(target)
-            return self._hold_current_pose_action(observation)
+        # Handle Y button logging toggle (edge-triggered)
+        if self._is_rising_edge(bool(buttons.get(Y_BUTTON_KEY, False)), Y_BUTTON_KEY):
+            if self.is_logging:
+                logger.info("Y button pressed: Stopping data logging")
+                self.orchestrator_client.stop_logging()
+                self.is_logging = False
+            else:
+                logger.info("Y button pressed: Starting data logging")
+                self.orchestrator_client.start_logging()
+                self.is_logging = True
 
         # Dead-man switch: either grip trigger must be held to command any
         # motion. Releasing both clears the reference poses so they re-anchor

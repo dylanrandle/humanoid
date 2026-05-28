@@ -5,7 +5,9 @@ mutable stub so we can drive the policy through synthetic controller poses,
 button states, and joystick deflections.
 """
 
+import typing
 from dataclasses import replace
+from unittest.mock import MagicMock
 
 import numpy as np
 import pinocchio as pin
@@ -19,6 +21,9 @@ from humanoid.policy.teleop.oculus import (
 )
 from humanoid.types.observation import Observation
 from humanoid.types.robot import RobotState
+
+ONE_CALL = 1
+TWO_CALLS = 2
 
 
 class StubOculusReader:
@@ -49,8 +54,13 @@ class StubOculusReader:
 class StubOrchestratorClient:
     """Stand-in for OrchestratorClient that records ``request_homing`` calls."""
 
+    start_logging: typing.Any
+    stop_logging: typing.Any
+
     def __init__(self):
         self.homing_calls: list[np.ndarray] = []
+        self.start_logging = lambda: None
+        self.stop_logging = lambda: None
 
     def request_homing(self, target_position: np.ndarray) -> None:
         self.homing_calls.append(np.asarray(target_position).copy())
@@ -511,7 +521,7 @@ class TestHomingButtons:
     def test_x_button_requests_homing_to_home_position(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         stub_client = StubOrchestratorClient()
-        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        policy.orchestrator_client = stub_client
         reader.buttons["X"] = True
 
         # Observation gripper differs from home's gripper slot — homing must
@@ -533,33 +543,52 @@ class TestHomingButtons:
         expected_tool = policy.robot.get_tool_pose(q)
         np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
 
-    def test_y_button_requests_homing_to_rest_position(self, panda_policy_and_reader):
+    def test_y_button_toggles_data_logging(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         stub_client = StubOrchestratorClient()
-        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        policy.orchestrator_client = stub_client
+
+        # Mock orchestrator_client methods
+        stub_client.start_logging = MagicMock()
+        stub_client.stop_logging = MagicMock()
+
+        obs = _observation_from_q(policy.robot_config.home_position)
+
+        # 1. First press of Y button should start logging
         reader.buttons["Y"] = True
+        policy(obs)
+        stub_client.start_logging.assert_called_once()
+        stub_client.stop_logging.assert_not_called()
+        assert policy.is_logging is True
 
-        q = policy.robot_config.home_position.copy()
-        gripper_position_idx = policy.robot.get_gripper_position_indices()[0]
-        observed_gripper = 0.025
-        q[gripper_position_idx] = observed_gripper
-        obs = _observation_from_q(q)
+        # Reset mock call counts
+        stub_client.start_logging.reset_mock()
 
-        action = policy(obs)
+        # 2. Holding Y button on the next step should not start or stop logging again (debouncing)
+        policy(obs)
+        stub_client.start_logging.assert_not_called()
+        stub_client.stop_logging.assert_not_called()
+        assert policy.is_logging is True
 
-        expected_call_count = 1
-        assert len(stub_client.homing_calls) == expected_call_count
-        expected_target = policy.robot_config.rest_position.copy()
-        expected_target[gripper_position_idx] = observed_gripper
-        np.testing.assert_array_equal(stub_client.homing_calls[0], expected_target)
-        expected_tool = policy.robot.get_tool_pose(q)
-        np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
+        # 3. Release Y button
+        reader.buttons["Y"] = False
+        policy(obs)
+        stub_client.start_logging.assert_not_called()
+        stub_client.stop_logging.assert_not_called()
+        assert policy.is_logging is True
+
+        # 4. Press Y button again should stop logging
+        reader.buttons["Y"] = True
+        policy(obs)
+        stub_client.start_logging.assert_not_called()
+        stub_client.stop_logging.assert_called_once()
+        assert policy.is_logging is False
 
     def test_homing_target_does_not_mutate_config(self, panda_policy_and_reader):
         """The policy must copy the config arrays before overwriting gripper slots."""
         policy, reader = panda_policy_and_reader
         stub_client = StubOrchestratorClient()
-        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        policy.orchestrator_client = stub_client
         reader.buttons["X"] = True
 
         original_home = policy.robot_config.home_position.copy()
@@ -578,55 +607,72 @@ class TestHomingButtons:
             config=OculusTeleopPolicyConfig(verbose=False, oculus_to_world_rotation=np.eye(3)),
         )
         stub_client = StubOrchestratorClient()
-        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        policy.orchestrator_client = stub_client
         policy.reader.buttons["X"] = True  # ty:ignore[unresolved-attribute]
 
         policy(_observation_from_q(cfg.home_position))
 
         np.testing.assert_array_equal(stub_client.homing_calls[0], cfg.home_position)
 
-    def test_x_takes_priority_over_y(self, panda_policy_and_reader):
-        """When both X and Y are held, X (home) wins and Y is not requested."""
+    def test_x_and_y_triggered_simultaneously(self, panda_policy_and_reader):
+        """When both X and Y are pressed, X triggers homing and Y toggles logging."""
         policy, reader = panda_policy_and_reader
         stub_client = StubOrchestratorClient()
-        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        policy.orchestrator_client = stub_client
+
+        stub_client.start_logging = MagicMock()
         reader.buttons["X"] = True
         reader.buttons["Y"] = True
 
-        policy(_observation_from_q(policy.robot_config.home_position))
+        obs = _observation_from_q(policy.robot_config.home_position)
+        policy(obs)
 
-        expected_call_count = 1
-        assert len(stub_client.homing_calls) == expected_call_count
+        # Check homing triggered
+        assert len(stub_client.homing_calls) == 1
         np.testing.assert_array_equal(
             stub_client.homing_calls[0], policy.robot_config.home_position
         )
 
-    def test_x_short_circuits_before_grip_teleop(self, panda_policy_and_reader):
-        """X with grip held still triggers homing and skips reference-pose setup."""
-        policy, reader = panda_policy_and_reader
-        stub_client = StubOrchestratorClient()
-        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
-        reader.buttons["RG"] = True
-        reader.buttons["X"] = True
-        # A non-identity controller pose would normally seed reference poses.
-        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.1, 0.0, 0.0])))}
-
-        policy(_observation_from_q(policy.robot_config.home_position))
-
-        expected_call_count = 1
-        assert len(stub_client.homing_calls) == expected_call_count
-        assert policy.reference_controller_pose is None
-        assert policy.reference_tool_pose is None
+        # Check logging triggered
+        stub_client.start_logging.assert_called_once()
+        assert policy.is_logging is True
 
     def test_no_button_pressed_does_not_request_homing(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         stub_client = StubOrchestratorClient()
-        policy.orchestrator_client = stub_client  # ty:ignore[invalid-assignment]
+        policy.orchestrator_client = stub_client
         reader.buttons["RG"] = True
 
         policy(_observation_from_q(policy.robot_config.home_position))
 
         assert stub_client.homing_calls == []
+
+    def test_x_button_is_edge_triggered(self, panda_policy_and_reader):
+        """X button press should trigger homing only once on the rising edge, even if held."""
+        policy, reader = panda_policy_and_reader
+        stub_client = StubOrchestratorClient()
+        policy.orchestrator_client = stub_client
+        reader.buttons["X"] = True
+
+        obs = _observation_from_q(policy.robot_config.home_position)
+
+        # 1. First step: button transitioned to pressed, should trigger homing
+        policy(obs)
+        assert len(stub_client.homing_calls) == ONE_CALL
+
+        # 2. Second step: button is still pressed, should not trigger again
+        policy(obs)
+        assert len(stub_client.homing_calls) == ONE_CALL
+
+        # 3. Third step: button released
+        reader.buttons["X"] = False
+        policy(obs)
+        assert len(stub_client.homing_calls) == ONE_CALL
+
+        # 4. Fourth step: button pressed again, should trigger again
+        reader.buttons["X"] = True
+        policy(obs)
+        assert len(stub_client.homing_calls) == TWO_CALLS
 
 
 class TestReset:
