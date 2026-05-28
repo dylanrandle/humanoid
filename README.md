@@ -44,11 +44,17 @@ A Python framework for controlling small household humanoid robots with support 
 
 ### Starting the Robot System
 
-The main entry point starts three nodes in parallel:
-- **Robot Driver**: Interfaces with hardware or simulation
-- **Robot Controller**: Executes control algorithms
-- **Robot Visualizer**: Provides real-time visualization
+The main entry point starts the system nodes. In **Normal Mode**, it spawns the core nodes in parallel:
+- **Robot Driver**: Interfaces with the physical hardware or simulator.
+- **Robot Controller**: Executes operational space and joint control algorithms.
+- **Robot Visualizer**: Provides real-time robot state visualization in MeshCat.
+- **Orchestrator Node**: An event-driven finite state machine (FSM) that manages the active control mode (e.g. IDLE, HOMING, OCULUS, KEYBOARD) and forwards per-source command topics to final robot command topics.
+- **Data Logger Node**: Monitors orchestrator events and spawns/terminates the `lcm-logger` process to record network traffic on demand.
 
+Once the first `RobotState` message is successfully received, the manager automatically spawns:
+- **Homing Node**: A long-running node that performs smooth trajectory transitions to target configurations.
+
+To launch the entire stack in **Normal Mode**:
 ```bash
 uv run start
 ```
@@ -57,6 +63,66 @@ Or using the Python module directly:
 ```bash
 uv run python -m humanoid.start
 ```
+
+#### Replay Mode
+
+To run in **Replay Mode**, which only starts the **Robot Driver** and **Robot Visualizer**:
+```bash
+uv run start --replay
+```
+In this mode, you can play back a previously recorded LCM log file (e.g., recorded by the `DataLoggerNode`) for visualization and analysis:
+```bash
+./scripts/run-lcm-replay <log_file_path>
+```
+
+### Orchestrator & FSM CLI
+
+The active control mode of the robot and data logging state are coordinated by the orchestrator. You can interact with the FSM and request state transitions dynamically using the `fsm` CLI:
+
+**Switch to teleoperation modes**:
+```bash
+uv run fsm keyboard
+uv run fsm oculus
+```
+
+**Trigger robot homing** (targets configured in `ROBOT_CONFIG`):
+```bash
+# Request homing to the home position (default)
+uv run fsm home --target home
+
+# Request homing to the resting position
+uv run fsm home --target rest
+```
+
+**Control data logging**:
+```bash
+# Start recording LCM communication traffic
+uv run fsm start-logging
+
+# Stop recording LCM communication traffic
+uv run fsm stop-logging
+```
+
+**Transition back to IDLE**:
+```bash
+uv run fsm idle
+```
+
+### Keyboard Teleoperation
+
+Control the robot using keyboard input (make sure the Orchestrator has been set to `keyboard` mode):
+```bash
+uv run keyboard
+```
+
+### Oculus Teleoperation
+
+Control the robot using Oculus VR controllers for intuitive, immersive teleoperation (make sure the Orchestrator has been set to `oculus` mode):
+```bash
+uv run oculus
+```
+
+**Device Setup**: For instructions on setting up your Oculus device, refer to the [oculus_reader](https://github.com/rail-berkeley/oculus_reader) repository.
 
 ### Motor Utilities
 
@@ -87,22 +153,6 @@ uv run python -m humanoid.motors.feetech.scripts.zero
 uv run python -m humanoid.motors.feetech.scripts.set_gains
 ```
 
-### Keyboard Teleoperation
-
-Control the robot using keyboard input:
-```bash
-uv run keyboard
-```
-
-### Oculus Teleoperation
-
-Control the robot using Oculus VR controllers for intuitive, immersive teleoperation:
-```bash
-uv run oculus
-```
-
-**Device Setup**: For instructions on setting up your Oculus device, refer to the [oculus_reader](https://github.com/rail-berkeley/oculus_reader) repository.
-
 ### Running Tests
 
 ```bash
@@ -114,14 +164,16 @@ uv run pytest
 ```
 humanoid/
 ├── src/humanoid/
-│   ├── controllers/       # Control algorithms (operational space, etc.)
-│   ├── environment/       # Environment interfaces (realtime, base)
-│   ├── middleware/        # Communication middleware
+│   ├── controllers/      # Control algorithms (operational space, etc.)
+│   ├── environment/      # Environment interfaces (realtime, base)
+│   ├── middleware/       # Communication middleware
 │   ├── motors/           # Motor drivers (Feetech, simulation)
-│   ├── nodes/            # Main system nodes (driver, controller, visualizer)
-│   ├── policy/           # Control policies (keyboard teleop, etc.)
+│   ├── nodes/            # System nodes (driver, controller, visualizer, homing, data logger)
+│   ├── orchestrator/     # Orchestrator CLI and client communication interfaces
+│   ├── policy/           # Control policies (keyboard teleop, homing, oculus, etc.)
 │   ├── robots/           # Robot definitions and URDF assets
 │   ├── types/            # Type definitions and LCM message types
+│   ├── utils/            # General utilities
 │   └── visualizers/      # Visualization tools (MeshCat)
 ├── tests/                # Unit tests
 └── scripts/              # Utility scripts
