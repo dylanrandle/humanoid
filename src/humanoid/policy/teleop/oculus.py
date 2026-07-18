@@ -43,6 +43,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         - Right controller pose: End-effector position and orientation
         - A button (hold): Close gripper; release to freeze at current width
         - B button (hold): Open gripper; release to freeze at current width
+        - X button: Move to the configured home position
+        - Y button: Toggle LCM data logging
         - Grip trigger (either hand): Dead-man switch -- all motion is
           only commanded while held; releasing both grips clears the
           controller, base, and gripper reference state, which re-anchor
@@ -56,6 +58,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
     Args:
         robot_config: Robot configuration (default: ROBOT_CONFIG)
         config: Tunable policy parameters (default: OculusTeleopPolicyConfig())
+        orchestrator_client: Client used for homing and logging requests
     """
 
     mode = Mode.OCULUS
@@ -64,6 +67,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
         config: OculusTeleopPolicyConfig | None = None,
+        orchestrator_client: OrchestratorClient | None = None,
     ):
         """Initialize the Oculus teleoperation policy."""
         if config is None:
@@ -77,7 +81,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.gripper_step = (
             (self.gripper_max - self.gripper_min) * self.config.dt / self.config.gripper_close_time
         )
-        self.orchestrator_client = OrchestratorClient()
+        self.orchestrator_client = orchestrator_client or OrchestratorClient()
         self.previous_button_states: dict[str, bool] = {}
         self.is_logging = False
         self.required_transform_keys = [RIGHT_CONTROLLER_KEY]
@@ -123,6 +127,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         logger.info("  Right controller pose -> End-effector pose")
         logger.info("  A button (hold) -> Close gripper (release to freeze)")
         logger.info("  B button (hold) -> Open gripper (release to freeze)")
+        logger.info("  X button -> Move to the configured home position")
+        logger.info("  Y button -> Toggle LCM data logging")
         logger.info(
             "  Grip trigger (either hand) -> Dead-man switch "
             "(hold for any command; release to freeze)"
@@ -186,9 +192,9 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
     ) -> np.ndarray | None:
         """Compute the gripper command from the A/B buttons.
 
-        The commanded position is integrated across ticks: holding A adds
+        The commanded position is integrated across ticks: holding A subtracts
         the pre-computed ``self.gripper_step`` per tick (close), holding B
-        subtracts it (open). ``gripper_step`` is set in ``__init__`` to
+        adds it (open). ``gripper_step`` is set in ``__init__`` to
         ``(gripper_max - gripper_min) * dt / gripper_close_time``, so a full
         range traversal takes ``gripper_close_time`` seconds at the
         configured loop rate. Releasing both holds the last commanded
@@ -209,9 +215,9 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             self.commanded_gripper_position = float(current[0])
 
         if bool(buttons.get(A_BUTTON_KEY, False)):
-            self.commanded_gripper_position += self.gripper_step
-        elif bool(buttons.get(B_BUTTON_KEY, False)):
             self.commanded_gripper_position -= self.gripper_step
+        elif bool(buttons.get(B_BUTTON_KEY, False)):
+            self.commanded_gripper_position += self.gripper_step
 
         self.commanded_gripper_position = float(
             np.clip(self.commanded_gripper_position, self.gripper_min, self.gripper_max)
@@ -222,7 +228,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self, target_position: np.ndarray, observation: Observation
     ) -> np.ndarray:
         """Return a copy of ``target_position`` with the gripper slots overwritten
-        by the current observation, so X/Y homing leaves the gripper where it is."""
+        by the current observation, so X homing leaves the gripper where it is."""
         target = target_position.copy()
         current_gripper = self._get_current_gripper_positions(observation)
         if current_gripper is not None:

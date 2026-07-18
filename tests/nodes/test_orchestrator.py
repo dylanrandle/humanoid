@@ -1,4 +1,4 @@
-"""FSM tests for the orchestrator.
+"""Control-mode tests for the orchestrator.
 
 The orchestrator's step() does both event handling and topic forwarding. These
 tests drive events through ``_handle_event`` directly to focus on transition

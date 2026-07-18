@@ -63,6 +63,9 @@ class KeyboardTeleopNode(Node):
         logger.info("Press ESC or 'x' to quit\n")
         self.observation = self.env.reset()
 
+    def stop_condition(self) -> bool:
+        return not self.policy.running
+
     def on_close(self) -> None:
         self.policy.stop_listener()
         self.env.close()

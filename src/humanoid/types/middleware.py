@@ -1,4 +1,5 @@
 from humanoid.types.homing import HomingTarget
+from humanoid.types.logging import LoggingStatus
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -14,5 +15,6 @@ AcceptedTypes = (
     | RobotState
     | OrchestratorMode
     | OrchestratorEvent
+    | LoggingStatus
     | HomingTarget
 )

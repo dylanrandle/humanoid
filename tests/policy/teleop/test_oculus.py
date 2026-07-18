@@ -14,6 +14,7 @@ import pinocchio as pin
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop import oculus as oculus_module
 from humanoid.policy.teleop.oculus import (
     OculusTeleopPolicy,
@@ -51,7 +52,7 @@ class StubOculusReader:
         return self.transforms, self.buttons
 
 
-class StubOrchestratorClient:
+class StubOrchestratorClient(OrchestratorClient):
     """Stand-in for OrchestratorClient that records ``request_homing`` calls."""
 
     start_logging: typing.Any
@@ -94,7 +95,11 @@ def _make_policy(
             verbose=False,
             oculus_to_world_rotation=np.eye(3),
         )
-    policy = OculusTeleopPolicy(robot_config=robot_config, config=config)
+    policy = OculusTeleopPolicy(
+        robot_config=robot_config,
+        config=config,
+        orchestrator_client=StubOrchestratorClient(),
+    )
     return policy, policy.reader  # ty:ignore[invalid-return-type]
 
 
@@ -253,7 +258,7 @@ class TestGripper:
         assert action.gripper_positions[0] == pytest.approx(seeded_gripper)
 
     def test_a_button_steps_gripper_closed_by_one_step(self, panda_policy_and_reader):
-        """A closes the gripper, which on this hardware means +step."""
+        """A closes the gripper by moving toward its lower joint limit."""
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
 
@@ -267,11 +272,11 @@ class TestGripper:
         action = policy(obs)
 
         step = policy.gripper_step
-        expected = seeded_gripper + step
+        expected = seeded_gripper - step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
     def test_b_button_steps_gripper_open_by_one_step(self, panda_policy_and_reader):
-        """B opens the gripper, which on this hardware means -step."""
+        """B opens the gripper by moving toward its upper joint limit."""
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
 
@@ -285,17 +290,17 @@ class TestGripper:
         action = policy(obs)
 
         step = policy.gripper_step
-        expected = seeded_gripper - step
+        expected = seeded_gripper + step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
     def test_repeated_a_holds_accumulate(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
 
-        # Seed at the lower limit so several closing steps don't hit the upper clamp.
+        # Seed at the upper limit so several closing steps don't hit the lower clamp.
         q = policy.robot_config.home_position.copy()
         gripper_position_idx = policy.robot.get_gripper_position_indices()[0]
-        seeded_gripper = policy.gripper_min
+        seeded_gripper = policy.gripper_max
         q[gripper_position_idx] = seeded_gripper
         obs = _observation_from_q(q)
 
@@ -305,7 +310,7 @@ class TestGripper:
             action = policy(obs)
 
         step = policy.gripper_step
-        expected = seeded_gripper + num_ticks * step
+        expected = seeded_gripper - num_ticks * step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
     def test_release_holds_last_commanded_value(self, panda_policy_and_reader):
@@ -327,30 +332,30 @@ class TestGripper:
 
         assert action.gripper_positions[0] == pytest.approx(commanded_after_step)
 
-    def test_a_button_clamps_at_gripper_max(self, panda_policy_and_reader):
-        """A closes (adds step), so it clamps at the upper joint limit."""
+    def test_a_button_clamps_at_gripper_min(self, panda_policy_and_reader):
+        """A closes by subtracting a step, so it clamps at the lower limit."""
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
-        # Seed near the upper limit so a single step would overshoot.
+        # Seed near the lower limit so a single step would overshoot.
         step = policy.gripper_step
-        policy.commanded_gripper_position = policy.gripper_max - 0.5 * step
+        policy.commanded_gripper_position = policy.gripper_min + 0.5 * step
 
         reader.buttons["A"] = True
         action = policy(_observation_from_q(policy.robot_config.home_position))
 
-        assert action.gripper_positions[0] == pytest.approx(policy.gripper_max)
+        assert action.gripper_positions[0] == pytest.approx(policy.gripper_min)
 
-    def test_b_button_clamps_at_gripper_min(self, panda_policy_and_reader):
-        """B opens (subtracts step), so it clamps at the lower joint limit."""
+    def test_b_button_clamps_at_gripper_max(self, panda_policy_and_reader):
+        """B opens by adding a step, so it clamps at the upper limit."""
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
         step = policy.gripper_step
-        policy.commanded_gripper_position = policy.gripper_min + 0.5 * step
+        policy.commanded_gripper_position = policy.gripper_max - 0.5 * step
 
         reader.buttons["B"] = True
         action = policy(_observation_from_q(policy.robot_config.home_position))
 
-        assert action.gripper_positions[0] == pytest.approx(policy.gripper_min)
+        assert action.gripper_positions[0] == pytest.approx(policy.gripper_max)
 
     def test_a_button_takes_priority_over_b(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
@@ -367,7 +372,7 @@ class TestGripper:
         action = policy(obs)
 
         step = policy.gripper_step
-        expected = seeded_gripper + step
+        expected = seeded_gripper - step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
     def test_gripper_buttons_ignored_without_deadman(self, panda_policy_and_reader):
@@ -413,13 +418,14 @@ class TestGripper:
         reader.buttons["RG"] = True
         action = policy(obs)
         step = policy.gripper_step
-        assert action.gripper_positions[0] == pytest.approx(seeded_gripper + step)
+        assert action.gripper_positions[0] == pytest.approx(seeded_gripper - step)
 
     def test_no_gripper_indices_yields_none(self):
         cfg = replace(ROBOT_CONFIGS["panda"], gripper_joint_indices=None)
         policy = OculusTeleopPolicy(
             robot_config=cfg,
             config=OculusTeleopPolicyConfig(verbose=False, oculus_to_world_rotation=np.eye(3)),
+            orchestrator_client=StubOrchestratorClient(),
         )
         policy.reader.buttons["RG"] = True  # ty:ignore[unresolved-attribute]
         policy.reader.buttons["A"] = True  # ty:ignore[unresolved-attribute]
@@ -605,6 +611,7 @@ class TestHomingButtons:
         policy = OculusTeleopPolicy(
             robot_config=cfg,
             config=OculusTeleopPolicyConfig(verbose=False, oculus_to_world_rotation=np.eye(3)),
+            orchestrator_client=StubOrchestratorClient(),
         )
         stub_client = StubOrchestratorClient()
         policy.orchestrator_client = stub_client

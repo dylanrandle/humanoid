@@ -1,21 +1,20 @@
-import os
-
 import numpy as np
 
 from humanoid.types.controllers import OperationalSpaceConfig
-from humanoid.types.robot import RobotConfig
+from humanoid.types.process import Runtime
+from humanoid.types.robot import RobotConfig, RobotName
 from humanoid.types.servo import ServoControlMode
 from humanoid.types.visualizer import VisualizerConfig
 from humanoid.types.wheels import WheelConfig, WheelType
 
-IS_SIMULATION = os.getenv("HUMANOID_RUNTIME", "sim").lower().strip() in ("sim", "simulation")
-ROBOT_NAME = os.getenv("HUMANOID_ROBOT", "elrobot_mobile").lower().strip()
+IS_SIMULATION = Runtime.from_environment() is Runtime.SIM
+ROBOT_NAME = RobotName.from_environment()
 
 ROBOT_CONFIGS = {
     cfg.name: cfg
     for cfg in [
         RobotConfig(
-            name="panda",
+            name=RobotName.PANDA,
             tool_frame="panda_hand_tcp",
             home_position=np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04]),
             rest_position=np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.785, 0.0]),
@@ -25,7 +24,7 @@ ROBOT_CONFIGS = {
             operational_space_config=OperationalSpaceConfig(avoid_collisions=True),
         ),
         RobotConfig(
-            name="so101",
+            name=RobotName.SO101,
             tool_frame="gripper_frame_link",
             home_position=np.array([0.0, -0.5, 0.8, -0.3, 0.0, 0.0]),
             rest_position=np.array([0.0, -1.55, 1.5, 1.0, 0.0, -0.15]),
@@ -35,7 +34,7 @@ ROBOT_CONFIGS = {
             gripper_joint_indices=[5],
         ),
         RobotConfig(
-            name="elrobot",
+            name=RobotName.ELROBOT,
             tool_frame="Gripper_Base_v1_1",
             home_position=np.array([0.0, -0.75, 0.5, 0.0, 0.0, 1.0, 0.0, 0]),
             rest_position=np.array([0.0, -1.6, -0.1, 1.65, 0.0, 0.21, 0.0, 2.2]),
@@ -46,7 +45,7 @@ ROBOT_CONFIGS = {
             gripper_joint_indices=[7],
         ),
         RobotConfig(
-            name="elrobot_mobile",
+            name=RobotName.ELROBOT_MOBILE,
             tool_frame="Gripper_Base_v1_1",
             base_frame="root_joint",
             wheels=[
@@ -134,9 +133,6 @@ ROBOT_CONFIGS = {
     ]
 }
 
-assert ROBOT_NAME in ROBOT_CONFIGS, (
-    f"{ROBOT_NAME} not recognized, available options: {list(ROBOT_CONFIGS.keys())}"
-)
 ROBOT_CONFIG = ROBOT_CONFIGS[ROBOT_NAME]
 
 VISUALIZER_CONFIG = VisualizerConfig()

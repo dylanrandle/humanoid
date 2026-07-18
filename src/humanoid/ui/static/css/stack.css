@@ -1,0 +1,148 @@
+.stack-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+  min-height: 190px;
+  padding: 34px 38px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--ink);
+  color: var(--white);
+  box-shadow: var(--shadow);
+}
+
+.stack-card::after {
+  position: absolute;
+  top: -80px;
+  right: 33%;
+  width: 240px;
+  height: 240px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 38px rgb(255 255 255 / 2%), 0 0 0 76px rgb(255 255 255 / 2%);
+  content: "";
+  pointer-events: none;
+}
+
+.stack-copy,
+.stack-action {
+  position: relative;
+  z-index: 1;
+}
+
+.stack-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.section-number {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 50%;
+  color: var(--signal);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.stack-copy .eyebrow {
+  margin-bottom: 8px;
+  color: #a9adab;
+}
+
+.stack-copy h2 {
+  font-size: 1.85rem;
+}
+
+.stack-copy p:last-child {
+  max-width: 520px;
+  margin: 9px 0 0;
+  color: #aeb2b0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.stack-action {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+
+.process-readout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 130px;
+}
+
+.process-readout strong,
+.process-readout small {
+  display: block;
+}
+
+.process-readout strong {
+  font-size: 0.8rem;
+}
+
+.process-readout small {
+  max-width: 150px;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #909593;
+  font-size: 0.67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.primary-action,
+.secondary-action {
+  border: 0;
+  cursor: pointer;
+  font-weight: 750;
+  transition: 160ms ease;
+}
+
+.primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  min-width: 178px;
+  min-height: 58px;
+  padding: 0 18px 0 21px;
+  border-radius: 14px;
+  background: var(--signal);
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.primary-action:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgb(220 233 0 / 16%);
+}
+
+.primary-action.stop {
+  background: var(--danger);
+  color: var(--white);
+}
+
+.primary-action.real-start:not(.stop) {
+  background: #f19736;
+}
+
+.primary-action:disabled,
+.secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.action-arrow {
+  font-size: 1.2rem;
+  font-weight: 450;
+}

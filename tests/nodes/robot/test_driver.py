@@ -3,24 +3,24 @@ from unittest.mock import MagicMock, Mock, patch
 import numpy as np
 import pytest
 
-from humanoid.nodes.robot_driver import RobotDriver
+from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.types.robot import RobotConfig, RobotJointCommand
 from humanoid.types.servo import ServoControlMode
 
 
 def _make_driver(
     robot_config: RobotConfig, velocity_limit: np.ndarray | None = None
-) -> RobotDriver:
-    """Build a RobotDriver with mocked LCM, motors, and Robot model."""
+) -> RobotDriverNode:
+    """Build a RobotDriverNode with mocked LCM, motors, and Robot model."""
     n_joints = len(robot_config.joint_idx_to_servo_id)
     if velocity_limit is None:
         velocity_limit = np.full(n_joints, 5.0)
 
     with (
-        patch("humanoid.nodes.robot_driver.Subscriber"),
-        patch("humanoid.nodes.robot_driver.Publisher"),
-        patch("humanoid.nodes.robot_driver.Robot") as mock_robot_cls,
-        patch("humanoid.nodes.robot_driver.SimulatedMotorController") as mock_controller,
+        patch("humanoid.nodes.robot.driver.Subscriber"),
+        patch("humanoid.nodes.robot.driver.Publisher"),
+        patch("humanoid.nodes.robot.driver.Robot") as mock_robot_cls,
+        patch("humanoid.nodes.robot.driver.SimulatedMotorController") as mock_controller,
     ):
         mock_robot = Mock()
         mock_robot.config = robot_config
@@ -36,7 +36,7 @@ def _make_driver(
         mock_controller_instance = MagicMock()
         mock_controller.return_value = mock_controller_instance
 
-        driver = RobotDriver(robot_config=robot_config)
+        driver = RobotDriverNode(robot_config=robot_config)
         driver.controller = mock_controller_instance
 
         return driver
@@ -44,7 +44,7 @@ def _make_driver(
 
 @pytest.fixture
 def mock_robot_driver():
-    """RobotDriver with 7 position-controlled servos and panda-like position limits."""
+    """RobotDriverNode with position-controlled servos and panda-like limits."""
     robot_config = RobotConfig(
         name="panda",
         tool_frame="panda_hand",
@@ -248,6 +248,64 @@ def test_no_command_does_nothing(mock_robot_driver):
     """If no command is queued, neither write should be invoked."""
     mock_robot_driver.subscriber.receive = Mock(return_value=None)
     mock_robot_driver.receive()
+
+    mock_robot_driver.controller.write_position.assert_not_called()
+    mock_robot_driver.controller.write_velocity.assert_not_called()
+
+
+def test_rejects_incompatible_position_dimensions(mock_robot_driver):
+    command = RobotJointCommand(timestamp=0.0, joint_positions=np.zeros(6))
+    mock_robot_driver.subscriber.receive = Mock(return_value=command)
+
+    with pytest.raises(ValueError, match=r"6 positions.*requires 7"):
+        mock_robot_driver.receive()
+
+    mock_robot_driver.controller.write_position.assert_not_called()
+    mock_robot_driver.controller.write_velocity.assert_not_called()
+
+
+def test_rejects_incompatible_velocity_dimensions(mock_robot_driver):
+    command = RobotJointCommand(
+        timestamp=0.0,
+        joint_positions=np.zeros(7),
+        joint_velocities=np.zeros(6),
+    )
+    mock_robot_driver.subscriber.receive = Mock(return_value=command)
+
+    with pytest.raises(ValueError, match=r"6 velocities.*requires 7"):
+        mock_robot_driver.receive()
+
+    mock_robot_driver.controller.write_position.assert_not_called()
+    mock_robot_driver.controller.write_velocity.assert_not_called()
+
+
+@pytest.mark.parametrize("invalid_value", [np.nan, np.inf, -np.inf])
+def test_rejects_non_finite_positions_before_motor_writes(mock_robot_driver, invalid_value):
+    positions = np.zeros(7)
+    positions[2] = invalid_value
+    command = RobotJointCommand(timestamp=0.0, joint_positions=positions)
+    mock_robot_driver.subscriber.receive = Mock(return_value=command)
+
+    with pytest.raises(ValueError, match="positions must all be finite"):
+        mock_robot_driver.receive()
+
+    mock_robot_driver.controller.write_position.assert_not_called()
+    mock_robot_driver.controller.write_velocity.assert_not_called()
+
+
+@pytest.mark.parametrize("invalid_value", [np.nan, np.inf, -np.inf])
+def test_rejects_non_finite_velocities_before_motor_writes(mock_robot_driver, invalid_value):
+    velocities = np.zeros(7)
+    velocities[2] = invalid_value
+    command = RobotJointCommand(
+        timestamp=0.0,
+        joint_positions=np.zeros(7),
+        joint_velocities=velocities,
+    )
+    mock_robot_driver.subscriber.receive = Mock(return_value=command)
+
+    with pytest.raises(ValueError, match="velocities must all be finite"):
+        mock_robot_driver.receive()
 
     mock_robot_driver.controller.write_position.assert_not_called()
     mock_robot_driver.controller.write_velocity.assert_not_called()

@@ -22,8 +22,8 @@ class SimulatedMotorController(MotorController):
         """Initialize simulated motor controller.
 
         Args:
-            servo_ids: List of servo IDs to simulate
-            initial_positions: Optional dictionary mapping servo_id to initial position in radians.
+            robot_config: Robot definition used to select simulated servos and
+                initialize them at the configured home position.
         """
         super().__init__(robot_config.servo_ids)
 

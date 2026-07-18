@@ -1,3 +1,5 @@
+"""Robot operational-space controller node."""
+
 import time
 from dataclasses import asdict
 from pprint import pformat
@@ -30,7 +32,7 @@ logger = get_logger(__name__)
 OSC_ACTIVE_MODES = {Mode.OCULUS, Mode.KEYBOARD}
 
 
-class RobotController(Node):
+class RobotControllerNode(Node):
     """Node that converts task space commands to joint space commands."""
 
     def __init__(
@@ -41,7 +43,6 @@ class RobotController(Node):
 
         Args:
             robot_config: Robot configuration including name and end effector frame
-            rate_hz: Control loop rate in Hz
         """
         self.robot = Robot(robot_config)
         self.robot.print_info()
@@ -168,7 +169,7 @@ class RobotController(Node):
 
 def main():
     """Main entry point for the robot controller node."""
-    controller = RobotController()
+    controller = RobotControllerNode()
     controller.run()
 
 

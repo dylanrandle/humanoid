@@ -1,4 +1,4 @@
-"""Robot visualizer node that displays the robot state in real-time.
+"""MeshCat robot visualization node.
 
 This node subscribes to the ROBOT_STATE LCM channel and visualizes the robot's
 current joint positions using MeshCat.
@@ -17,7 +17,7 @@ from humanoid.visualizers.robot import RobotVisualizer as _RobotVisualizer
 logger = get_logger(__name__)
 
 
-class RobotVisualizer(Node):
+class RobotVisualizerNode(Node):
     """Visualizer node that displays robot state in real-time.
 
     This node subscribes to the ROBOT_STATE, ROBOT_JOINT_COMMAND, and
@@ -29,7 +29,6 @@ class RobotVisualizer(Node):
         robot: Robot instance for kinematics and visualization
         viz: MeshCat visualizer instance
         subscriber: LCM subscriber for robot state messages
-        running: Flag to control the main loop
     """
 
     def __init__(
@@ -102,7 +101,7 @@ class RobotVisualizer(Node):
 
 
 def main():
-    visualizer = RobotVisualizer()
+    visualizer = RobotVisualizerNode()
     visualizer.run()
 
 

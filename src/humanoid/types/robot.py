@@ -1,4 +1,6 @@
+import os
 from dataclasses import dataclass
+from enum import StrEnum
 
 import numpy as np
 import pinocchio as pin
@@ -6,6 +8,27 @@ import pinocchio as pin
 from humanoid.types.controllers import OperationalSpaceConfig
 from humanoid.types.servo import ServoControlMode
 from humanoid.types.wheels import WheelConfig
+
+
+class RobotName(StrEnum):
+    PANDA = "panda"
+    SO101 = "so101"
+    ELROBOT = "elrobot"
+    ELROBOT_MOBILE = "elrobot_mobile"
+
+    @classmethod
+    def from_environment(cls) -> "RobotName":
+        """Parse a robot name, using the configured default when unset."""
+        # Constants imports this enum, so resolve its environment settings lazily.
+        from humanoid.constants import (  # noqa: PLC0415
+            DEFAULT_HUMANOID_ROBOT,
+            ROBOT_ENVIRONMENT_VARIABLE,
+        )
+
+        value = os.getenv(ROBOT_ENVIRONMENT_VARIABLE)
+        if value is None or not value.strip():
+            return cls(DEFAULT_HUMANOID_ROBOT)
+        return cls(value.lower().strip())
 
 
 @dataclass

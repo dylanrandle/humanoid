@@ -63,7 +63,8 @@ class OculusTeleopNode(Node):
     def setup(self) -> None:
         logger.info("Hold either grip trigger (dead-man) to command motion")
         logger.info("Use right controller pose to control end-effector")
-        logger.info("Use right trigger to control gripper")
+        logger.info("Hold A to close or B to open the gripper")
+        logger.info("Press X to move home and Y to toggle logging")
         logger.info("Use left joystick to drive the base (forward = y+, right = x+)")
         logger.info("Use right joystick X to yaw the base (left = yaw+, right = yaw-)\n")
         self.observation = self.env.reset()

@@ -9,6 +9,7 @@ import pytest
 from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.logging import LoggingState, LoggingStatus
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -113,6 +114,7 @@ class TestSubscriber:
                 Topic.ROBOT_STATE,
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
+                Topic.LOGGING_STATUS,
             ]
         )
 
@@ -136,6 +138,17 @@ class TestSubscriber:
                 Topic.ROBOT_BASE_COMMAND,
                 LCMConverter.robot_base_command_to_lcm(_make_base_command()),
                 RobotBaseCommand,
+            ),
+            (
+                Topic.LOGGING_STATUS,
+                LCMConverter.logging_status_to_lcm(
+                    LoggingStatus(
+                        timestamp=5.0,
+                        state=LoggingState.RUNNING,
+                        file_name="logs/lcmlog",
+                    )
+                ),
+                LoggingStatus,
             ),
         ]
 

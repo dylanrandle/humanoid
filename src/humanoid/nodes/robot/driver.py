@@ -1,3 +1,5 @@
+"""Robot hardware and simulation driver node."""
+
 import time
 
 import numpy as np
@@ -13,7 +15,7 @@ from humanoid.motors.feetech.controller import FeetechMotorController
 from humanoid.motors.simulation import SimulatedMotorController
 from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
-from humanoid.types.robot import RobotConfig, RobotState
+from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotState
 from humanoid.types.servo import ServoControlMode
 
 logger = get_logger(__name__)
@@ -21,13 +23,13 @@ logger = get_logger(__name__)
 DEFAULT_RATE_HZ = 500.0
 
 
-class RobotDriver(Node):
+class RobotDriverNode(Node):
     def __init__(self, robot_config: RobotConfig = ROBOT_CONFIG, rate_hz: float = DEFAULT_RATE_HZ):
         self.rate_hz = rate_hz
         self.subscriber = Subscriber(topics=[Topic.ROBOT_JOINT_COMMAND])
         self.publisher = Publisher()
 
-        # Use robot configuration from constants
+        # Build command routing from the selected robot configuration.
         self.joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
         self.servo_id_to_joint_idx = robot_config.servo_id_to_joint_idx
         self.sorted_joint_indices = sorted(self.joint_idx_to_servo_id.keys())
@@ -78,6 +80,7 @@ class RobotDriver(Node):
             return
 
         logger.debug(f"Received command: {command}")
+        self._validate_command_dimensions(command)
 
         # Cache the planar root joint's commanded q so we can echo it back in
         # the published RobotState (no hardware feedback for the base).
@@ -108,6 +111,31 @@ class RobotDriver(Node):
 
         self.controller.write_position(positions)
         self.controller.write_velocity(velocities)
+
+    def _validate_command_dimensions(self, command: RobotJointCommand) -> None:
+        expected_positions = len(self.joint_lower_limits)
+        received_positions = len(command.joint_positions)
+        if received_positions != expected_positions:
+            raise ValueError(
+                "Robot joint command has "
+                f"{received_positions} positions; the selected robot requires "
+                f"{expected_positions}."
+            )
+        if not np.isfinite(command.joint_positions).all():
+            raise ValueError("Robot joint command positions must all be finite.")
+
+        if command.joint_velocities is None:
+            return
+        expected_velocities = len(self.joint_velocity_limits)
+        received_velocities = len(command.joint_velocities)
+        if received_velocities != expected_velocities:
+            raise ValueError(
+                "Robot joint command has "
+                f"{received_velocities} velocities; the selected robot requires "
+                f"{expected_velocities}."
+            )
+        if not np.isfinite(command.joint_velocities).all():
+            raise ValueError("Robot joint command velocities must all be finite.")
 
     def publish(self):
         positions = self.controller.read_all_positions()
@@ -154,7 +182,7 @@ class RobotDriver(Node):
 
 
 def main():
-    driver = RobotDriver()
+    driver = RobotDriverNode()
     driver.run()
 
 

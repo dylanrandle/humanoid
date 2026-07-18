@@ -4,11 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "humanoid"
-version = "0.1.0"
-description = "Small household humanoid robot"
+version = "0.2.0"
+description = "A Python framework for multi-robot control and teleoperation in simulation and on real hardware"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "flask>=3.1.3",
     "lcm>=1.5.2",
     "meshcat>=0.3.2",
     "numpy>=2.0.0",
@@ -23,13 +24,10 @@ dependencies = [
 
 [project.scripts]
 start = "humanoid.start:main"
-fsm = "humanoid.orchestrator.cli:main"
-keyboard = "humanoid.nodes.policy.teleop.keyboard:main"
-oculus = "humanoid.nodes.policy.teleop.oculus:main"
+check = "humanoid.check:main"
 
 [dependency-groups]
 dev = [
-    "pre-commit>=4.0.0",
     "pytest>=8.0.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15",

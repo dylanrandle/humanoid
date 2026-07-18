@@ -6,7 +6,7 @@ import pytest
 
 from humanoid.constants import Topic
 from humanoid.controllers.operational_space import ControlResult
-from humanoid.nodes.robot_controller import RobotController
+from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -29,16 +29,16 @@ def _make_robot_config() -> RobotConfig:
     )
 
 
-def _make_controller(robot_config: RobotConfig | None = None) -> RobotController:
-    """Build a RobotController with mocked LCM, Robot, and OSC."""
+def _make_controller(robot_config: RobotConfig | None = None) -> RobotControllerNode:
+    """Build a RobotControllerNode with mocked LCM, Robot, and OSC."""
     if robot_config is None:
         robot_config = _make_robot_config()
 
     with (
-        patch("humanoid.nodes.robot_controller.Subscriber"),
-        patch("humanoid.nodes.robot_controller.Publisher"),
-        patch("humanoid.nodes.robot_controller.Robot") as mock_robot_cls,
-        patch("humanoid.nodes.robot_controller.OperationalSpaceController") as mock_osc_cls,
+        patch("humanoid.nodes.robot.controller.Subscriber"),
+        patch("humanoid.nodes.robot.controller.Publisher"),
+        patch("humanoid.nodes.robot.controller.Robot") as mock_robot_cls,
+        patch("humanoid.nodes.robot.controller.OperationalSpaceController") as mock_osc_cls,
     ):
         mock_robot = MagicMock()
         # Geometry helpers used by _reset_commands_from_state.
@@ -54,7 +54,7 @@ def _make_controller(robot_config: RobotConfig | None = None) -> RobotController
         )
         mock_osc_cls.return_value = mock_osc
 
-        return RobotController(robot_config=robot_config)
+        return RobotControllerNode(robot_config=robot_config)
 
 
 def _no_messages(topic, timeout=0):
@@ -85,7 +85,7 @@ def _make_state():
     )
 
 
-def _activate(controller: RobotController) -> None:
+def _activate(controller: RobotControllerNode) -> None:
     """Put the controller into an active mode so the OSC compute path runs."""
     controller.current_mode = Mode.OCULUS
 

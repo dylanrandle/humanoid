@@ -10,6 +10,7 @@ from humanoid.logger import get_logger
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     homing_target_t,
+    logging_status_t,
     orchestrator_event_t,
     orchestrator_mode_t,
     robot_base_command_t,
@@ -18,6 +19,7 @@ from humanoid.types.lcm import (
     robot_tool_command_t,
 )
 from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.logging import LoggingStatus
 from humanoid.types.middleware import AcceptedTypes
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
@@ -92,6 +94,9 @@ class Subscriber:
             elif expected_type is HomingTarget:
                 lcm_msg = homing_target_t.decode(data)
                 decoded_data = LCMConverter.homing_target_from_lcm(lcm_msg)
+            elif expected_type is LoggingStatus:
+                lcm_msg = logging_status_t.decode(data)
+                decoded_data = LCMConverter.logging_status_from_lcm(lcm_msg)
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
@@ -155,6 +160,11 @@ class Subscriber:
     def receive(
         self, topic: Literal[Topic.HOMING_TARGET], timeout: int | None = None
     ) -> HomingTarget | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.LOGGING_STATUS], timeout: int | None = None
+    ) -> LoggingStatus | None: ...
 
     @overload
     def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None: ...

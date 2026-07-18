@@ -1,0 +1,8 @@
+package humanoid.types.lcm;
+
+struct logging_status_t {
+    int64_t timestamp;
+    string state;
+    string file_name;
+    string error;
+}

@@ -4,6 +4,7 @@ from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.logging import LoggingStatus
 from humanoid.types.middleware import AcceptedTypes
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
@@ -40,6 +41,8 @@ class Publisher:
             lcm_data = LCMConverter.orchestrator_event_to_lcm(data)
         elif isinstance(data, HomingTarget):
             lcm_data = LCMConverter.homing_target_to_lcm(data)
+        elif isinstance(data, LoggingStatus):
+            lcm_data = LCMConverter.logging_status_to_lcm(data)
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 

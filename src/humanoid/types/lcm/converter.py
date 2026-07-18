@@ -6,6 +6,7 @@ import pinocchio as pin
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     homing_target_t,
+    logging_status_t,
     orchestrator_event_t,
     orchestrator_mode_t,
     robot_base_command_t,
@@ -13,6 +14,7 @@ from humanoid.types.lcm import (
     robot_state_t,
     robot_tool_command_t,
 )
+from humanoid.types.logging import LoggingState, LoggingStatus
 from humanoid.types.orchestrator import (
     EventKind,
     Mode,
@@ -256,4 +258,24 @@ class LCMConverter:
         return HomingTarget(
             timestamp=lcm_msg.timestamp / 1e9,  # Convert from nanoseconds
             target_position=np.array(lcm_msg.target_position),
+        )
+
+    @staticmethod
+    def logging_status_to_lcm(status: LoggingStatus) -> logging_status_t:
+        """Convert LoggingStatus dataclass to logging_status_t LCM type."""
+        lcm_status = logging_status_t()
+        lcm_status.timestamp = int(status.timestamp * 1e9)
+        lcm_status.state = status.state.value
+        lcm_status.file_name = status.file_name or ""
+        lcm_status.error = status.error or ""
+        return lcm_status
+
+    @staticmethod
+    def logging_status_from_lcm(lcm_status: logging_status_t) -> LoggingStatus:
+        """Convert logging_status_t LCM type to LoggingStatus dataclass."""
+        return LoggingStatus(
+            timestamp=lcm_status.timestamp / 1e9,
+            state=LoggingState(lcm_status.state),
+            file_name=lcm_status.file_name or None,
+            error=lcm_status.error or None,
         )

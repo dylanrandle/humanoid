@@ -1,15 +1,22 @@
 from enum import Enum
 
 from humanoid.types.homing import HomingTarget
+from humanoid.types.logging import LoggingStatus
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
+from humanoid.types.process import Runtime
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
+    RobotName,
     RobotState,
     RobotToolCommand,
 )
 
 DEFAULT_LCM_URL = "udpm://239.255.76.67:7667?ttl=1"
+RUNTIME_ENVIRONMENT_VARIABLE = "HUMANOID_RUNTIME"
+ROBOT_ENVIRONMENT_VARIABLE = "HUMANOID_ROBOT"
+DEFAULT_HUMANOID_RUNTIME = Runtime.SIM
+DEFAULT_HUMANOID_ROBOT = RobotName.ELROBOT_MOBILE
 
 
 class Topic(Enum):
@@ -37,7 +44,10 @@ class Topic(Enum):
     # Events published to the orchestrator (request_*, complete).
     ORCHESTRATOR_EVENT = "ORCHESTRATOR/EVENT"
 
-    # Homing target broadcast by the orchestrator to the homing node.
+    # Current lcm-logger lifecycle, published by RobotLoggerNode.
+    LOGGING_STATUS = "LOGGING/STATUS"
+
+    # Homing target published by requesters for the homing node.
     HOMING_TARGET = "HOMING/TARGET"
 
 
@@ -54,5 +64,6 @@ TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.KEYBOARD_BASE_COMMAND: RobotBaseCommand,
     Topic.ORCHESTRATOR_MODE: OrchestratorMode,
     Topic.ORCHESTRATOR_EVENT: OrchestratorEvent,
+    Topic.LOGGING_STATUS: LoggingStatus,
     Topic.HOMING_TARGET: HomingTarget,
 }

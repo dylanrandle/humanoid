@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Humanoid Control</title>
+    <link rel="stylesheet" href="/css/base.css" />
+    <link rel="stylesheet" href="/css/header-hero.css" />
+    <link rel="stylesheet" href="/css/stack.css" />
+    <link rel="stylesheet" href="/css/controls.css" />
+    <link rel="stylesheet" href="/css/data.css" />
+    <link rel="stylesheet" href="/css/responsive.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Humanoid control home">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </span>
+          <span>
+            <span class="eyebrow">Humanoid</span>
+            <span class="brand-name">Control</span>
+          </span>
+        </a>
+
+        <div class="system-state" id="system-state">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="system-state-label">Connecting</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero" aria-labelledby="page-title">
+          <div>
+            <p class="kicker">Operator console · <span id="robot-name">robot</span></p>
+            <h1 id="page-title">One surface.<br />Every control mode.</h1>
+          </div>
+
+          <div class="runtime-panel">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Runtime</p>
+                <h2>Execution target</h2>
+              </div>
+              <span class="lock-note" id="configuration-lock-note">Unlocked</span>
+            </div>
+
+            <div class="runtime-toggle" role="group" aria-label="Execution runtime">
+              <button class="runtime-option" data-runtime="sim" type="button">
+                <span class="runtime-icon" aria-hidden="true">S</span>
+                <span>
+                  <strong>Simulation</strong>
+                  <small>Safe sandbox</small>
+                </span>
+              </button>
+              <button class="runtime-option real" data-runtime="real" type="button">
+                <span class="runtime-icon" aria-hidden="true">R</span>
+                <span>
+                  <strong>Real robot</strong>
+                  <small>Hardware live</small>
+                </span>
+              </button>
+            </div>
+
+            <label class="robot-selector" for="robot-select">
+              <span>
+                <strong>Robot model</strong>
+                <small>Hardware profile and kinematics</small>
+              </span>
+              <select id="robot-select" disabled></select>
+            </label>
+            <p class="runtime-footnote" id="runtime-footnote">
+              Simulation uses the in-process motor model and does not command physical servos.
+            </p>
+          </div>
+        </section>
+
+        <section class="stack-card" aria-labelledby="stack-heading">
+          <div class="stack-copy">
+            <div class="section-number">01</div>
+            <div>
+              <p class="eyebrow">Main system</p>
+              <h2 id="stack-heading">Robot stack</h2>
+              <p id="stack-description">
+                Driver, controller, visualizer, orchestrator, logger, and homing policy.
+              </p>
+            </div>
+          </div>
+
+          <div class="stack-action">
+            <div class="process-readout">
+              <span class="process-light" id="stack-light" aria-hidden="true"></span>
+              <span>
+                <strong id="stack-status">Stopped</strong>
+                <small id="stack-detail">Ready to start</small>
+              </span>
+            </div>
+            <button class="primary-action" id="stack-action" type="button" disabled>
+              <span id="stack-action-label">Start stack</span>
+              <span class="action-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </section>
+
+        <div class="control-grid">
+          <section class="panel teleop-panel" aria-labelledby="teleop-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">02 · Input nodes</p>
+                <h2 id="teleop-heading">Teleoperation</h2>
+              </div>
+              <span class="panel-note">Start independently</span>
+            </div>
+
+            <div class="process-list">
+              <article class="process-row" data-process-row="oculus">
+                <div class="process-glyph" aria-hidden="true">
+                  <svg viewBox="0 0 32 32" role="img">
+                    <path d="M6.5 11.5h19l2.5 5.7-3 6.3-6.2-1.9h-5.6L7 23.5l-3-6.3 2.5-5.7Z" />
+                    <path d="M11 17.2h2.7M18.3 17.2H21" />
+                  </svg>
+                </div>
+                <div class="process-copy">
+                  <div class="process-title">
+                    <h3>Oculus</h3>
+                    <span class="mini-status" data-process-status="oculus">Stopped</span>
+                  </div>
+                  <p>VR pose, gripper, and mobile-base control.</p>
+                  <p class="process-error" data-process-error="oculus" hidden></p>
+                </div>
+                <button class="secondary-action" data-process-action="oculus" type="button" disabled>
+                  Start
+                </button>
+              </article>
+
+              <article class="process-row" data-process-row="keyboard">
+                <div class="process-glyph keyboard" aria-hidden="true">
+                  <svg viewBox="0 0 32 32" role="img">
+                    <rect x="4.5" y="8.5" width="23" height="15" rx="2" />
+                    <path d="M9 13h2m3 0h2m3 0h2m-12 4h2m3 0h2m3 0h2M11 20h10" />
+                  </svg>
+                </div>
+                <div class="process-copy">
+                  <div class="process-title">
+                    <h3>Keyboard</h3>
+                    <span class="mini-status" data-process-status="keyboard">Stopped</span>
+                  </div>
+                  <p>Global keyboard input for end-effector control.</p>
+                  <p class="process-error" data-process-error="keyboard" hidden></p>
+                </div>
+                <button class="secondary-action" data-process-action="keyboard" type="button" disabled>
+                  Start
+                </button>
+              </article>
+            </div>
+
+            <p class="panel-footnote">
+              Starting a node does not activate it. Select the matching control mode to route its commands.
+            </p>
+          </section>
+
+          <section class="panel orchestrator-panel" aria-labelledby="orchestrator-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">03 · Command routing</p>
+                <h2 id="orchestrator-heading">Control mode</h2>
+              </div>
+              <div class="mode-readout">
+                <span class="mode-pulse" aria-hidden="true"></span>
+                <span id="active-mode">Offline</span>
+              </div>
+            </div>
+
+            <div class="mode-list" role="group" aria-label="Orchestrator mode">
+              <button class="mode-option" data-orchestrator-mode="idle" type="button" disabled>
+                <span class="mode-index">A</span>
+                <span>
+                  <strong>Idle</strong>
+                  <small>No command source routed</small>
+                </span>
+                <span class="mode-check" aria-hidden="true">●</span>
+              </button>
+              <button
+                class="mode-option"
+                data-orchestrator-mode="homing"
+                data-orchestrator-preset="home"
+                type="button"
+                disabled
+              >
+                <span class="mode-index">B</span>
+                <span>
+                  <strong>Home</strong>
+                  <small>Move to configured home pose</small>
+                </span>
+                <span class="mode-check" aria-hidden="true">●</span>
+              </button>
+              <button
+                class="mode-option"
+                data-orchestrator-mode="homing"
+                data-orchestrator-preset="rest"
+                type="button"
+                disabled
+              >
+                <span class="mode-index">C</span>
+                <span>
+                  <strong>Rest</strong>
+                  <small>Move to configured rest pose</small>
+                </span>
+                <span class="mode-check" aria-hidden="true">●</span>
+              </button>
+              <button class="mode-option" data-orchestrator-mode="oculus" type="button" disabled>
+                <span class="mode-index">D</span>
+                <span>
+                  <strong>Oculus teleop</strong>
+                  <small>Route VR controller commands</small>
+                </span>
+                <span class="mode-check" aria-hidden="true">●</span>
+              </button>
+              <button class="mode-option" data-orchestrator-mode="keyboard" type="button" disabled>
+                <span class="mode-index">E</span>
+                <span>
+                  <strong>Keyboard teleop</strong>
+                  <small>Route keyboard commands</small>
+                </span>
+                <span class="mode-check" aria-hidden="true">●</span>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel data-panel" aria-labelledby="data-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">04 · Data tools</p>
+              <h2 id="data-heading">Record &amp; replay</h2>
+            </div>
+            <span class="panel-note">LCM traffic</span>
+          </div>
+
+          <div class="data-tool-grid">
+            <article class="data-tool">
+              <div class="data-tool-copy">
+                <div class="data-tool-heading">
+                  <div>
+                    <p class="eyebrow">Capture</p>
+                    <h3>Data logging</h3>
+                  </div>
+                  <span class="mini-status" id="logging-status">Stopped</span>
+                </div>
+                <p>Save live robot traffic to a timestamped LCM log.</p>
+              </div>
+              <div class="logging-actions" aria-label="Data logging controls">
+                <button
+                  class="secondary-action"
+                  data-logging-action="start"
+                  type="button"
+                  disabled
+                >
+                  Start logging
+                </button>
+                <button
+                  class="secondary-action stop-logging"
+                  data-logging-action="stop"
+                  type="button"
+                  disabled
+                >
+                  Stop logging
+                </button>
+              </div>
+              <p class="data-tool-note" id="logging-detail">
+                The main stack must be online to control logging.
+              </p>
+              <p class="process-error" id="logging-error" hidden></p>
+            </article>
+
+            <article class="data-tool replay-tool">
+              <div class="data-tool-copy">
+                <div class="data-tool-heading">
+                  <div>
+                    <p class="eyebrow">Playback</p>
+                    <h3>LCM replay</h3>
+                  </div>
+                  <span class="mini-status" id="replay-status">Ready</span>
+                </div>
+                <p>Play recorded command and mode channels on the selected runtime.</p>
+              </div>
+              <label class="replay-recording-label" for="replay-recording">Recording</label>
+              <select id="replay-recording" class="replay-recording-select" disabled>
+                <option value="">No recordings available</option>
+              </select>
+              <button class="secondary-action replay-action" id="replay-action" type="button" disabled>
+                Play replay
+              </button>
+              <p class="data-tool-note" id="replay-detail">
+                Recordings are loaded directly from the project logs directory.
+              </p>
+              <p class="process-error" id="replay-error" hidden></p>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <span>Local control surface</span>
+        <span class="footer-rule" aria-hidden="true"></span>
+        <span>127.0.0.1 · Process-isolated</span>
+      </footer>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span class="toast-mark" aria-hidden="true">!</span>
+      <span id="toast-message"></span>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

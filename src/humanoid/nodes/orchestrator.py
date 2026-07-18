@@ -1,6 +1,6 @@
-"""Orchestrator node: an event-driven FSM that selects the active control mode.
+"""Orchestrator node that selects the active control mode.
 
-External actors (CLI, teleop, etc.) push events to ORCHESTRATOR_EVENT. The
+External actors (operator UI, teleop, etc.) push events to ORCHESTRATOR_EVENT. The
 orchestrator transitions between modes accordingly, broadcasts the current
 mode on ORCHESTRATOR_MODE, and forwards per-source command topics to the
 final ROBOT_* topics for the active mode.
@@ -64,7 +64,7 @@ def _all_source_topics() -> list[Topic]:
 
 
 class OrchestratorNode(Node):
-    """Event-driven FSM that selects the active mode and routes per-source topics."""
+    """Event-driven node that selects a mode and routes per-source topics."""
 
     def __init__(self, mode: Mode = Mode.IDLE, rate_hz: float = DEFAULT_RATE_HZ):
         self.rate_hz = rate_hz
@@ -142,7 +142,7 @@ class OrchestratorNode(Node):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Event-driven orchestrator FSM")
+    parser = argparse.ArgumentParser(description="Event-driven orchestrator")
     parser.add_argument(
         "-m",
         "--mode",

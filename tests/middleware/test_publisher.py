@@ -7,11 +7,13 @@ import pytest
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
 from humanoid.types.lcm import (
+    logging_status_t,
     orchestrator_mode_t,
     robot_joint_command_t,
     robot_state_t,
 )
 from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.logging import LoggingState, LoggingStatus
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -122,6 +124,22 @@ class TestPublisher:
         assert channel == Topic.ORCHESTRATOR_MODE.value
         recovered = LCMConverter.orchestrator_mode_from_lcm(orchestrator_mode_t.decode(data_bytes))
         assert recovered.mode is Mode.OCULUS
+
+    def test_publish_logging_status(self, mock_lcm):
+        publisher = Publisher()
+        status = LoggingStatus(
+            timestamp=6.0,
+            state=LoggingState.FAILED,
+            file_name="logs/lcmlog",
+            error="logger exited",
+        )
+
+        publisher.publish(status, topic=Topic.LOGGING_STATUS)
+
+        channel, data_bytes = mock_lcm.publish.call_args[0]
+        assert channel == Topic.LOGGING_STATUS.value
+        recovered = LCMConverter.logging_status_from_lcm(logging_status_t.decode(data_bytes))
+        assert recovered == status
 
     def test_publish_topic_type_mismatch_raises(self, mock_lcm):
         publisher = Publisher()
