@@ -86,6 +86,8 @@ Oculus device setup is documented in the [oculus_reader](https://github.com/rail
 
 The hardware abstraction is documented in
 [`src/humanoid/hardware/README.md`](src/humanoid/hardware/README.md).
+Root-state estimators and estimation algorithms are documented in
+[`src/humanoid/state_estimation/README.md`](src/humanoid/state_estimation/README.md).
 Feetech-specific setup and maintenance commands live with the driver in
 [`src/humanoid/hardware/actuators/feetech/README.md`](src/humanoid/hardware/actuators/feetech/README.md).
 
@@ -115,6 +117,7 @@ humanoid/
 │   ├── orchestrator/     # Control-mode client, monitoring, and service
 │   ├── policy/           # Control policies (keyboard teleop, homing, oculus, etc.)
 │   ├── robots/           # Robot definitions and URDF assets
+│   ├── state_estimation/ # Root-state estimators and estimation algorithms
 │   ├── types/            # Type definitions and LCM message types
 │   ├── ui/               # Local operator console backend and frontend
 │   ├── utils/            # General utilities

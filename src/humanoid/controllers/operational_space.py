@@ -18,7 +18,7 @@ from pink.utils import process_collision_pairs
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
 from humanoid.types.controllers import OperationalSpaceConfig
-from humanoid.types.wheels import WheelType
+from humanoid.types.robot import WheelType
 
 logger = get_logger(__name__)
 

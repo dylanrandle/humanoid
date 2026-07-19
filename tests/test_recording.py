@@ -100,6 +100,10 @@ def test_serialized_config_includes_physical_actuator_details():
     assert isinstance(gripper, dict)
     assert gripper["actuator_id"] == EXPECTED_GRIPPER_ACTUATOR_ID
     assert gripper["inverted"] is True
+    state_estimation = config["state_estimation"]
+    assert isinstance(state_estimation, dict)
+    root_provider = state_estimation["root"]
+    assert root_provider == {}
 
 
 def test_serialized_panda_config_has_no_physical_hardware():

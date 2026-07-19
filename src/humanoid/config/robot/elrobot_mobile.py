@@ -8,9 +8,12 @@ from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorControllerConfig,
 )
 from humanoid.hardware.config import RobotHardwareConfig
+from humanoid.state_estimation.config import RobotStateEstimationConfig
+from humanoid.state_estimation.root.wheel_dead_reckoning import (
+    WheelDeadReckoningRootStateEstimatorConfig,
+)
 from humanoid.types.controllers import OperationalSpaceConfig
-from humanoid.types.robot import RobotConfig, RobotName
-from humanoid.types.wheels import WheelConfig, WheelType
+from humanoid.types.robot import RobotConfig, RobotName, WheelConfig, WheelType
 
 MAIN_CONTROLLER = "main"
 WHEEL_IDS = [f"wheel_{index}" for index in range(1, 4)]
@@ -102,6 +105,9 @@ HARDWARE_CONFIG = RobotHardwareConfig(
         joints=ACTUATOR_CONFIGS,
     ),
 )
+STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
+    root=WheelDeadReckoningRootStateEstimatorConfig(),
+)
 OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
     avoid_collisions=True,
     min_collision_distance=5e-3,
@@ -120,6 +126,7 @@ ELROBOT_MOBILE_CONFIG = RobotConfig(
     rest_position=REST_POSITION,
     actuator_control_modes=ACTUATOR_CONTROL_MODES,
     hardware=HARDWARE_CONFIG,
+    state_estimation=STATE_ESTIMATION_CONFIG,
     gripper_joint_indices=[11],
     operational_space_config=OPERATIONAL_SPACE_CONFIG,
 )

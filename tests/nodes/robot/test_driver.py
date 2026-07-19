@@ -4,11 +4,19 @@ import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.robot.elrobot_mobile import ELROBOT_MOBILE_CONFIG
 from humanoid.hardware.actuators.config import (
     ActuatorControlMode,
 )
 from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
 from humanoid.nodes.robot.driver import RobotDriverNode
+from humanoid.state_estimation.root.base import (
+    RootState,
+    RootStateEstimator,
+)
+from humanoid.state_estimation.root.wheel_dead_reckoning import (
+    WheelDeadReckoningRootStateEstimator,
+)
 from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotName
 
@@ -38,6 +46,16 @@ class StubActuatorSystem(ActuatorSystem):
 
     def stop(self) -> None:
         self.stop_calls += 1
+
+
+class StubRootStateEstimator(RootStateEstimator):
+    def __init__(self, state: RootState):
+        self.state = state
+        self.updates: list[tuple[np.ndarray, np.ndarray]] = []
+
+    def update(self, q: np.ndarray, v: np.ndarray) -> RootState:
+        self.updates.append((q.copy(), v.copy()))
+        return self.state
 
 
 def _robot_config(modes: list[ActuatorControlMode]) -> RobotConfig:
@@ -421,6 +439,123 @@ def test_rejects_non_finite_velocities_before_actuator_writes(robot_driver, inva
 
     assert _actuator_system(robot_driver).position_writes == []
     assert _actuator_system(robot_driver).velocity_writes == []
+
+
+def test_mobile_driver_uses_root_state_estimator():
+    actuator_system = StubActuatorSystem()
+    estimated_root = RootState(
+        position=np.array([1.0, 2.0, 0.0, 1.0]),
+        velocity=np.array([0.2, 0.0, 0.0]),
+    )
+    root_state_estimator = StubRootStateEstimator(estimated_root)
+    with (
+        patch("humanoid.nodes.robot.driver.Subscriber"),
+        patch("humanoid.nodes.robot.driver.Publisher"),
+    ):
+        driver = RobotDriverNode(
+            robot_config=ELROBOT_MOBILE_CONFIG,
+            actuator_system=actuator_system,
+            root_state_estimator=root_state_estimator,
+            runtime=Runtime.SIM,
+        )
+
+    assert driver._root_q_slice is not None
+    assert driver._root_v_slice is not None
+    measured_wheel_velocities = {
+        "wheel_1": 4.0,
+        "wheel_2": -2.0,
+        "wheel_3": -2.0,
+    }
+    actuator_system.states = {
+        joint_name: ActuatorState(
+            position=0.0,
+            velocity=measured_wheel_velocities.get(joint_name, 0.0),
+        )
+        for joint_name in driver.actuator_joint_names
+    }
+
+    driver.publish()
+
+    measured_q, measured_v = root_state_estimator.updates[-1]
+    for joint_name, velocity in measured_wheel_velocities.items():
+        joint_idx = driver.joint_indices[joint_name]
+        assert measured_v[driver.robot.joint_idx_to_velocity_idx(joint_idx)] == pytest.approx(
+            velocity
+        )
+    assert measured_q.shape == (driver.robot.model.nq,)
+    published = driver.publisher.publish.call_args.args[0]  # ty: ignore[unresolved-attribute]
+    np.testing.assert_allclose(
+        published.joint_positions[driver._root_q_slice], estimated_root.position
+    )
+    np.testing.assert_allclose(
+        published.joint_velocities[driver._root_v_slice],
+        estimated_root.velocity,
+    )
+
+    driver.on_close()
+    assert actuator_system.stop_calls == 1
+
+
+@pytest.mark.parametrize("runtime", [Runtime.SIM, Runtime.REAL])
+def test_mobile_driver_uses_dead_reckoning_in_every_runtime(runtime):
+    actuator_system = StubActuatorSystem()
+    with (
+        patch("humanoid.nodes.robot.driver.Subscriber"),
+        patch("humanoid.nodes.robot.driver.Publisher"),
+    ):
+        driver = RobotDriverNode(
+            robot_config=ELROBOT_MOBILE_CONFIG,
+            actuator_system=actuator_system,
+            runtime=runtime,
+        )
+
+    assert isinstance(driver.root_state_estimator, WheelDeadReckoningRootStateEstimator)
+
+    driver.on_close()
+
+
+def test_mobile_driver_ignores_commanded_root_velocity():
+    root_state_estimator = StubRootStateEstimator(
+        RootState(
+            position=np.array([0.0, 0.0, 1.0, 0.0]),
+            velocity=np.zeros(3),
+        )
+    )
+    actuator_system = StubActuatorSystem()
+    with (
+        patch("humanoid.nodes.robot.driver.Subscriber"),
+        patch("humanoid.nodes.robot.driver.Publisher"),
+    ):
+        driver = RobotDriverNode(
+            robot_config=ELROBOT_MOBILE_CONFIG,
+            actuator_system=actuator_system,
+            root_state_estimator=root_state_estimator,
+            runtime=Runtime.SIM,
+        )
+
+    assert driver._root_v_slice is not None
+    command_velocities = np.zeros(driver.robot.model.nv)
+    command_velocities[driver._root_v_slice] = 1_000.0
+    driver.subscriber.receive = Mock(  # ty: ignore[invalid-assignment]
+        return_value=RobotJointCommand(
+            timestamp=0.0,
+            joint_positions=ELROBOT_MOBILE_CONFIG.home_position.copy(),
+            joint_velocities=command_velocities,
+        )
+    )
+
+    driver.receive()
+
+    assert root_state_estimator.updates == []
+
+    actuator_system.states = {
+        joint_name: ActuatorState(position=0.0, velocity=0.0)
+        for joint_name in driver.actuator_joint_names
+    }
+    driver.publish()
+
+    _, measured_velocity = root_state_estimator.updates[-1]
+    np.testing.assert_allclose(measured_velocity[driver._root_v_slice], np.zeros(3))
 
 
 def test_publish_rejects_incomplete_actuator_feedback(robot_driver):

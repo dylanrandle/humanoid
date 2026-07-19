@@ -7,8 +7,8 @@ import pinocchio as pin
 
 from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.config import RobotHardwareConfig
+from humanoid.state_estimation.config import RobotStateEstimationConfig
 from humanoid.types.controllers import OperationalSpaceConfig
-from humanoid.types.wheels import WheelConfig
 
 
 class RobotName(StrEnum):
@@ -30,6 +30,19 @@ class RobotName(StrEnum):
         if value is None or not value.strip():
             return cls(DEFAULT_HUMANOID_ROBOT)
         return cls(value.lower().strip())
+
+
+class WheelType(StrEnum):
+    REGULAR = "regular"
+    OMNI = "omni"
+
+
+@dataclass
+class WheelConfig:
+    frame: str
+    floor_frame: str
+    radius: float
+    type: WheelType
 
 
 @dataclass
@@ -68,13 +81,19 @@ class RobotConfig:
     rest_position: np.ndarray
     actuator_control_modes: dict[str, ActuatorControlMode]
     hardware: RobotHardwareConfig | None = None
+    state_estimation: RobotStateEstimationConfig | None = None
     base_frame: str | None = None
     wheels: list[WheelConfig] | None = None
     gripper_joint_indices: list[int] | None = None
     operational_space_config: OperationalSpaceConfig | None = None
 
     def __post_init__(self) -> None:
-        """Validate consistency between logical controls and physical bindings."""
+        """Own invariants spanning logical controls and physical bindings."""
+        root_config = self.state_estimation.root if self.state_estimation is not None else None
+        if self.base_frame is not None and root_config is None:
+            raise ValueError("Robots with a mobile base require root-state estimation config.")
+        if self.base_frame is None and root_config is not None:
+            raise ValueError("Fixed-base robots cannot configure root-state estimation.")
         if self.hardware is None or self.hardware.actuators is None:
             return
         if self.hardware.actuators.joints.keys() != self.actuator_control_modes.keys():

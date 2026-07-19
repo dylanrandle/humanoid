@@ -351,6 +351,13 @@ class Robot:
         root = self.model.joints[1]
         return slice(root.idx_q, root.idx_q + root.nq)
 
+    def get_root_v_slice(self) -> slice | None:
+        """Return the velocity slice owned by the planar root joint, or ``None``."""
+        if self.config.base_frame is None:
+            return None
+        root = self.model.joints[1]
+        return slice(root.idx_v, root.idx_v + root.nv)
+
     def joint_idx_to_position_idx(self, joint_idx: int) -> int:
         """Return the index into the configuration vector q for the given joint.
 

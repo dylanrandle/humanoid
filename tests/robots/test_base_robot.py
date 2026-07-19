@@ -43,6 +43,16 @@ class TestConstruction:
         root_joint = panda_robot.model.joints[1]
         assert root_joint.shortname() != "JointModelPlanar"
 
+    def test_mobile_root_slices_match_planar_joint_coordinates(self, mobile_robot):
+        root = mobile_robot.model.joints[1]
+
+        assert mobile_robot.get_root_q_slice() == slice(root.idx_q, root.idx_q + root.nq)
+        assert mobile_robot.get_root_v_slice() == slice(root.idx_v, root.idx_v + root.nv)
+
+    def test_fixed_base_robot_has_no_root_slices(self, panda_robot):
+        assert panda_robot.get_root_q_slice() is None
+        assert panda_robot.get_root_v_slice() is None
+
     def test_auto_detects_separate_collision_urdf(self, panda_robot):
         """panda has a `panda_collision.urdf` next to `panda.urdf` and should pick it up."""
         # The collision model should still be populated.

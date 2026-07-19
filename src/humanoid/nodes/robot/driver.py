@@ -16,6 +16,11 @@ from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
+from humanoid.state_estimation.root.base import (
+    RootState,
+    RootStateEstimator,
+)
+from humanoid.state_estimation.root.factory import create_root_state_estimator
 from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotState
 
@@ -31,6 +36,7 @@ class RobotDriverNode(Node):
         robot_config: RobotConfig = ROBOT_CONFIG,
         rate_hz: float = DEFAULT_RATE_HZ,
         actuator_system: ActuatorSystem | None = None,
+        root_state_estimator: RootStateEstimator | None = None,
         runtime: Runtime | None = None,
         command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
         clock: Callable[[], float] = time.perf_counter,
@@ -85,11 +91,21 @@ class RobotDriverNode(Node):
             initial_positions,
         )
         self._root_q_slice = self.robot.get_root_q_slice()
-        self._last_root_q: np.ndarray | None = (
-            pin.neutral(self.robot.model)[self._root_q_slice].copy()
-            if self._root_q_slice is not None
-            else None
-        )
+        self._root_v_slice = self.robot.get_root_v_slice()
+        self.root_state_estimator: RootStateEstimator | None = None
+        if self._root_q_slice is not None and self._root_v_slice is not None:
+            initial_root_state = RootState(
+                position=pin.neutral(self.robot.model)[self._root_q_slice].copy(),
+                velocity=np.zeros(self.robot.model.nv)[self._root_v_slice],
+            )
+            state_estimation = robot_config.state_estimation
+            if state_estimation is None or state_estimation.root is None:
+                raise RuntimeError("Mobile robot requires root-state estimator config.")
+            self.root_state_estimator = root_state_estimator or create_root_state_estimator(
+                state_estimation.root,
+                self.robot,
+                initial_root_state,
+            )
 
         self.actuator_system.connect()
 
@@ -101,9 +117,6 @@ class RobotDriverNode(Node):
 
         logger.debug("Received command: %s", command)
         self._validate_command_dimensions(command)
-
-        if self._root_q_slice is not None:
-            self._last_root_q = command.joint_positions[self._root_q_slice].copy()
 
         clamped_positions = np.clip(
             command.joint_positions,
@@ -221,8 +234,14 @@ class RobotDriverNode(Node):
 
         q = self.robot.joint_positions_to_q(joint_idx_to_position)
         v = self.robot.joint_velocities_to_v(joint_idx_to_velocity)
-        if self._root_q_slice is not None and self._last_root_q is not None:
-            q[self._root_q_slice] = self._last_root_q
+        if (
+            self.root_state_estimator is not None
+            and self._root_q_slice is not None
+            and self._root_v_slice is not None
+        ):
+            root_state = self.root_state_estimator.update(q, v)
+            q[self._root_q_slice] = root_state.position
+            v[self._root_v_slice] = root_state.velocity
 
         robot_state = RobotState(
             timestamp=time.perf_counter(),
