@@ -81,10 +81,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.tool_translation_scale = config.tool_translation_scale
         self.tool_rotation_scale = config.tool_rotation_scale
         self.base_config = robot_config.base
-        self.oculus_to_tool_command = pin.SE3(
-            config.oculus_to_tool_command_rotation,
-            np.zeros(3),
-        )
+        self.oculus_to_tool_command_rotation = config.oculus_to_tool_command_rotation.copy()
         self.gripper_step = (
             (self.gripper_max - self.gripper_min) * self.config.dt / self.config.gripper_close_time
         )
@@ -131,8 +128,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         logger.info(f"Translation scale: {self.tool_translation_scale:.2f}")
         logger.info(f"Rotation scale: {self.tool_rotation_scale:.2f}")
         logger.info(
-            "Oculus->tool-command rotation:\n%s",
-            self.oculus_to_tool_command.rotation,
+            "Oculus->tool-command axis mapping:\n%s",
+            self.oculus_to_tool_command_rotation,
         )
         logger.info("\nControls:")
         logger.info("  Right controller pose -> End-effector pose")
@@ -289,15 +286,26 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             right_controller_pose[:3, :3],
             right_controller_pose[:3, 3],
         )
-        controller_delta = reference_controller.inverse() * current_controller
-        controller_delta = (
-            self.oculus_to_tool_command * controller_delta * self.oculus_to_tool_command.inverse()
+        command_rotation = self.oculus_to_tool_command_rotation
+
+        # translation
+        controller_translation_delta = (
+            current_controller.translation - reference_controller.translation
+        )
+        command_translation_delta = command_rotation @ controller_translation_delta
+        scaled_translation_delta = command_translation_delta * self.tool_translation_scale
+
+        # rotation
+        controller_rotation_delta = current_controller.rotation @ reference_controller.rotation.T
+        command_rotation_delta = command_rotation @ controller_rotation_delta @ command_rotation.T
+        scaled_rotation_delta = pin.exp3(
+            pin.log3(command_rotation_delta) * self.tool_rotation_scale
         )
 
-        scaled_translation = controller_delta.translation * self.tool_translation_scale
-        rotation_vector = pin.log3(controller_delta.rotation) * self.tool_rotation_scale
-        scaled_delta = pin.SE3(pin.exp3(rotation_vector), scaled_translation)
-        desired_pose = self.reference_tool_pose * scaled_delta
+        desired_pose = pin.SE3(
+            scaled_rotation_delta @ self.reference_tool_pose.rotation,
+            scaled_translation_delta + self.reference_tool_pose.translation,
+        )
         target_pose = self._limit_tool_pose_step(
             self.commanded_tool_pose,
             desired_pose,

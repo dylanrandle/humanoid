@@ -34,9 +34,12 @@ class OculusTeleopPolicyConfig:
         dt: Control loop period in seconds. Used with the selected robot's
             tool and base velocity limits to derive per-tick steps and to set
             the rate of the teleop node.
-        oculus_to_tool_command_rotation: 3x3 matrix mapping Oculus-frame vectors
-            into the robot's tool-command frame: world for fixed-base robots
-            and the configured base frame for mobile robots.
+        oculus_to_tool_command_rotation: 3x3 orthogonal matrix mapping
+            Oculus-frame vector components into the robot's tool-command
+            frame: world for fixed-base robots and the configured base frame
+            for mobile robots. Defaults to a 90-degree rotation about X:
+            Oculus +Y maps to command +Z (up), and Oculus -Z maps to command
+            +Y (forward).
         tool_translation_scale: Scale factor for controller translation before
             applying the selected robot's linear tool velocity limit.
         tool_rotation_scale: Scale factor for controller rotation before
@@ -62,8 +65,13 @@ class OculusTeleopPolicyConfig:
 
     dt: float = 0.01
     oculus_to_tool_command_rotation: np.ndarray = field(
-        # 180 degree rotation about x
-        default_factory=lambda: np.array([[1.0, 0.0, 0.0], [0.0, -1.0, 0], [0.0, 0.0, -1.0]])
+        default_factory=lambda: np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, -1.0],
+                [0.0, 1.0, 0.0],
+            ]
+        )
     )
     tool_translation_scale: float = 1.0
     tool_rotation_scale: float = 1.0

@@ -101,7 +101,7 @@ def test_tool_and_base_configs_use_default_velocity_limits():
     tool = RobotToolConfig(frame="tool")
     base = RobotBaseConfig(frame="base")
 
-    assert tool.velocity_limits.linear == pytest.approx(0.5)
+    assert tool.velocity_limits.linear == pytest.approx(1.0)
     assert tool.velocity_limits.angular == pytest.approx(np.pi)
     assert base.velocity_limits == tool.velocity_limits
 
@@ -152,7 +152,7 @@ def test_robot_combines_tool_frame_limits_and_homing_presets():
     config = ROBOT_CONFIGS[RobotName.PANDA]
 
     assert config.tool.frame == "panda_hand_tcp"
-    assert config.tool.velocity_limits.linear == pytest.approx(0.5)
+    assert config.tool.velocity_limits.linear == pytest.approx(1.0)
     assert (
         config.homing_presets[HomingPreset.HOME].shape
         == config.homing_presets[HomingPreset.REST].shape

@@ -60,7 +60,7 @@ class CartesianVelocityLimits:
             raise ValueError("Cartesian angular velocity limit must be positive and finite.")
 
 
-DEFAULT_CARTESIAN_VELOCITY_LIMITS = CartesianVelocityLimits(linear=0.5, angular=np.pi)
+DEFAULT_CARTESIAN_VELOCITY_LIMITS = CartesianVelocityLimits(linear=1.0, angular=np.pi)
 
 
 @dataclass(frozen=True, kw_only=True)

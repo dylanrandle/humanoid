@@ -120,6 +120,20 @@ class TestConstruction:
         assert isinstance(reader, StubOculusReader)
         assert policy.config.verbose is False
 
+    def test_default_mapping_rotates_oculus_y_and_z_axes(self):
+        config = OculusTeleopPolicyConfig()
+
+        np.testing.assert_array_equal(
+            config.oculus_to_tool_command_rotation,
+            np.array(
+                [
+                    [1.0, 0.0, 0.0],
+                    [0.0, 0.0, -1.0],
+                    [0.0, 1.0, 0.0],
+                ]
+            ),
+        )
+
     def test_mobile_base_limits_come_from_robot_config(self):
         robot_config = ROBOT_CONFIGS["elrobot_mobile"]
 
@@ -266,8 +280,7 @@ class TestControllerDeltaApplied:
         action = policy(_observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME]))
 
         ref = policy.reference_tool_pose
-        # ref * SE3(I, delta) — translation = ref.translation + ref.rotation @ delta
-        expected_translation = ref.translation + ref.rotation @ delta
+        expected_translation = ref.translation + delta
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)
 
     def test_translation_scale_amplifies_delta(self):
@@ -287,7 +300,7 @@ class TestControllerDeltaApplied:
         action = policy(obs)
 
         ref = policy.reference_tool_pose
-        expected_translation = ref.translation + ref.rotation @ (delta * 3.0)  # ty:ignore[unresolved-attribute]
+        expected_translation = ref.translation + delta * 3.0  # ty:ignore[unresolved-attribute]
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)  # ty:ignore[unresolved-attribute]
 
     def test_oculus_to_tool_command_remap_applied_to_delta(self):
@@ -309,8 +322,148 @@ class TestControllerDeltaApplied:
 
         ref = policy.reference_tool_pose
         remapped_delta = rotation_about_z_90 @ np.array([0.001, 0.0, 0.0])
-        expected_translation = ref.translation + ref.rotation @ remapped_delta  # ty:ignore[unresolved-attribute]
+        expected_translation = ref.translation + remapped_delta  # ty:ignore[unresolved-attribute]
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)  # ty:ignore[unresolved-attribute]
+
+    @pytest.mark.parametrize(
+        ("oculus_delta", "command_delta"),
+        [
+            (np.array([0.0, 0.001, 0.0]), np.array([0.0, 0.0, 0.001])),
+            (np.array([0.0, 0.0, 0.001]), np.array([0.0, -0.001, 0.0])),
+        ],
+    )
+    def test_default_mapping_rotates_up_and_forward_axes(self, oculus_delta, command_delta):
+        policy, _ = _make_policy(config=OculusTeleopPolicyConfig(verbose=False))
+        policy.reference_controller_pose = np.eye(4)
+        policy.reference_tool_pose = pin.SE3.Identity()
+        policy.commanded_tool_pose = pin.SE3.Identity()
+
+        target = policy._compute_tool_pose(_se3_to_matrix(pin.SE3(np.eye(3), oculus_delta)))
+
+        np.testing.assert_allclose(target.translation, command_delta, atol=1e-12)
+
+    @pytest.mark.parametrize("robot_name", ["panda", "elrobot_mobile"])
+    def test_translation_uses_command_frame_with_rotated_references(self, robot_name):
+        policy, _ = _make_policy(robot_name=robot_name)
+        controller_reference = pin.SE3(
+            pin.utils.rotate("z", np.pi / 2),
+            np.array([0.2, -0.1, 0.3]),
+        )
+        tool_reference = pin.SE3(
+            pin.utils.rotate("y", np.pi / 2),
+            np.array([0.4, 0.2, 0.5]),
+        )
+        tracking_delta = np.array([0.001, 0.0, 0.0])
+        current_controller = pin.SE3(
+            controller_reference.rotation,
+            controller_reference.translation + tracking_delta,
+        )
+        policy.reference_controller_pose = _se3_to_matrix(controller_reference)
+        policy.reference_tool_pose = tool_reference
+        policy.commanded_tool_pose = tool_reference.copy()
+
+        target = policy._compute_tool_pose(_se3_to_matrix(current_controller))
+
+        np.testing.assert_allclose(
+            target.translation,
+            tool_reference.translation + tracking_delta,
+            atol=1e-12,
+        )
+
+    def test_rotation_uses_command_frame_with_rotated_references(self, panda_policy_and_reader):
+        policy, _ = panda_policy_and_reader
+        controller_reference = pin.SE3(
+            pin.utils.rotate("y", np.pi / 2),
+            np.array([0.2, -0.1, 0.3]),
+        )
+        tool_reference = pin.SE3(
+            pin.utils.rotate("x", np.pi / 2),
+            np.array([0.4, 0.2, 0.5]),
+        )
+        tracking_rotation_delta = pin.utils.rotate("z", 0.01)
+        current_controller = pin.SE3(
+            tracking_rotation_delta @ controller_reference.rotation,
+            controller_reference.translation,
+        )
+        policy.reference_controller_pose = _se3_to_matrix(controller_reference)
+        policy.reference_tool_pose = tool_reference
+        policy.commanded_tool_pose = tool_reference.copy()
+
+        target = policy._compute_tool_pose(_se3_to_matrix(current_controller))
+
+        np.testing.assert_allclose(
+            target.rotation,
+            tracking_rotation_delta @ tool_reference.rotation,
+            atol=1e-12,
+        )
+
+    def test_oculus_to_tool_command_remap_applied_to_rotation(self):
+        command_rotation = pin.utils.rotate("z", np.pi / 2)
+        policy, _ = _make_policy(
+            config=OculusTeleopPolicyConfig(
+                verbose=False,
+                oculus_to_tool_command_rotation=command_rotation,
+            ),
+        )
+        tool_reference = pin.SE3.Identity()
+        tracking_rotation_delta = pin.utils.rotate("x", 0.01)
+        policy.reference_controller_pose = np.eye(4)
+        policy.reference_tool_pose = tool_reference
+        policy.commanded_tool_pose = tool_reference.copy()
+
+        target = policy._compute_tool_pose(
+            _se3_to_matrix(pin.SE3(tracking_rotation_delta, np.zeros(3)))
+        )
+
+        expected_rotation_delta = command_rotation @ tracking_rotation_delta @ command_rotation.T
+        np.testing.assert_allclose(target.rotation, expected_rotation_delta, atol=1e-12)
+
+    def test_reengagement_orientation_does_not_change_translation_direction(
+        self, panda_policy_and_reader
+    ):
+        policy, reader = panda_policy_and_reader
+        reader.buttons["RG"] = True
+        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        tracking_delta = np.array([0.001, 0.0, 0.0])
+
+        first_reference = pin.SE3.Identity()
+        reader.transforms = {"r": _se3_to_matrix(first_reference)}
+        first_anchor = policy(obs).tool_pose
+        reader.transforms = {
+            "r": _se3_to_matrix(
+                pin.SE3(first_reference.rotation, first_reference.translation + tracking_delta)
+            )
+        }
+        first_target = policy(obs).tool_pose
+
+        reader.buttons["RG"] = False
+        policy(obs)
+
+        second_reference = pin.SE3(pin.utils.rotate("z", np.pi / 2), np.zeros(3))
+        reader.buttons["RG"] = True
+        reader.transforms = {"r": _se3_to_matrix(second_reference)}
+        second_anchor = policy(obs).tool_pose
+        reader.transforms = {
+            "r": _se3_to_matrix(
+                pin.SE3(second_reference.rotation, second_reference.translation + tracking_delta)
+            )
+        }
+        second_target = policy(obs).tool_pose
+
+        assert first_anchor is not None
+        assert first_target is not None
+        assert second_anchor is not None
+        assert second_target is not None
+        np.testing.assert_allclose(
+            first_target.translation - first_anchor.translation,
+            tracking_delta,
+            atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            second_target.translation - second_anchor.translation,
+            tracking_delta,
+            atol=1e-12,
+        )
 
     def test_translation_is_limited_by_robot_config(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
@@ -322,11 +475,13 @@ class TestControllerDeltaApplied:
         action = policy(obs)
 
         assert policy.reference_tool_pose is not None
-        distance = np.linalg.norm(
-            action.tool_pose.translation - policy.reference_tool_pose.translation
+        translation_delta = action.tool_pose.translation - policy.reference_tool_pose.translation
+        max_translation = policy.robot_config.tool.velocity_limits.linear * policy.config.dt
+        np.testing.assert_allclose(
+            translation_delta,
+            np.array([max_translation, 0.0, 0.0]),
+            atol=1e-12,
         )
-        expected = policy.robot_config.tool.velocity_limits.linear * policy.config.dt
-        assert distance == pytest.approx(expected)
 
     def test_rotation_is_limited_by_robot_config(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
@@ -340,10 +495,14 @@ class TestControllerDeltaApplied:
         action = policy(obs)
 
         assert policy.reference_tool_pose is not None
-        rotation_delta = policy.reference_tool_pose.rotation.T @ action.tool_pose.rotation
-        distance = np.linalg.norm(pin.log3(rotation_delta))
-        expected = policy.robot_config.tool.velocity_limits.angular * policy.config.dt
-        assert distance == pytest.approx(expected)
+        rotation_delta = action.tool_pose.rotation @ policy.reference_tool_pose.rotation.T
+        rotation_vector = pin.log3(rotation_delta)
+        max_rotation = policy.robot_config.tool.velocity_limits.angular * policy.config.dt
+        np.testing.assert_allclose(
+            rotation_vector,
+            np.array([0.0, 0.0, max_rotation]),
+            atol=1e-12,
+        )
 
 
 class TestGripper:
