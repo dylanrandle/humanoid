@@ -2,7 +2,6 @@ import argparse
 import sys
 
 import numpy as np
-from pynput import keyboard
 
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACCELERATION_MAX,
@@ -25,11 +24,11 @@ DEFAULT_STEP_SIZE = 0.05  # ~2.86 degrees
 DEFAULT_ACCELERATION = 15
 
 
-def get_jog_target(current_position: float, key: keyboard.Key, step_size: float) -> float | None:
-    """Return the target for an arrow key, including when positioned at zero."""
-    if key == keyboard.Key.left:
+def get_jog_target(current_position: float, direction: str, step_size: float) -> float | None:
+    """Return the target for an arrow-key direction, including at zero."""
+    if direction == "left":
         return current_position - step_size
-    if key == keyboard.Key.right:
+    if direction == "right":
         return current_position + step_size
     return None
 
@@ -41,6 +40,8 @@ def jog_actuator(
     controller_config: FeetechActuatorControllerConfig | None = None,
 ) -> None:
     """Jog an actuator using arrow keys with global keyboard capture."""
+    from pynput import keyboard  # noqa: PLC0415
+
     logger.info(f"Starting jog mode for actuator {actuator_id}")
     logger.info(f"Step size: {step_size:.4f} rad (~{np.rad2deg(step_size):.2f} degrees)")
     logger.info(f"Acceleration: {acceleration}")
@@ -74,11 +75,12 @@ def jog_actuator(
         def on_press(key):
             nonlocal current_pos
             try:
-                new_pos = get_jog_target(current_pos, key, step_size)
+                key_name = getattr(key, "name", "")
+                new_pos = get_jog_target(current_pos, key_name, step_size)
                 if new_pos is not None:
                     driver.write_position({actuator_id: new_pos}, acceleration=acceleration)
                     current_pos = new_pos
-                    direction = "←" if key == keyboard.Key.left else "→"
+                    direction = "←" if key_name == "left" else "→"
                     logger.info(
                         f"{direction} Position: {current_pos:.4f} rad "
                         f"({np.rad2deg(current_pos):.2f} deg)"

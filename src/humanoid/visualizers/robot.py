@@ -15,6 +15,7 @@ from pinocchio.visualize import MeshcatVisualizer
 
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
+from humanoid.types.homing import HomingPreset
 from humanoid.types.visualizer import VisualizerConfig
 
 logger = get_logger(__name__)
@@ -111,7 +112,7 @@ class JointCommandVisualizer(CommandVisualizer):
         self._viewer.displayCollisions(False)
 
         # Show the ghost at the home configuration until a command arrives.
-        self._viewer.display(self.robot.config.home_position)
+        self._viewer.display(self.robot.config.homing_presets[HomingPreset.HOME])
 
         self._initialized = True
 
@@ -237,7 +238,7 @@ class ToolCommandVisualizer(CommandVisualizer):
         # Lay out the subtree once at the robot's home configuration and cache
         # the resulting EE pose. display() then applies a rigid offset rather
         # than recomputing kinematics every call.
-        reference_q = self.robot.config.home_position
+        reference_q = self.robot.config.homing_presets[HomingPreset.HOME]
         self._viewer.display(reference_q)
 
         data = self.robot.model.createData()
@@ -365,7 +366,7 @@ class RobotVisualizer:
             self._tool_command_viz = ToolCommandVisualizer(
                 self.robot,
                 self._viewer,
-                end_effector_frame=self.robot.config.tool_frame,
+                end_effector_frame=self.robot.config.tool.frame,
                 opacity=self._config.tool_command_opacity,
             )
             self._tool_command_viz.initialize()

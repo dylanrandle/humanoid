@@ -32,7 +32,7 @@ def test_builds_configured_wheel_dead_reckoning_estimator():
 def test_rejects_unsupported_estimator_config():
     with pytest.raises(TypeError, match="Unsupported root-state estimator"):
         create_root_state_estimator(
-            RootStateEstimatorConfig(),
+            RootStateEstimatorConfig(kind="unsupported"),
             Robot(ELROBOT_MOBILE_CONFIG),
             _initial_state(),
         )

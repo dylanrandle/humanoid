@@ -17,8 +17,14 @@ from humanoid.state_estimation.root.base import (
 from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimator,
 )
+from humanoid.types.homing import HomingPreset
 from humanoid.types.process import Runtime
-from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotName
+from humanoid.types.robot import (
+    RobotConfig,
+    RobotJointCommand,
+    RobotName,
+    RobotToolConfig,
+)
 
 
 class StubActuatorSystem(ActuatorSystem):
@@ -61,9 +67,11 @@ class StubRootStateEstimator(RootStateEstimator):
 def _robot_config(modes: list[ActuatorControlMode]) -> RobotConfig:
     return RobotConfig(
         name=RobotName.PANDA,
-        tool_frame="tool",
-        home_position=np.zeros(len(modes)),
-        rest_position=np.ones(len(modes)),
+        tool=RobotToolConfig(frame="tool"),
+        homing_presets={
+            HomingPreset.HOME: np.zeros(len(modes)),
+            HomingPreset.REST: np.ones(len(modes)),
+        },
         actuator_control_modes={f"joint_{index}": mode for index, mode in enumerate(modes)},
         hardware=None,
     )
@@ -248,7 +256,7 @@ def test_mobile_simulation_initial_positions_round_trip_home_configuration():
     assert [initial_positions[f"wheel_{index}"] for index in range(1, 4)] == pytest.approx(
         [0.0, 0.0, 0.0]
     )
-    np.testing.assert_allclose(reconstructed_home, config.home_position)
+    np.testing.assert_allclose(reconstructed_home, config.homing_presets[HomingPreset.HOME])
 
 
 def test_velocity_clamping():
@@ -539,7 +547,7 @@ def test_mobile_driver_ignores_commanded_root_velocity():
     driver.subscriber.receive = Mock(  # ty: ignore[invalid-assignment]
         return_value=RobotJointCommand(
             timestamp=0.0,
-            joint_positions=ELROBOT_MOBILE_CONFIG.home_position.copy(),
+            joint_positions=ELROBOT_MOBILE_CONFIG.homing_presets[HomingPreset.HOME].copy(),
             joint_velocities=command_velocities,
         )
     )

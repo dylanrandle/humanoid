@@ -21,7 +21,7 @@ DEFAULT_RECORDING_ROOT = find_repo_root(__file__) / "logs"
 RECORDING_DIRECTORY_PREFIX = "recording_"
 RECORDING_LOG_FILENAME = "recording.lcm"
 RECORDING_MANIFEST_FILENAME = "robot.json"
-RECORDING_SCHEMA_VERSION = 2
+RECORDING_SCHEMA_VERSION = 1
 
 
 class RecordingError(Exception):

@@ -9,6 +9,7 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
+from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotState
@@ -86,21 +87,23 @@ class TestConstruction:
 
 class TestForwardKinematicsHelpers:
     def test_tool_pose_matches_robot_fk(self, panda_policy, panda_config):
-        obs = _observation_from_q(panda_config.home_position)
+        obs = _observation_from_q(panda_config.homing_presets[HomingPreset.HOME])
         result = panda_policy._get_current_tool_pose(obs)
-        expected = panda_policy.robot.get_tool_pose(panda_config.home_position)
+        expected = panda_policy.robot.get_tool_pose(panda_config.homing_presets[HomingPreset.HOME])
         np.testing.assert_allclose(result.translation, expected.translation)
         np.testing.assert_allclose(result.rotation, expected.rotation)
 
     def test_base_pose_is_none_for_fixed_base_robot(self, panda_policy, panda_config):
-        obs = _observation_from_q(panda_config.home_position)
+        obs = _observation_from_q(panda_config.homing_presets[HomingPreset.HOME])
         assert panda_policy._get_current_base_pose(obs) is None
 
     def test_base_pose_returned_for_mobile_robot(self, mobile_policy, mobile_config):
-        obs = _observation_from_q(mobile_config.home_position)
+        obs = _observation_from_q(mobile_config.homing_presets[HomingPreset.HOME])
         result = mobile_policy._get_current_base_pose(obs)
         assert isinstance(result, pin.SE3)
-        expected = mobile_policy.robot.get_base_pose(mobile_config.home_position)
+        expected = mobile_policy.robot.get_base_pose(
+            mobile_config.homing_presets[HomingPreset.HOME]
+        )
         np.testing.assert_allclose(result.translation, expected.translation)
 
 
@@ -108,7 +111,7 @@ class TestGripperFromObservation:
     def test_returns_none_when_no_grippers_configured(self, panda_config):
         no_gripper = replace(panda_config, gripper_joint_indices=None)
         policy = _DummyTeleopPolicy(robot_config=no_gripper, verbose=False)
-        obs = _observation_from_q(panda_config.home_position)
+        obs = _observation_from_q(panda_config.homing_presets[HomingPreset.HOME])
         assert policy._get_current_gripper_positions(obs) is None
 
     def test_reads_via_position_index_not_joint_index(self, mobile_policy, mobile_config):
@@ -125,7 +128,7 @@ class TestGripperFromObservation:
             "Test premise: mobile-robot gripper joint_idx must differ from position_idx."
         )
 
-        q = mobile_config.home_position.copy()
+        q = mobile_config.homing_presets[HomingPreset.HOME].copy()
         gripper_value = 0.123
         decoy_value = 0.987
         q[position_idx] = gripper_value
@@ -138,7 +141,7 @@ class TestGripperFromObservation:
 
 class TestHoldCurrentPoseAction:
     def test_panda_hold_action_has_no_base_and_correct_gripper(self, panda_policy, panda_config):
-        q = panda_config.home_position
+        q = panda_config.homing_presets[HomingPreset.HOME]
         action = panda_policy._hold_current_pose_action(_observation_from_q(q))
 
         assert isinstance(action, Action)
@@ -151,9 +154,17 @@ class TestHoldCurrentPoseAction:
         np.testing.assert_allclose(action.gripper_positions, [q[gripper_pos_idx]])
 
     def test_mobile_hold_action_includes_base(self, mobile_policy, mobile_config):
-        q = mobile_config.home_position
+        q = mobile_config.homing_presets[HomingPreset.HOME].copy()
+        root_q_slice = mobile_policy.robot.get_root_q_slice()
+        assert root_q_slice is not None
+        q[root_q_slice][0] = 1.0
+
         action = mobile_policy._hold_current_pose_action(_observation_from_q(q))
 
         assert action.base_pose is not None
         expected_base = mobile_policy.robot.get_base_pose(q)
+        expected_tool = mobile_policy.robot.get_tool_command_pose(q)
+        world_tool = mobile_policy.robot.get_tool_pose(q)
         np.testing.assert_allclose(action.base_pose.translation, expected_base.translation)
+        np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
+        assert not np.allclose(action.tool_pose.translation, world_tool.translation)

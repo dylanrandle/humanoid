@@ -13,7 +13,16 @@ from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
 from humanoid.types.controllers import OperationalSpaceConfig
-from humanoid.types.robot import RobotConfig, RobotName, WheelConfig, WheelType
+from humanoid.types.homing import HomingPreset
+from humanoid.types.robot import (
+    CartesianVelocityLimits,
+    RobotBaseConfig,
+    RobotConfig,
+    RobotName,
+    RobotToolConfig,
+    WheelConfig,
+    WheelType,
+)
 
 MAIN_CONTROLLER = "main"
 WHEEL_IDS = [f"wheel_{index}" for index in range(1, 4)]
@@ -108,8 +117,21 @@ HARDWARE_CONFIG = RobotHardwareConfig(
 STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
     root=WheelDeadReckoningRootStateEstimatorConfig(),
 )
+TOOL_CONFIG = RobotToolConfig(frame="Gripper_Base_v1_1")
+BASE_CONFIG = RobotBaseConfig(
+    frame="root_joint",
+    velocity_limits=CartesianVelocityLimits(
+        linear=0.2,
+        angular=1.0,
+    ),
+)
+HOMING_PRESETS = {
+    HomingPreset.HOME: HOME_POSITION,
+    HomingPreset.REST: REST_POSITION,
+}
 OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
     avoid_collisions=True,
+    wheel_cost=100.0,
     min_collision_distance=5e-3,
     joint_centering_cost=5e-3,
     joint_centering_mask=np.array([0.0] * len(WHEEL_IDS) + [1.0] * (len(JOINT_IDS) + 1)),
@@ -119,11 +141,10 @@ OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
 
 ELROBOT_MOBILE_CONFIG = RobotConfig(
     name=RobotName.ELROBOT_MOBILE,
-    tool_frame="Gripper_Base_v1_1",
-    base_frame="root_joint",
+    tool=TOOL_CONFIG,
+    base=BASE_CONFIG,
     wheels=WHEEL_CONFIGS,
-    home_position=HOME_POSITION,
-    rest_position=REST_POSITION,
+    homing_presets=HOMING_PRESETS,
     actuator_control_modes=ACTUATOR_CONTROL_MODES,
     hardware=HARDWARE_CONFIG,
     state_estimation=STATE_ESTIMATION_CONFIG,

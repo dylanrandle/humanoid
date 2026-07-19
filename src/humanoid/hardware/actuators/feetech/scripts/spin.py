@@ -2,7 +2,6 @@ import argparse
 import sys
 
 import numpy as np
-from pynput import keyboard
 
 from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.actuators.feetech.config import (
@@ -29,6 +28,8 @@ def spin_actuator(
     max_speed: float = DEFAULT_MAX_SPEED,
     controller_config: FeetechActuatorControllerConfig | None = None,
 ) -> None:
+    from pynput import keyboard  # noqa: PLC0415
+
     driver = FeetechActuatorDriver.for_actuator_ids(
         [actuator_id],
         ActuatorControlMode.VELOCITY,

@@ -63,10 +63,18 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         super().__init__(robot_config=robot_config, verbose=config.verbose)
 
         self.config = config
-        self.tool_translation_step = config.tool_translation_velocity * config.dt
-        self.tool_rotation_step = config.tool_rotation_velocity * config.dt
-        self.base_translation_step = config.base_translation_velocity * config.dt
-        self.base_rotation_step = config.base_rotation_velocity * config.dt
+        self.tool_translation_step = robot_config.tool.velocity_limits.linear * config.dt
+        self.tool_rotation_step = robot_config.tool.velocity_limits.angular * config.dt
+        self.base_translation_step = (
+            robot_config.base.velocity_limits.linear * config.dt
+            if robot_config.base is not None
+            else 0.0
+        )
+        self.base_rotation_step = (
+            robot_config.base.velocity_limits.angular * config.dt
+            if robot_config.base is not None
+            else 0.0
+        )
 
         gripper_range = self.gripper_max - self.gripper_min
         self.gripper_step = gripper_range * config.dt / config.gripper_close_time
@@ -84,7 +92,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         # Track gripper positions based on gripper_joint_indices from config
         self.gripper_positions: np.ndarray | None = None
 
-        # Current target base pose (will be initialized on first observation if base_frame set)
+        # Current target base pose (initialized when the robot has a mobile base).
         self.current_base_pose: pin.SE3 | None = None
 
         # Thread-safe lock for accessing current_pose, gripper_positions, and base pose
@@ -102,7 +110,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
     def _log_init_info(self) -> None:
         """Log initialization info and controls."""
         logger.info(f"KeyboardTeleopPolicy initialized for {self.robot_config.name}")
-        logger.info(f"End effector frame: {self.robot_config.tool_frame}")
+        logger.info(f"End effector frame: {self.robot_config.tool.frame}")
         if self.robot_config.gripper_joint_indices:
             logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
         logger.info(
@@ -125,7 +133,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         logger.info("  Gripper:")
         logger.info("    [ - Close gripper")
         logger.info("    ] - Open gripper")
-        if self.robot_config.base_frame is not None:
+        if self.robot_config.base is not None:
             logger.info("  Base:")
             logger.info("    Up/Down arrow - Move base forward/backward (X axis)")
             logger.info("    Left/Right arrow - Strafe base left/right (Y axis)")
@@ -317,7 +325,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                                 f"+{self.gripper_step * 1000:.2f}mm)"
                             )
                             logger.info(f"Gripper position: {self.gripper_positions[0]:.4f}")
-            # Base controls (only active if base_frame configured)
+            # Base controls (only active for mobile robots).
             elif key == keyboard.Key.up:
                 with self.lock:
                     if self.current_base_pose is not None:
@@ -403,7 +411,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 # Initialize gripper positions from current state
                 self.gripper_positions = self._get_current_gripper_positions(observation)
 
-                # Initialize base pose from current state if base_frame is configured
+                # Initialize base pose from current state for mobile robots.
                 base_pose = self._get_current_base_pose(observation)
                 if base_pose is not None:
                     # Copy so subsequent FK calls don't mutate our target

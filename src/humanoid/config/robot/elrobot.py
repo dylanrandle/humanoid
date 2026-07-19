@@ -8,7 +8,12 @@ from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorControllerConfig,
 )
 from humanoid.hardware.config import RobotHardwareConfig
-from humanoid.types.robot import RobotConfig, RobotName
+from humanoid.types.homing import HomingPreset
+from humanoid.types.robot import (
+    RobotConfig,
+    RobotName,
+    RobotToolConfig,
+)
 
 MAIN_CONTROLLER = "main"
 JOINT_IDS = [f"arm_{index}" for index in range(1, 8)]
@@ -16,6 +21,11 @@ GRIPPER_ID = "gripper_1"
 
 HOME_POSITION = np.array([0.0, -0.75, 0.5, 0.0, 0.0, 1.0, 0.0, 0])
 REST_POSITION = np.array([0.0, -1.6, -0.1, 1.65, 0.0, 0.21, 0.0, 2.2])
+TOOL_CONFIG = RobotToolConfig(frame="Gripper_Base_v1_1")
+HOMING_PRESETS = {
+    HomingPreset.HOME: HOME_POSITION,
+    HomingPreset.REST: REST_POSITION,
+}
 
 ACTUATOR_CONTROL_MODES = dict.fromkeys([*JOINT_IDS, GRIPPER_ID], ActuatorControlMode.POSITION)
 ACTUATOR_CONFIGS = {
@@ -41,9 +51,8 @@ HARDWARE_CONFIG = RobotHardwareConfig(
 
 ELROBOT_CONFIG = RobotConfig(
     name=RobotName.ELROBOT,
-    tool_frame="Gripper_Base_v1_1",
-    home_position=HOME_POSITION,
-    rest_position=REST_POSITION,
+    tool=TOOL_CONFIG,
+    homing_presets=HOMING_PRESETS,
     actuator_control_modes=ACTUATOR_CONTROL_MODES,
     hardware=HARDWARE_CONFIG,
     gripper_joint_indices=[7],

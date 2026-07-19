@@ -75,8 +75,13 @@ def test_get_rejects_manifest_that_does_not_match_directory(tmp_path):
 def test_serialized_config_distinguishes_equal_sized_robots():
     panda = serialize_robot_config(ROBOT_CONFIGS[RobotName.PANDA])
     elrobot = serialize_robot_config(ROBOT_CONFIGS[RobotName.ELROBOT])
-    panda_home = panda["home_position"]
-    elrobot_home = elrobot["home_position"]
+    panda_presets = panda["homing_presets"]
+    elrobot_presets = elrobot["homing_presets"]
+
+    assert isinstance(panda_presets, dict)
+    assert isinstance(elrobot_presets, dict)
+    panda_home = panda_presets["home"]
+    elrobot_home = elrobot_presets["home"]
 
     assert isinstance(panda_home, list)
     assert isinstance(elrobot_home, list)
@@ -103,7 +108,7 @@ def test_serialized_config_includes_physical_actuator_details():
     state_estimation = config["state_estimation"]
     assert isinstance(state_estimation, dict)
     root_provider = state_estimation["root"]
-    assert root_provider == {}
+    assert root_provider == {"kind": "wheel_dead_reckoning"}
 
 
 def test_serialized_panda_config_has_no_physical_hardware():

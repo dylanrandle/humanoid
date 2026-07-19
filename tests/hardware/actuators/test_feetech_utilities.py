@@ -2,7 +2,6 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from pynput import keyboard
 
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACTUATOR_ID_MAX,
@@ -24,11 +23,11 @@ from humanoid.hardware.actuators.feetech.scripts.read_gains import read_pid_gain
 
 
 @pytest.mark.parametrize(
-    ("key", "expected"),
-    [(keyboard.Key.left, -0.05), (keyboard.Key.right, 0.05)],
+    ("direction", "expected"),
+    [("left", -0.05), ("right", 0.05)],
 )
-def test_jogging_from_zero_moves_in_both_directions(key, expected):
-    assert get_jog_target(0.0, key, 0.05) == pytest.approx(expected)
+def test_jogging_from_zero_moves_in_both_directions(direction, expected):
+    assert get_jog_target(0.0, direction, 0.05) == pytest.approx(expected)
 
 
 def test_read_gains_returns_values_without_unused_write_arguments():

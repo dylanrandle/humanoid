@@ -10,6 +10,7 @@ from humanoid.logger import get_logger
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
+from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import RobotConfig
 from humanoid.types.visualizer import VisualizerConfig
 from humanoid.visualizers.robot import RobotVisualizer as _RobotVisualizer
@@ -47,7 +48,7 @@ class RobotVisualizerNode(Node):
         self.viz.initialize()
 
         # Initialize with home position
-        self.current_q = robot_config.home_position.copy()
+        self.current_q = robot_config.homing_presets[HomingPreset.HOME].copy()
         self.viz.display(self.current_q)
 
         # Setup LCM subscriber
@@ -88,8 +89,15 @@ class RobotVisualizerNode(Node):
         # Check for tool command update
         tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND)
         if tool_command is not None and self.viz_config.show_commanded_tool_pose:
-            # Visualize the commanded tool pose with the end effector geometry
-            self.viz.display_tool_command(tool_command.pose)
+            # Mobile tool commands are base-relative. Compose them with the
+            # latest measured base pose from ROBOT_STATE; the commanded base
+            # pose is visualized separately and must not relocate the tool
+            # ghost ahead of the measured robot.
+            tool_pose = tool_command.pose
+            base_pose = self.robot.get_base_pose(self.current_q)
+            if base_pose is not None:
+                tool_pose = base_pose * tool_pose
+            self.viz.display_tool_command(tool_pose)
 
         # Check for base command update
         base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)

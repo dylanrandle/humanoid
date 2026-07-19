@@ -10,6 +10,7 @@ from humanoid.hardware.actuators.config import (
     ActuatorControlMode,
 )
 from humanoid.nodes.robot.controller import RobotControllerNode
+from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -18,15 +19,18 @@ from humanoid.types.robot import (
     RobotName,
     RobotState,
     RobotToolCommand,
+    RobotToolConfig,
 )
 
 
 def _make_robot_config() -> RobotConfig:
     return RobotConfig(
         name=RobotName.PANDA,
-        tool_frame="panda_hand",
-        home_position=np.zeros(7),
-        rest_position=np.ones(7),
+        tool=RobotToolConfig(frame="panda_hand"),
+        homing_presets={
+            HomingPreset.HOME: np.zeros(7),
+            HomingPreset.REST: np.ones(7),
+        },
         actuator_control_modes={f"joint_{i}": ActuatorControlMode.POSITION for i in range(7)},
         hardware=None,
     )
@@ -46,7 +50,7 @@ def _make_controller(robot_config: RobotConfig | None = None) -> RobotController
         mock_robot = MagicMock()
         # Geometry helpers used by _reset_commands_from_state.
         mock_robot.get_gripper_position_indices.return_value = []
-        mock_robot.get_tool_pose.return_value = pin.SE3.Identity()
+        mock_robot.get_tool_command_pose.return_value = pin.SE3.Identity()
         mock_robot.get_base_pose.return_value = None
         mock_robot_cls.return_value = mock_robot
 
@@ -148,8 +152,11 @@ class TestInactiveMode:
         controller.step()
 
         # Tool pose now comes from FK on the current state, not the stale target.
-        controller.robot.get_tool_pose.assert_called_once()
-        assert controller.current_tool_command.pose is controller.robot.get_tool_pose.return_value
+        controller.robot.get_tool_command_pose.assert_called_once()
+        assert (
+            controller.current_tool_command.pose
+            is controller.robot.get_tool_command_pose.return_value
+        )
 
     def test_inactive_does_not_publish(self, controller):
         """Even if a tool command arrives, inactive mode publishes nothing."""

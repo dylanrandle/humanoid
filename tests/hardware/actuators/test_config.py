@@ -11,7 +11,12 @@ from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorControllerConfig,
 )
 from humanoid.hardware.config import RobotHardwareConfig
-from humanoid.types.robot import RobotConfig, RobotName
+from humanoid.types.homing import HomingPreset
+from humanoid.types.robot import (
+    RobotConfig,
+    RobotName,
+    RobotToolConfig,
+)
 
 MAIN_CONTROLLER = "main"
 EXPECTED_GRIPPER_ACTUATOR_ID = 8
@@ -136,9 +141,11 @@ def test_robot_config_owns_physical_binding_equality_validation():
     with pytest.raises(ValueError, match="bindings must match"):
         RobotConfig(
             name=RobotName.PANDA,
-            tool_frame="tool",
-            home_position=np.zeros(1),
-            rest_position=np.zeros(1),
+            tool=RobotToolConfig(frame="tool"),
+            homing_presets={
+                HomingPreset.HOME: np.zeros(1),
+                HomingPreset.REST: np.zeros(1),
+            },
             actuator_control_modes={"joint": ActuatorControlMode.POSITION},
             hardware=RobotHardwareConfig(actuators=hardware),
         )

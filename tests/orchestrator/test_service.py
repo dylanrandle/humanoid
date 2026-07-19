@@ -666,7 +666,9 @@ def test_home_request_uses_configured_home_target():
     status = service.request_mode(_homing_request(HomingPreset.HOME))
 
     target = client.request_homing.call_args.args[0]
-    np.testing.assert_allclose(target, ROBOT_CONFIGS[RobotName.PANDA].home_position)
+    np.testing.assert_allclose(
+        target, ROBOT_CONFIGS[RobotName.PANDA].homing_presets[HomingPreset.HOME]
+    )
     assert status.orchestrator.parameters[OrchestratorParameter.PRESET] is HomingPreset.HOME
 
 

@@ -34,9 +34,6 @@ class KeyboardTeleopNode(Node):
             policy_config: Tunable parameters for the keyboard teleop policy.
                 Its ``dt`` field sets the control loop period.
         """
-        if policy_config is None:
-            policy_config = KeyboardTeleopPolicyConfig()
-
         self.policy = KeyboardTeleopPolicy(robot_config=robot_config, config=policy_config)
 
         self.env = RealtimeEnvironment(
@@ -46,7 +43,7 @@ class KeyboardTeleopNode(Node):
             )
         )
 
-        self.rate_hz = 1.0 / policy_config.dt
+        self.rate_hz = 1.0 / self.policy.config.dt
 
     def step(self) -> None:
         """Execute one step of the control loop."""

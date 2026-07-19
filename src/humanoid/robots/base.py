@@ -107,8 +107,8 @@ class Robot:
         package_dirs = [robot_dir, assets_dir, *package_dirs]
         package_dirs_str = [str(p) for p in package_dirs]
 
-        # Add a planar joint if a base_frame is specified
-        root_joint = pin.JointModelPlanar() if config.base_frame else None
+        # Add a planar joint if a mobile base is configured.
+        root_joint = pin.JointModelPlanar() if config.base is not None else None
 
         # Load the kinematic model and visual model from main URDF
         self.model, self.visual_model = pin.buildModelsFromUrdf(
@@ -339,21 +339,21 @@ class Robot:
         """Return the slice of q owned by the planar root joint, or None.
 
         A planar root joint is inserted as the first joint after universe when
-        ``config.base_frame`` is configured (see :meth:`__init__`); its q
+        ``config.base`` is configured (see :meth:`__init__`); its q
         coordinates are ``[x, y, cos(theta), sin(theta)]`` (nq=4).
 
         Returns:
             ``slice(idx_q, idx_q + nq)`` for the root joint, or ``None`` for
             fixed-base robots.
         """
-        if self.config.base_frame is None:
+        if self.config.base is None:
             return None
         root = self.model.joints[1]
         return slice(root.idx_q, root.idx_q + root.nq)
 
     def get_root_v_slice(self) -> slice | None:
         """Return the velocity slice owned by the planar root joint, or ``None``."""
-        if self.config.base_frame is None:
+        if self.config.base is None:
             return None
         root = self.model.joints[1]
         return slice(root.idx_v, root.idx_v + root.nv)
@@ -400,9 +400,19 @@ class Robot:
             q: Joint configuration vector
 
         Returns:
-            SE3 transformation for ``config.tool_frame`` in the world frame
+            SE3 transformation for ``config.tool.frame`` in the world frame
         """
-        return self.get_frame_pose(self.config.tool_frame, q)
+        return self.get_frame_pose(self.config.tool.frame, q)
+
+    def get_tool_command_pose(self, q: np.ndarray) -> pin.SE3:
+        """Get the configured tool pose in the frame used by tool commands.
+
+        Fixed-base robots command the tool in world. Mobile robots command it
+        relative to their configured base frame.
+        """
+        tool_pose = self.get_tool_pose(q)
+        base_pose = self.get_base_pose(q)
+        return tool_pose if base_pose is None else base_pose.inverse() * tool_pose
 
     def get_base_pose(self, q: np.ndarray) -> pin.SE3 | None:
         """Get the pose of the configured base frame, or None if not configured.
@@ -411,12 +421,12 @@ class Robot:
             q: Joint configuration vector
 
         Returns:
-            SE3 transformation for ``config.base_frame`` in the world frame,
+            SE3 transformation for ``config.base.frame`` in the world frame,
             or None if no base frame is configured.
         """
-        if self.config.base_frame is None:
+        if self.config.base is None:
             return None
-        return self.get_frame_pose(self.config.base_frame, q)
+        return self.get_frame_pose(self.config.base.frame, q)
 
     def get_gripper_position_indices(self) -> list[int]:
         """Return the position indices for each configured gripper joint.

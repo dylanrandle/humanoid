@@ -5,7 +5,14 @@ from humanoid.config import ROBOT_CONFIGS
 from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
-from humanoid.types.robot import RobotConfig, RobotName
+from humanoid.types.homing import HomingPreset
+from humanoid.types.robot import (
+    CartesianVelocityLimits,
+    RobotBaseConfig,
+    RobotConfig,
+    RobotName,
+    RobotToolConfig,
+)
 
 
 def test_only_mobile_robot_configures_root_state_estimation():
@@ -27,11 +34,16 @@ def test_mobile_robot_requires_root_state_estimation_config():
     with pytest.raises(ValueError, match="mobile base require"):
         RobotConfig(
             name=RobotName.PANDA,
-            tool_frame="tool",
-            home_position=np.zeros(1),
-            rest_position=np.zeros(1),
+            tool=RobotToolConfig(frame="tool"),
+            homing_presets={
+                HomingPreset.HOME: np.zeros(1),
+                HomingPreset.REST: np.zeros(1),
+            },
             actuator_control_modes={},
-            base_frame="root",
+            base=RobotBaseConfig(
+                frame="root",
+                velocity_limits=CartesianVelocityLimits(linear=0.2, angular=1.0),
+            ),
         )
 
 
@@ -42,9 +54,11 @@ def test_fixed_base_robot_rejects_root_state_estimation_config():
     with pytest.raises(ValueError, match="Fixed-base robots cannot configure"):
         RobotConfig(
             name=RobotName.PANDA,
-            tool_frame="tool",
-            home_position=np.zeros(1),
-            rest_position=np.zeros(1),
+            tool=RobotToolConfig(frame="tool"),
+            homing_presets={
+                HomingPreset.HOME: np.zeros(1),
+                HomingPreset.REST: np.zeros(1),
+            },
             actuator_control_modes={},
             state_estimation=mobile_estimation,
         )

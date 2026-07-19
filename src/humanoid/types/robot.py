@@ -9,6 +9,7 @@ from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.state_estimation.config import RobotStateEstimationConfig
 from humanoid.types.controllers import OperationalSpaceConfig
+from humanoid.types.homing import HomingPreset
 
 
 class RobotName(StrEnum):
@@ -45,6 +46,47 @@ class WheelConfig:
     type: WheelType
 
 
+@dataclass(frozen=True, kw_only=True)
+class CartesianVelocityLimits:
+    """Maximum linear and angular velocity for a Cartesian frame."""
+
+    linear: float
+    angular: float
+
+    def __post_init__(self) -> None:
+        if not np.isfinite(self.linear) or self.linear <= 0.0:
+            raise ValueError("Cartesian linear velocity limit must be positive and finite.")
+        if not np.isfinite(self.angular) or self.angular <= 0.0:
+            raise ValueError("Cartesian angular velocity limit must be positive and finite.")
+
+
+DEFAULT_CARTESIAN_VELOCITY_LIMITS = CartesianVelocityLimits(linear=0.5, angular=np.pi)
+
+
+@dataclass(frozen=True, kw_only=True)
+class RobotToolConfig:
+    """Kinematic frame and motion limits for a robot tool."""
+
+    frame: str
+    velocity_limits: CartesianVelocityLimits = DEFAULT_CARTESIAN_VELOCITY_LIMITS
+
+    def __post_init__(self) -> None:
+        if not self.frame.strip():
+            raise ValueError("Robot tool frame must not be empty.")
+
+
+@dataclass(frozen=True, kw_only=True)
+class RobotBaseConfig:
+    """Kinematic frame and motion limits for a mobile robot base."""
+
+    frame: str
+    velocity_limits: CartesianVelocityLimits = DEFAULT_CARTESIAN_VELOCITY_LIMITS
+
+    def __post_init__(self) -> None:
+        if not self.frame.strip():
+            raise ValueError("Robot base frame must not be empty.")
+
+
 @dataclass
 class RobotJointCommand:
     timestamp: float
@@ -62,6 +104,8 @@ class RobotState:
 
 @dataclass
 class RobotToolCommand:
+    """Tool target in world for fixed robots or the configured base frame for mobile robots."""
+
     timestamp: float
     pose: pin.SE3
     gripper_positions: np.ndarray | None = None
@@ -76,23 +120,32 @@ class RobotBaseCommand:
 @dataclass
 class RobotConfig:
     name: RobotName
-    tool_frame: str
-    home_position: np.ndarray
-    rest_position: np.ndarray
+    tool: RobotToolConfig
+    homing_presets: dict[HomingPreset, np.ndarray]
     actuator_control_modes: dict[str, ActuatorControlMode]
-    hardware: RobotHardwareConfig | None = None
-    state_estimation: RobotStateEstimationConfig | None = None
-    base_frame: str | None = None
+    base: RobotBaseConfig | None = None
     wheels: list[WheelConfig] | None = None
     gripper_joint_indices: list[int] | None = None
+    hardware: RobotHardwareConfig | None = None
+    state_estimation: RobotStateEstimationConfig | None = None
     operational_space_config: OperationalSpaceConfig | None = None
 
     def __post_init__(self) -> None:
         """Own invariants spanning logical controls and physical bindings."""
+        if self.homing_presets.keys() != set(HomingPreset):
+            raise ValueError("Robot homing presets must define every HomingPreset.")
+        preset_positions = list(self.homing_presets.values())
+        if any(position.ndim != 1 for position in preset_positions):
+            raise ValueError("Robot homing presets must be one-dimensional.")
+        if len({position.shape for position in preset_positions}) != 1:
+            raise ValueError("Robot homing presets must have matching shapes.")
+        if any(not np.isfinite(position).all() for position in preset_positions):
+            raise ValueError("Robot homing presets must contain only finite values.")
+
         root_config = self.state_estimation.root if self.state_estimation is not None else None
-        if self.base_frame is not None and root_config is None:
+        if self.base is not None and root_config is None:
             raise ValueError("Robots with a mobile base require root-state estimation config.")
-        if self.base_frame is None and root_config is not None:
+        if self.base is None and root_config is not None:
             raise ValueError("Fixed-base robots cannot configure root-state estimation.")
         if self.hardware is None or self.hardware.actuators is None:
             return

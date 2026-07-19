@@ -12,12 +12,21 @@ import pink
 import pinocchio as pin
 from numpy.typing import NDArray
 from pink.barriers import SelfCollisionBarrier
-from pink.tasks import DampingTask, FrameTask, OmniwheelTask, PostureTask, RollingTask
+from pink.limits import FloatingBaseVelocityLimit
+from pink.tasks import (
+    DampingTask,
+    FrameTask,
+    OmniwheelTask,
+    PostureTask,
+    RelativeFrameTask,
+    RollingTask,
+)
 from pink.utils import process_collision_pairs
 
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
 from humanoid.types.controllers import OperationalSpaceConfig
+from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import WheelType
 
 logger = get_logger(__name__)
@@ -57,25 +66,44 @@ class OperationalSpaceController:
         self.config = config or OperationalSpaceConfig()
         self.robot = robot
 
+        robot.model.floating_base_velocity_limit = None
+
         # Defer configuration initialization until first state update
         self.configuration: pink.Configuration | None = None
 
         # Create tasks dictionary
         self.tasks = {}
 
-        # Create end-effector frame task
-        robot.assert_frame_exists(robot.config.tool_frame)
-        self.tasks[TaskName.TOOL] = FrameTask(
-            robot.config.tool_frame,
-            position_cost=self.config.tool_position_cost,
-            orientation_cost=self.config.tool_orientation_cost,
-        )
+        # Track the tool in world for fixed robots and relative to the physical
+        # base for mobile robots. The relative task prevents base tracking lag
+        # from appearing as an end-effector error.
+        robot.assert_frame_exists(robot.config.tool.frame)
+        base_config = robot.config.base
+        if base_config is None:
+            self.tasks[TaskName.TOOL] = FrameTask(
+                robot.config.tool.frame,
+                position_cost=self.config.tool_position_cost,
+                orientation_cost=self.config.tool_orientation_cost,
+            )
+        else:
+            robot.assert_frame_exists(base_config.frame)
+            self.tasks[TaskName.TOOL] = RelativeFrameTask(
+                robot.config.tool.frame,
+                base_config.frame,
+                position_cost=self.config.tool_position_cost,
+                orientation_cost=self.config.tool_orientation_cost,
+            )
 
-        # Create base frame task if base_frame is configured
-        if robot.config.base_frame is not None:
-            robot.assert_frame_exists(robot.config.base_frame)
+            velocity_limits = base_config.velocity_limits
+            robot.model.floating_base_velocity_limit = FloatingBaseVelocityLimit(
+                robot.model,
+                base_config.frame,
+                max_linear_velocity=velocity_limits.linear,
+                max_angular_velocity=velocity_limits.angular,
+            )
+
             self.tasks[TaskName.BASE] = FrameTask(
-                robot.config.base_frame,
+                base_config.frame,
                 position_cost=self.config.base_position_cost,
                 orientation_cost=self.config.base_orientation_cost,
             )
@@ -96,7 +124,9 @@ class OperationalSpaceController:
         self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
             cost=self.config.joint_centering_cost * self.config.joint_centering_mask  # ty:ignore[invalid-argument-type]
         )
-        self.tasks[TaskName.JOINT_CENTERING].set_target(robot.config.home_position)
+        self.tasks[TaskName.JOINT_CENTERING].set_target(
+            robot.config.homing_presets[HomingPreset.HOME]
+        )
 
         # Create damping task for velocity minimization
         self.tasks[TaskName.DAMPING] = DampingTask(
@@ -163,7 +193,7 @@ class OperationalSpaceController:
         Args:
             tool_target_pose: Target 6-DOF pose (SE3) for the end-effector.
             base_target_pose: Optional target 6-DOF pose (SE3) for the base frame.
-                Only used if the robot has a base_frame configured.
+                Only used if the robot has a mobile base configured.
             gripper_positions: Optional gripper joint positions to override in the result
 
         Returns:

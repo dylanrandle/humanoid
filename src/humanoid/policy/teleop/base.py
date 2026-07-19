@@ -79,26 +79,44 @@ class BaseTeleopPolicy(Policy):
     def _get_current_tool_pose(self, observation: Observation) -> pin.SE3:
         """Tool pose suitable for use as ``Action.tool_pose``.
 
-        When ``base_frame`` is configured, returns the tool in **base frame**:
-        ``Action.__post_init__`` composes ``tool_pose = base_pose * tool_pose`` to
-        recover the world pose, so the policy must work in base frame to avoid
-        applying the base transform twice. Returns world-frame otherwise.
+        When a mobile base is configured, returns the tool in that base frame
+        for the controller's relative-frame task. Returns world-frame otherwise.
         """
-        tool_world = self.robot.get_tool_pose(self._get_joint_positions(observation))
-
-        if self.robot_config.base_frame is None:
-            return tool_world
-
-        base_world = self._get_current_base_pose(observation)
-        assert base_world is not None, "base_frame configured but base pose is unavailable"
-        return base_world.inverse() * tool_world
+        return self.robot.get_tool_command_pose(self._get_joint_positions(observation))
 
     def _get_current_base_pose(self, observation: Observation) -> pin.SE3 | None:
         """Base pose from FK on joint positions.
 
-        Returns None when no base_frame is configured and no command is present.
+        Returns None when no mobile base is configured.
         """
         return self.robot.get_base_pose(self._get_joint_positions(observation))
+
+    def _limit_tool_pose_step(
+        self,
+        current_pose: pin.SE3,
+        target_pose: pin.SE3,
+        dt: float,
+    ) -> pin.SE3:
+        """Limit one tool-target update using the robot's Cartesian limits."""
+        limits = self.robot_config.tool.velocity_limits
+
+        translation_delta = target_pose.translation - current_pose.translation
+        translation_distance = float(np.linalg.norm(translation_delta))
+        max_translation = limits.linear * dt
+        if translation_distance > max_translation:
+            translation_delta *= max_translation / translation_distance
+
+        rotation_delta = current_pose.rotation.T @ target_pose.rotation
+        rotation_vector = pin.log3(rotation_delta)
+        rotation_distance = float(np.linalg.norm(rotation_vector))
+        max_rotation = limits.angular * dt
+        if rotation_distance > max_rotation:
+            rotation_vector *= max_rotation / rotation_distance
+
+        return pin.SE3(
+            current_pose.rotation @ pin.exp3(rotation_vector),
+            current_pose.translation + translation_delta,
+        )
 
     def _get_current_gripper_positions(self, observation: Observation) -> np.ndarray | None:
         """Read current gripper positions from the observation.

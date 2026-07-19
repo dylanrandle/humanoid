@@ -196,7 +196,7 @@ def test_validate_rejects_recording_for_different_robot(tmp_path):
 def test_validate_rejects_changed_config_for_same_robot(tmp_path):
     recording = _recording(tmp_path)
     changed_config = dict(recording.robot_config)
-    changed_config["tool_frame"] = "different"
+    changed_config["tool"] = "different"
 
     with pytest.raises(ReplayManagerError, match="configuration does not match"):
         ReplayManager.validate(

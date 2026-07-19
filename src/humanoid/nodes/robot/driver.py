@@ -21,6 +21,7 @@ from humanoid.state_estimation.root.base import (
     RootStateEstimator,
 )
 from humanoid.state_estimation.root.factory import create_root_state_estimator
+from humanoid.types.homing import HomingPreset
 from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotState
 
@@ -79,7 +80,7 @@ class RobotDriverNode(Node):
             selected_runtime = Runtime.SIM if IS_SIMULATION else Runtime.REAL
         initial_positions = {
             joint_name: self.robot.joint_position_from_q(
-                robot_config.home_position,
+                robot_config.homing_presets[HomingPreset.HOME],
                 self.joint_indices[joint_name],
             )
             for joint_name in self.actuator_joint_names

@@ -11,6 +11,7 @@ from humanoid.logger import get_logger
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.types.action import Action
+from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig
@@ -52,8 +53,10 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         - Left joystick: Base XY translation (see ``base_translation_matrix``)
         - Right joystick X: Base yaw (see ``base_yaw_scale``)
 
-    The raw controller pose is remapped from the Oculus frame into the robot's
-    world frame via ``oculus_to_world_rotation`` before computing the delta.
+    Controller-pose deltas are remapped from the Oculus frame into the robot's
+    tool-command frame via ``oculus_to_tool_command_rotation``. That command
+    frame is world for fixed-base robots and the configured base frame for
+    mobile robots.
 
     Args:
         robot_config: Robot configuration (default: ROBOT_CONFIG)
@@ -77,7 +80,11 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.config = config
         self.tool_translation_scale = config.tool_translation_scale
         self.tool_rotation_scale = config.tool_rotation_scale
-        self.oculus_to_world = pin.SE3(config.oculus_to_world_rotation, np.zeros(3))
+        self.base_config = robot_config.base
+        self.oculus_to_tool_command = pin.SE3(
+            config.oculus_to_tool_command_rotation,
+            np.zeros(3),
+        )
         self.gripper_step = (
             (self.gripper_max - self.gripper_min) * self.config.dt / self.config.gripper_close_time
         )
@@ -106,6 +113,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         # Reference poses (set on first engaged call; cleared whenever the dead-man releases)
         self.reference_controller_pose: np.ndarray | None = None
         self.reference_tool_pose: pin.SE3 | None = None
+        self.commanded_tool_pose: pin.SE3 | None = None
         self.reference_base_pose: pin.SE3 | None = None
 
         # Integrated gripper command. Seeded from the observation on first
@@ -117,12 +125,15 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
     def log_configuration(self):
         logger.info(f"OculusTeleopPolicy initialized for {self.robot_config.name}")
-        logger.info(f"End effector frame: {self.robot_config.tool_frame}")
+        logger.info(f"End effector frame: {self.robot_config.tool.frame}")
         if self.robot_config.gripper_joint_indices:
             logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
         logger.info(f"Translation scale: {self.tool_translation_scale:.2f}")
         logger.info(f"Rotation scale: {self.tool_rotation_scale:.2f}")
-        logger.info(f"Oculus->world rotation:\n{self.oculus_to_world.rotation}")
+        logger.info(
+            "Oculus->tool-command rotation:\n%s",
+            self.oculus_to_tool_command.rotation,
+        )
         logger.info("\nControls:")
         logger.info("  Right controller pose -> End-effector pose")
         logger.info("  A button (hold) -> Close gripper (release to freeze)")
@@ -133,7 +144,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             "  Grip trigger (either hand) -> Dead-man switch "
             "(hold for any command; release to freeze)"
         )
-        if self.robot_config.base_frame is not None:
+        if self.robot_config.base is not None:
             logger.info("  Left joystick -> Base XY in base frame (default: jx -> +x, jy -> +y)")
             logger.info(f"  Right joystick X -> Base yaw (sign {self.config.base_yaw_scale:+.0f})")
 
@@ -141,6 +152,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         """Reset policy state."""
         self.reference_controller_pose = None
         self.reference_tool_pose = None
+        self.commanded_tool_pose = None
         self.reference_base_pose = None
         self.commanded_gripper_position = None
 
@@ -246,9 +258,10 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         """
         self.reference_controller_pose = right_controller_pose.copy()
         self.reference_tool_pose = self._get_current_tool_pose(observation)
-        if self.robot_config.base_frame is not None:
+        self.commanded_tool_pose = self.reference_tool_pose.copy()
+        if self.robot_config.base is not None:
             base_pose = self._get_current_base_pose(observation)
-            assert base_pose is not None, "base_frame configured but FK returned None"
+            assert base_pose is not None, "Mobile base configured but FK returned None"
             self.reference_base_pose = pin.SE3(
                 base_pose.rotation.copy(), base_pose.translation.copy()
             )
@@ -261,6 +274,37 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             if self.reference_base_pose is not None:
                 logger.info(f"  Base position: {self.reference_base_pose.translation}")
             logger.info("\nReady! Move the right controller to control the robot.\n")
+
+    def _compute_tool_pose(self, right_controller_pose: np.ndarray) -> pin.SE3:
+        """Map the controller pose to a velocity-limited tool target."""
+        assert self.reference_controller_pose is not None, "Missing reference controller pose!"
+        assert self.reference_tool_pose is not None, "Missing reference tool pose!"
+        assert self.commanded_tool_pose is not None, "Missing commanded tool pose!"
+
+        reference_controller = pin.SE3(
+            self.reference_controller_pose[:3, :3],
+            self.reference_controller_pose[:3, 3],
+        )
+        current_controller = pin.SE3(
+            right_controller_pose[:3, :3],
+            right_controller_pose[:3, 3],
+        )
+        controller_delta = reference_controller.inverse() * current_controller
+        controller_delta = (
+            self.oculus_to_tool_command * controller_delta * self.oculus_to_tool_command.inverse()
+        )
+
+        scaled_translation = controller_delta.translation * self.tool_translation_scale
+        rotation_vector = pin.log3(controller_delta.rotation) * self.tool_rotation_scale
+        scaled_delta = pin.SE3(pin.exp3(rotation_vector), scaled_translation)
+        desired_pose = self.reference_tool_pose * scaled_delta
+        target_pose = self._limit_tool_pose_step(
+            self.commanded_tool_pose,
+            desired_pose,
+            self.config.dt,
+        )
+        self.commanded_tool_pose = target_pose.copy()
+        return target_pose
 
     def step(self, observation: Observation) -> Action:
         """Generate an action given an observation.
@@ -284,12 +328,13 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
         # Check if we have valid data (OculusReader may return empty dicts on startup)
         if not self._has_valid_controller_data(transforms, buttons):
+            self.reset()
             return self._hold_current_pose_action(observation)
 
         # Handle X button homing (edge-triggered)
         if self._is_rising_edge(bool(buttons.get(X_BUTTON_KEY, False)), X_BUTTON_KEY):
             target = self._homing_target_preserving_gripper(
-                self.robot_config.home_position, observation
+                self.robot_config.homing_presets[HomingPreset.HOME], observation
             )
             self.orchestrator_client.request_homing(target)
 
@@ -318,49 +363,14 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         if self.reference_controller_pose is None or self.reference_tool_pose is None:
             self._initialize_reference_poses(right_controller_pose, observation)
 
-        assert self.reference_controller_pose is not None, "Missing reference controller pose!"
-
-        # Compute relative transformation from reference controller pose to current
-        # T_current = T_ref * T_delta
-        # T_delta = T_ref^-1 * T_current
-        ref_controller_SE3 = pin.SE3(
-            self.reference_controller_pose[:3, :3],
-            self.reference_controller_pose[:3, 3],
-        )
-        current_controller_SE3 = pin.SE3(
-            right_controller_pose[:3, :3],
-            right_controller_pose[:3, 3],
-        )
-
-        delta_controller = ref_controller_SE3.inverse() * current_controller_SE3
-
-        # Remap the delta from the Oculus frame into the robot's world frame
-        # via similarity transform with the configured rotation.
-        delta_controller = self.oculus_to_world * delta_controller * self.oculus_to_world.inverse()
-
-        # Apply scaling to translation
-        scaled_translation = delta_controller.translation * self.tool_translation_scale
-
-        # Apply scaling to rotation (scale the rotation vector)
-        if self.tool_rotation_scale != 1.0:
-            # Convert rotation to axis-angle, scale, and convert back
-            rotation_vec = pin.log3(delta_controller.rotation)
-            scaled_rotation_vec = rotation_vec * self.tool_rotation_scale
-            scaled_rotation = pin.exp3(scaled_rotation_vec)
-        else:
-            scaled_rotation = delta_controller.rotation
-
-        # Create scaled delta transformation
-        scaled_delta = pin.SE3(scaled_rotation, scaled_translation)
-
-        # Apply delta to reference tool pose
-        target_pose = self.reference_tool_pose * scaled_delta
+        target_pose = self._compute_tool_pose(right_controller_pose)
 
         gripper_positions = self._compute_gripper_positions(buttons, observation)
 
         base_pose_command: pin.SE3 | None = None
-        if self.robot_config.base_frame is not None:
+        if self.robot_config.base is not None:
             assert self.reference_base_pose is not None, "Missing reference base pose!"
+            assert self.base_config is not None
 
             left_jx, left_jy = self._read_joystick(buttons, LEFT_JOYSTICK_KEY)
             right_jx, _ = self._read_joystick(buttons, RIGHT_JOYSTICK_KEY)
@@ -368,7 +378,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             delta_xy_base = (
                 self.config.base_translation_matrix
                 @ np.array([left_jx, left_jy])
-                * self.config.base_translation_velocity
+                * self.base_config.velocity_limits.linear
                 * self.config.dt
             )
             # Translate in the base's local frame: rotate by current base
@@ -382,7 +392,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             delta_yaw = (
                 self.config.base_yaw_scale
                 * right_jx
-                * self.config.base_rotation_velocity
+                * self.base_config.velocity_limits.angular
                 * self.config.dt
             )
             if delta_yaw != 0.0:

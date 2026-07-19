@@ -14,9 +14,9 @@ class OperationalSpaceConfig:
         tool_orientation_cost: Weight on the tool-frame orientation tracking
             task in the IK QP.
         base_position_cost: Weight on the base-frame position tracking task
-            (when ``base_frame`` is configured on the robot).
+            (when a mobile base is configured on the robot).
         base_orientation_cost: Weight on the base-frame orientation tracking
-            task (when ``base_frame`` is configured on the robot).
+            task (when a mobile base is configured on the robot).
         wheel_cost: Weight on each wheel's rolling/omniwheel constraint task
             that enforces no-slip motion between the wheel frame and floor.
         dt: Controller integration timestep in seconds; also sets the rate

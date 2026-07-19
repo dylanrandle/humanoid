@@ -90,7 +90,7 @@ class RobotControllerNode(Node):
 
         self.current_tool_command = RobotToolCommand(
             timestamp=timestamp,
-            pose=self.robot.get_tool_pose(q),
+            pose=self.robot.get_tool_command_pose(q),
             gripper_positions=gripper_positions,
         )
 

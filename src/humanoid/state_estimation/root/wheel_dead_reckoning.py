@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, kw_only=True)
 class WheelDeadReckoningRootStateEstimatorConfig(RootStateEstimatorConfig):
     """Configuration for root-state estimation from measured wheel feedback."""
+
+    kind: str = field(default="wheel_dead_reckoning", init=False)
 
 
 class WheelDeadReckoningRootStateEstimator(RootStateEstimator):

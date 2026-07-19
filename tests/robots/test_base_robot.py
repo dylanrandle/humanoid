@@ -9,6 +9,7 @@ import pytest
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.robots.base import Robot
+from humanoid.types.homing import HomingPreset
 
 
 @pytest.fixture(scope="module")
@@ -30,7 +31,7 @@ class TestConstruction:
         assert panda_robot.model.njoints > 1
 
     def test_loads_mobile_robot_with_planar_root(self, mobile_robot):
-        """elrobot_mobile has base_frame configured -> planar root joint with nq=4, nv=3."""
+        """elrobot_mobile's base config adds a planar root joint with nq=4, nv=3."""
         expected_planar_nq = 4
         expected_planar_nv = 3
         root_joint = mobile_robot.model.joints[1]
@@ -38,8 +39,8 @@ class TestConstruction:
         assert root_joint.nq == expected_planar_nq
         assert root_joint.nv == expected_planar_nv
 
-    def test_no_planar_root_when_base_frame_missing(self, panda_robot):
-        """Without base_frame, no planar root joint is added."""
+    def test_no_planar_root_without_base_config(self, panda_robot):
+        """Without a base config, no planar root joint is added."""
         root_joint = panda_robot.model.joints[1]
         assert root_joint.shortname() != "JointModelPlanar"
 
@@ -113,7 +114,7 @@ class TestProperties:
 
 class TestGetFrameId:
     def test_known_frame(self, panda_robot):
-        frame_name = panda_robot.config.tool_frame
+        frame_name = panda_robot.config.tool.frame
         frame_id = panda_robot.get_frame_id(frame_name)
         assert panda_robot.model.frames[frame_id].name == frame_name
 
@@ -131,17 +132,17 @@ class TestForwardKinematics:
         q = pin.neutral(panda_robot.model)
         panda_robot.forward_kinematics(q)
 
-        frame_id = panda_robot.get_frame_id(panda_robot.config.tool_frame)
+        frame_id = panda_robot.get_frame_id(panda_robot.config.tool.frame)
         pose = panda_robot.data.oMf[frame_id]
         assert isinstance(pose, pin.SE3)
 
     def test_different_q_changes_frame_pose(self, panda_robot):
-        frame_id = panda_robot.get_frame_id(panda_robot.config.tool_frame)
+        frame_id = panda_robot.get_frame_id(panda_robot.config.tool.frame)
 
         panda_robot.forward_kinematics(pin.neutral(panda_robot.model))
         pose_neutral = panda_robot.data.oMf[frame_id].copy()
 
-        panda_robot.forward_kinematics(panda_robot.config.home_position)
+        panda_robot.forward_kinematics(panda_robot.config.homing_presets[HomingPreset.HOME])
         pose_home = panda_robot.data.oMf[frame_id].copy()
 
         assert not np.allclose(pose_neutral.translation, pose_home.translation)
@@ -150,16 +151,16 @@ class TestForwardKinematics:
 class TestGetFramePose:
     def test_returns_se3(self, panda_robot):
         pose = panda_robot.get_frame_pose(
-            panda_robot.config.tool_frame, panda_robot.config.home_position
+            panda_robot.config.tool.frame, panda_robot.config.homing_presets[HomingPreset.HOME]
         )
         assert isinstance(pose, pin.SE3)
 
     def test_matches_forward_kinematics(self, panda_robot):
-        q = panda_robot.config.home_position
-        pose_direct = panda_robot.get_frame_pose(panda_robot.config.tool_frame, q)
+        q = panda_robot.config.homing_presets[HomingPreset.HOME]
+        pose_direct = panda_robot.get_frame_pose(panda_robot.config.tool.frame, q)
 
         panda_robot.forward_kinematics(q)
-        frame_id = panda_robot.get_frame_id(panda_robot.config.tool_frame)
+        frame_id = panda_robot.get_frame_id(panda_robot.config.tool.frame)
         pose_via_fk = panda_robot.data.oMf[frame_id]
 
         np.testing.assert_allclose(pose_direct.translation, pose_via_fk.translation)
@@ -167,7 +168,36 @@ class TestGetFramePose:
 
     def test_unknown_frame_raises(self, panda_robot):
         with pytest.raises(ValueError, match="not found in model"):
-            panda_robot.get_frame_pose("not_a_real_frame", panda_robot.config.home_position)
+            panda_robot.get_frame_pose(
+                "not_a_real_frame", panda_robot.config.homing_presets[HomingPreset.HOME]
+            )
+
+
+class TestGetToolCommandPose:
+    def test_fixed_base_tool_command_is_in_world(self, panda_robot):
+        q = panda_robot.config.homing_presets[HomingPreset.HOME]
+
+        command_pose = panda_robot.get_tool_command_pose(q)
+        world_pose = panda_robot.get_tool_pose(q)
+
+        np.testing.assert_allclose(command_pose.homogeneous, world_pose.homogeneous)
+
+    def test_mobile_tool_command_is_in_base_frame(self, mobile_robot):
+        q = mobile_robot.config.homing_presets[HomingPreset.HOME].copy()
+        root_q_slice = mobile_robot.get_root_q_slice()
+        assert root_q_slice is not None
+        q[root_q_slice][0] = 1.0
+
+        command_pose = mobile_robot.get_tool_command_pose(q)
+        base_pose = mobile_robot.get_base_pose(q)
+        world_pose = mobile_robot.get_tool_pose(q)
+
+        assert base_pose is not None
+        np.testing.assert_allclose(
+            (base_pose * command_pose).homogeneous,
+            world_pose.homogeneous,
+            atol=1e-12,
+        )
 
 
 class TestJointPositionFromQ:

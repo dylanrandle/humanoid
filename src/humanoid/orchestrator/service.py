@@ -13,7 +13,6 @@ from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.orchestrator.constants import (
     CONTROLLED_PROCESS_NAMES,
     EXTERNAL_STACK_ERROR,
-    HOMING_TARGETS,
     MODE_TRANSITION_POLL_INTERVAL_SECONDS,
     MODE_TRANSITION_TIMEOUT_SECONDS,
     PARAMETERIZED_REQUEST_TIMEOUT_SECONDS,
@@ -170,7 +169,7 @@ class OrchestratorService:
                 preset = request.parameters[OrchestratorParameter.PRESET]
                 assert isinstance(preset, HomingPreset)
                 robot_config = ROBOT_CONFIGS[self.node_manager.robot]
-                self.orchestrator_client.request_homing(HOMING_TARGETS[preset](robot_config))
+                self.orchestrator_client.request_homing(robot_config.homing_presets[preset])
                 self._select_parameterized_request(request)
                 return self.status()
 
