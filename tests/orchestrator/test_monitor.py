@@ -7,12 +7,9 @@ import pytest
 
 from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
-from humanoid.orchestrator.monitor import (
-    NODE_RATE_SUBSCRIBER_QUEUE_SIZE,
-    LoggingMonitor,
-    NodeRateMonitor,
-    OrchestratorMonitor,
-)
+from humanoid.orchestrator.monitor.logging import LoggingMonitor
+from humanoid.orchestrator.monitor.mode import ModeMonitor
+from humanoid.orchestrator.monitor.node import NODE_RATE_SUBSCRIBER_QUEUE_SIZE, NodeRateMonitor
 from humanoid.types.logging import LoggingState, LoggingStatus
 from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import Mode, OrchestratorMode
@@ -48,7 +45,7 @@ class NodeRateSubscriberStub:
 def test_reports_latest_orchestrator_mode():
     subscriber = MagicMock(spec=Subscriber)
     subscriber.receive.return_value = OrchestratorMode(timestamp=0.0, mode=Mode.KEYBOARD)
-    monitor = OrchestratorMonitor(subscriber=subscriber)
+    monitor = ModeMonitor(subscriber=subscriber)
 
     snapshot = monitor.snapshot()
 
@@ -130,7 +127,7 @@ def test_node_rate_monitor_close_releases_subscriber():
 def test_node_rate_monitor_uses_a_bounded_transport_queue(monkeypatch):
     subscriber = NodeRateSubscriberStub()
     subscriber_factory = MagicMock(return_value=subscriber)
-    monkeypatch.setattr("humanoid.orchestrator.monitor.Subscriber", subscriber_factory)
+    monkeypatch.setattr("humanoid.orchestrator.monitor.node.Subscriber", subscriber_factory)
 
     monitor = NodeRateMonitor()
     monitor.close()
@@ -149,8 +146,8 @@ def test_marks_orchestrator_disconnected_when_messages_become_stale(monkeypatch)
         None,
     ]
     monotonic = MagicMock(side_effect=[10.0, 10.0, 13.0])
-    monkeypatch.setattr("humanoid.orchestrator.monitor.time.monotonic", monotonic)
-    monitor = OrchestratorMonitor(subscriber=subscriber, max_age_seconds=2.0)
+    monkeypatch.setattr("humanoid.orchestrator.monitor.mode.time.monotonic", monotonic)
+    monitor = ModeMonitor(subscriber=subscriber, max_age_seconds=2.0)
 
     connected = monitor.snapshot()
     stale = monitor.snapshot()
@@ -167,7 +164,7 @@ def test_reset_discards_queued_mode_and_close_releases_subscriber():
         OrchestratorMode(timestamp=0.0, mode=Mode.IDLE),
         None,
     ]
-    monitor = OrchestratorMonitor(subscriber=subscriber)
+    monitor = ModeMonitor(subscriber=subscriber)
 
     monitor.reset()
     monitor.close()
@@ -193,7 +190,7 @@ def test_logging_monitor_reports_latest_logger_status():
 def test_logging_monitor_tracks_requests_failures_and_reset(monkeypatch):
     subscriber = MagicMock(spec=Subscriber)
     subscriber.receive.return_value = None
-    monkeypatch.setattr("humanoid.orchestrator.monitor.time.time", lambda: 12.0)
+    monkeypatch.setattr("humanoid.orchestrator.monitor.logging.time.time", lambda: 12.0)
     monitor = LoggingMonitor(subscriber=subscriber)
 
     monitor.start_requested()
@@ -235,7 +232,7 @@ def test_logging_monitor_expires_unacknowledged_requests(
     subscriber = MagicMock(spec=Subscriber)
     subscriber.receive.return_value = None
     monotonic = MagicMock(side_effect=[10.0, 11.0, 13.0])
-    monkeypatch.setattr("humanoid.orchestrator.monitor.time.monotonic", monotonic)
+    monkeypatch.setattr("humanoid.orchestrator.monitor.logging.time.monotonic", monotonic)
     monitor = LoggingMonitor(subscriber=subscriber, acknowledgement_timeout_seconds=2.0)
 
     getattr(monitor, request_method)()

@@ -7,7 +7,9 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.orchestrator.client import OrchestratorClient
-from humanoid.orchestrator.monitor import LoggingMonitor, NodeRateMonitor, OrchestratorMonitor
+from humanoid.orchestrator.monitor.logging import LoggingMonitor
+from humanoid.orchestrator.monitor.mode import ModeMonitor
+from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.recording import RecordingCatalog, RecordingError
@@ -70,7 +72,7 @@ def _make_service(
     )
     manager.active_nodes.return_value = {}
     client = MagicMock(spec=OrchestratorClient)
-    monitor = MagicMock(spec=OrchestratorMonitor)
+    monitor = MagicMock(spec=ModeMonitor)
     monitor.snapshot.return_value = ModeStatus(
         mode=mode,
         connected=connected,
@@ -94,7 +96,7 @@ def _make_service(
     service = OrchestratorService(
         node_manager=manager,
         orchestrator_client=client,
-        orchestrator_monitor=monitor,
+        mode_monitor=monitor,
         logging_monitor=logging_monitor,
         node_rate_monitor=node_rate_monitor,
         replay_manager=replay_manager,

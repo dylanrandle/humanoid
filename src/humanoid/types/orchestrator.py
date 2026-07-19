@@ -79,7 +79,7 @@ class OrchestratorRequest:
 
 @dataclass(frozen=True)
 class ModeStatus:
-    """Freshness-qualified mode broadcast observed by OrchestratorMonitor."""
+    """Freshness-qualified mode broadcast observed by ModeMonitor."""
 
     mode: Mode | None
     connected: bool

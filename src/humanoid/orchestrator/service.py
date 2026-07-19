@@ -24,7 +24,9 @@ from humanoid.orchestrator.constants import (
     STALE_CONFIGURATION_ERROR,
     TELEOP_PROCESSES,
 )
-from humanoid.orchestrator.monitor import LoggingMonitor, NodeRateMonitor, OrchestratorMonitor
+from humanoid.orchestrator.monitor.logging import LoggingMonitor
+from humanoid.orchestrator.monitor.mode import ModeMonitor
+from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.homing import HomingPreset
@@ -51,7 +53,7 @@ class OrchestratorService:
         self,
         node_manager: NodeManager | None = None,
         orchestrator_client: OrchestratorClient | None = None,
-        orchestrator_monitor: OrchestratorMonitor | None = None,
+        mode_monitor: ModeMonitor | None = None,
         logging_monitor: LoggingMonitor | None = None,
         node_rate_monitor: NodeRateMonitor | None = None,
         replay_manager: ReplayManager | None = None,
@@ -60,9 +62,7 @@ class OrchestratorService:
         self.orchestrator_client = (
             orchestrator_client if orchestrator_client is not None else OrchestratorClient()
         )
-        self.orchestrator_monitor = (
-            orchestrator_monitor if orchestrator_monitor is not None else OrchestratorMonitor()
-        )
+        self.mode_monitor = mode_monitor if mode_monitor is not None else ModeMonitor()
         self.logging_monitor = logging_monitor if logging_monitor is not None else LoggingMonitor()
         self.node_rate_monitor = (
             node_rate_monitor if node_rate_monitor is not None else NodeRateMonitor()
@@ -86,7 +86,7 @@ class OrchestratorService:
             if stack_failure != self._handled_stack_failure:
                 self._handled_stack_failure = stack_failure
                 if stack_failure is not None:
-                    self.orchestrator_monitor.reset()
+                    self.mode_monitor.reset()
                     self.logging_monitor.reset()
                     self._clear_parameterized_request()
             orchestrator = self._orchestrator_state()
@@ -246,21 +246,21 @@ class OrchestratorService:
             except (RecordingError, ReplayManagerError) as exc:
                 if replay_nodes_started:
                     self.node_manager.stop(ProcessName.REPLAY)
-                    self.orchestrator_monitor.reset()
+                    self.mode_monitor.reset()
                 raise OrchestratorError(str(exc)) from exc
             except Exception:
                 if replay_player_started:
                     self.replay_manager.stop()
                 if replay_nodes_started:
                     self.node_manager.stop(ProcessName.REPLAY)
-                    self.orchestrator_monitor.reset()
+                    self.mode_monitor.reset()
                 raise
 
     def stop_replay(self) -> OrchestratorStatus:
         with self._lock:
             self.replay_manager.stop()
             self.node_manager.stop(ProcessName.REPLAY)
-            self.orchestrator_monitor.reset()
+            self.mode_monitor.reset()
             return self.status()
 
     def close(self) -> None:
@@ -270,7 +270,7 @@ class OrchestratorService:
             logger.exception("Failed to stop the main stack cleanly")
             self.node_manager.close()
         finally:
-            self.orchestrator_monitor.close()
+            self.mode_monitor.close()
             self.logging_monitor.close()
             self.node_rate_monitor.close()
             self.replay_manager.close()
@@ -285,7 +285,7 @@ class OrchestratorService:
             with contextlib.suppress(Exception):
                 self.orchestrator_client.request_idle()
         self.node_manager.close()
-        self.orchestrator_monitor.reset()
+        self.mode_monitor.reset()
         self.logging_monitor.reset()
         self._clear_parameterized_request()
 
@@ -299,18 +299,18 @@ class OrchestratorService:
             replay = self.replay_manager.fail(
                 replay_process.last_output or "A required replay node stopped unexpectedly."
             )
-            self.orchestrator_monitor.reset()
+            self.mode_monitor.reset()
         elif replay.running and not replay_process.running:
             replay = self.replay_manager.fail("A required replay node stopped unexpectedly.")
-            self.orchestrator_monitor.reset()
+            self.mode_monitor.reset()
         elif not replay.running and replay_process.running:
             self.node_manager.stop(ProcessName.REPLAY)
-            self.orchestrator_monitor.reset()
+            self.mode_monitor.reset()
             return replay, True
         return replay, False
 
     def _orchestrator_state(self) -> OrchestratorState:
-        mode_status = self.orchestrator_monitor.snapshot()
+        mode_status = self.mode_monitor.snapshot()
         mode = mode_status.mode
 
         request = self._parameterized_request
@@ -348,7 +348,7 @@ class OrchestratorService:
     def _wait_for_mode(self, mode: Mode) -> bool:
         deadline = time.monotonic() + MODE_TRANSITION_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
-            if self.orchestrator_monitor.snapshot().mode is mode:
+            if self.mode_monitor.snapshot().mode is mode:
                 return True
             time.sleep(MODE_TRANSITION_POLL_INTERVAL_SECONDS)
         return False
