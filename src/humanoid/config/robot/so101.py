@@ -29,7 +29,7 @@ ACTUATOR_IDS = [1, 2, 3, 4, 6, 5]
 
 HOME_POSITION = np.array([0.0, -0.5, 0.8, -0.3, 0.0, 0.0])
 REST_POSITION = np.array([0.0, -1.55, 1.5, 1.0, 0.0, -0.15])
-TOOL_CONFIG = RobotToolConfig(frame="gripper_frame_link")
+TOOL_CONFIG = RobotToolConfig(frame="tool_link")
 HOMING_PRESETS = {
     HomingPreset.HOME: HOME_POSITION,
     HomingPreset.REST: REST_POSITION,

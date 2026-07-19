@@ -117,7 +117,7 @@ HARDWARE_CONFIG = RobotHardwareConfig(
 STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
     root=WheelDeadReckoningRootStateEstimatorConfig(),
 )
-TOOL_CONFIG = RobotToolConfig(frame="Gripper_Base_v1_1")
+TOOL_CONFIG = RobotToolConfig(frame="gripper_base_link")
 BASE_CONFIG = RobotBaseConfig(
     frame="root_joint",
     velocity_limits=CartesianVelocityLimits(

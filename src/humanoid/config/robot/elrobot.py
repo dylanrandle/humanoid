@@ -21,7 +21,7 @@ GRIPPER_ID = "gripper_1"
 
 HOME_POSITION = np.array([0.0, -0.75, 0.5, 0.0, 0.0, 1.0, 0.0, 0])
 REST_POSITION = np.array([0.0, -1.6, -0.1, 1.65, 0.0, 0.21, 0.0, 2.2])
-TOOL_CONFIG = RobotToolConfig(frame="Gripper_Base_v1_1")
+TOOL_CONFIG = RobotToolConfig(frame="gripper_base_link")
 HOMING_PRESETS = {
     HomingPreset.HOME: HOME_POSITION,
     HomingPreset.REST: REST_POSITION,
