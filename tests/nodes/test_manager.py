@@ -26,6 +26,7 @@ from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
+from humanoid.nodes.robot.simulation import MujocoSimulationNode
 from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import ProcessContext
 from humanoid.types.process import ProcessName, Runtime
@@ -74,14 +75,35 @@ def _join_stack_startup(manager: NodeManager) -> None:
 
 def test_node_groups_reference_imported_node_classes():
     assert NODE_GROUPS[ProcessName.STACK].nodes == (
-        RobotDriverNode,
         RobotControllerNode,
         RobotVisualizerNode,
         OrchestratorNode,
         RobotLoggerNode,
     )
     assert NODE_GROUPS[ProcessName.STACK].deferred_nodes == (HomingNode,)
-    assert NODE_GROUPS[ProcessName.REPLAY].nodes == (RobotDriverNode, RobotVisualizerNode)
+    assert NODE_GROUPS[ProcessName.REPLAY].nodes == (RobotVisualizerNode,)
+    assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.SIM) == (
+        MujocoSimulationNode,
+        RobotControllerNode,
+        RobotVisualizerNode,
+        OrchestratorNode,
+        RobotLoggerNode,
+    )
+    assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.REAL) == (
+        RobotDriverNode,
+        RobotControllerNode,
+        RobotVisualizerNode,
+        OrchestratorNode,
+        RobotLoggerNode,
+    )
+    assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.SIM) == (
+        MujocoSimulationNode,
+        RobotVisualizerNode,
+    )
+    assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.REAL) == (
+        RobotDriverNode,
+        RobotVisualizerNode,
+    )
     assert NODE_GROUPS[ProcessName.KEYBOARD].nodes == (KeyboardTeleopNode,)
     assert NODE_GROUPS[ProcessName.OCULUS].nodes == (OculusTeleopNode,)
 
@@ -95,8 +117,9 @@ def test_replay_group_starts_driver_and_visualizer(monkeypatch, runtime):
 
     manager.start(ProcessName.REPLAY)
 
+    driver = MujocoSimulationNode if runtime is Runtime.SIM else RobotDriverNode
     assert [entry.kwargs["target"] for entry in context.Process.call_args_list] == [
-        RobotDriverNode.main,
+        driver.main,
         RobotVisualizerNode.main,
     ]
 
@@ -131,7 +154,10 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
     status = manager.start(ProcessName.STACK)
     _join_stack_startup(manager)
 
-    expected_nodes = (*NODE_GROUPS[ProcessName.STACK].nodes, HomingNode)
+    expected_nodes = (
+        *NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.REAL),
+        HomingNode,
+    )
     assert [entry.kwargs["target"] for entry in context.Process.call_args_list] == [
         node.main for node in expected_nodes
     ]
@@ -239,6 +265,18 @@ def test_changes_robot_while_stopped(monkeypatch):
     assert manager.robot is RobotName.SO101
 
 
+def test_active_nodes_reports_only_alive_processes(monkeypatch):
+    processes: list[MagicMock] = []
+    _use_process_context(monkeypatch, _fake_context(processes))
+    manager = NodeManager()
+    manager.start(ProcessName.KEYBOARD)
+
+    assert manager.active_nodes() == {KeyboardTeleopNode.__name__: processes[0].pid}
+
+    processes[0].is_alive.return_value = False
+    assert manager.active_nodes() == {}
+
+
 def test_robot_state_timeout_always_closes_subscriber(monkeypatch):
     subscriber = MagicMock(spec=Subscriber)
     subscriber.receive.return_value = None
@@ -312,7 +350,7 @@ def test_stopping_stack_cancels_deferred_startup(monkeypatch):
 
     status = manager.stop(ProcessName.STACK)
 
-    assert len(processes) == len(NODE_GROUPS[ProcessName.STACK].nodes)
+    assert len(processes) == len(NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(manager.runtime))
     assert status.running is False
     assert status.exit_code == 0
 

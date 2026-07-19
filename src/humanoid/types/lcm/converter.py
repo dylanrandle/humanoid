@@ -7,6 +7,7 @@ from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     homing_target_t,
     logging_status_t,
+    node_rate_sample_t,
     orchestrator_event_t,
     orchestrator_mode_t,
     robot_base_command_t,
@@ -15,6 +16,7 @@ from humanoid.types.lcm import (
     robot_tool_command_t,
 )
 from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import (
     EventKind,
     Mode,
@@ -31,6 +33,28 @@ from humanoid.types.robot import (
 
 class LCMConverter:
     """Handles conversion between LCM types and Python dataclasses."""
+
+    @staticmethod
+    def node_rate_sample_to_lcm(sample: NodeRateSample) -> node_rate_sample_t:
+        """Convert NodeRateSample dataclass to node_rate_sample_t LCM type."""
+        lcm_sample = node_rate_sample_t()
+        lcm_sample.timestamp = int(sample.timestamp * 1e9)
+        lcm_sample.node_name = sample.node_name
+        lcm_sample.pid = sample.pid
+        lcm_sample.target_rate_hz = sample.target_rate_hz
+        lcm_sample.measured_rate_hz = sample.measured_rate_hz
+        return lcm_sample
+
+    @staticmethod
+    def node_rate_sample_from_lcm(lcm_sample: node_rate_sample_t) -> NodeRateSample:
+        """Convert node_rate_sample_t LCM type to NodeRateSample dataclass."""
+        return NodeRateSample(
+            timestamp=lcm_sample.timestamp / 1e9,
+            node_name=lcm_sample.node_name,
+            pid=lcm_sample.pid,
+            target_rate_hz=lcm_sample.target_rate_hz,
+            measured_rate_hz=lcm_sample.measured_rate_hz,
+        )
 
     @staticmethod
     def robot_joint_command_to_lcm(command: RobotJointCommand) -> robot_joint_command_t:

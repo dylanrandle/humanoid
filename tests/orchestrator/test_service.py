@@ -7,7 +7,7 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.orchestrator.client import OrchestratorClient
-from humanoid.orchestrator.monitor import LoggingMonitor, OrchestratorMonitor
+from humanoid.orchestrator.monitor import LoggingMonitor, NodeRateMonitor, OrchestratorMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.recording import RecordingCatalog, RecordingError
@@ -68,6 +68,7 @@ def _make_service(
         keyboard=keyboard,
         oculus=oculus,
     )
+    manager.active_nodes.return_value = {}
     client = MagicMock(spec=OrchestratorClient)
     monitor = MagicMock(spec=OrchestratorMonitor)
     monitor.snapshot.return_value = ModeStatus(
@@ -88,11 +89,14 @@ def _make_service(
         timestamp=0.0,
         state=LoggingState.STOPPED,
     )
+    node_rate_monitor = MagicMock(spec=NodeRateMonitor)
+    node_rate_monitor.snapshot.return_value = []
     service = OrchestratorService(
         node_manager=manager,
         orchestrator_client=client,
         orchestrator_monitor=monitor,
         logging_monitor=logging_monitor,
+        node_rate_monitor=node_rate_monitor,
         replay_manager=replay_manager,
     )
     recording_catalog = MagicMock(spec=RecordingCatalog)
@@ -682,6 +686,17 @@ def test_status_exposes_selected_robot_and_available_options():
     assert status.robots == list(RobotName)
 
 
+def test_status_requests_rates_for_active_managed_nodes():
+    service, manager, _, _ = _make_service(stack=True)
+    active_nodes = {"RobotControllerNode": 123}
+    manager.active_nodes.return_value = active_nodes
+
+    status = service.status()
+
+    cast(MagicMock, service.node_rate_monitor).snapshot.assert_called_once_with(active_nodes)
+    assert status.node_rates == []
+
+
 def test_homing_parameters_stay_selected_until_homing_completes():
     service, _, _, monitor = _make_service(stack=True, connected=True, mode=Mode.IDLE)
     monitor.snapshot.side_effect = [
@@ -780,3 +795,4 @@ def test_close_releases_mode_monitor_when_stack_status_fails():
 
     manager.close.assert_called_once_with()
     monitor.close.assert_called_once_with()
+    cast(MagicMock, service.node_rate_monitor).close.assert_called_once_with()

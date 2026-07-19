@@ -2,7 +2,6 @@
 
 import numpy as np
 
-from humanoid.hardware.actuators.config import ActuatorControlMode, ActuatorHardwareConfig
 from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
@@ -12,6 +11,7 @@ from humanoid.state_estimation.config import RobotStateEstimationConfig
 from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
+from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
 from humanoid.types.controllers import OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (

@@ -7,9 +7,10 @@ from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
+from humanoid.nodes.robot.simulation import MujocoSimulationNode
 from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import NodeGroup
-from humanoid.types.process import ProcessName
+from humanoid.types.process import ProcessName, Runtime
 
 NODE_GROUPS = {
     group.name: group
@@ -18,18 +19,25 @@ NODE_GROUPS = {
             name=ProcessName.STACK,
             display_name="Main stack",
             nodes=(
-                RobotDriverNode,
                 RobotControllerNode,
                 RobotVisualizerNode,
                 OrchestratorNode,
                 RobotLoggerNode,
             ),
             deferred_nodes=(HomingNode,),
+            runtime_nodes={
+                Runtime.SIM: (MujocoSimulationNode,),
+                Runtime.REAL: (RobotDriverNode,),
+            },
         ),
         NodeGroup(
             name=ProcessName.REPLAY,
             display_name="Replay runtime",
-            nodes=(RobotDriverNode, RobotVisualizerNode),
+            nodes=(RobotVisualizerNode,),
+            runtime_nodes={
+                Runtime.SIM: (MujocoSimulationNode,),
+                Runtime.REAL: (RobotDriverNode,),
+            },
         ),
         NodeGroup(
             name=ProcessName.KEYBOARD,

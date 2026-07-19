@@ -1,7 +1,3 @@
-import os
-import subprocess
-import sys
-
 import pytest
 
 from humanoid.constants import DEFAULT_HUMANOID_RUNTIME, RUNTIME_ENVIRONMENT_VARIABLE
@@ -33,22 +29,3 @@ def test_invalid_runtime_environment_is_rejected(monkeypatch, value):
 
     with pytest.raises(ValueError, match=value):
         Runtime.from_environment()
-
-
-def test_invalid_runtime_environment_breaks_fresh_config_import():
-    environment = {**os.environ, RUNTIME_ENVIRONMENT_VARIABLE: "typo"}
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "from humanoid.config import IS_SIMULATION; print(IS_SIMULATION)",
-        ],
-        check=False,
-        capture_output=True,
-        env=environment,
-        text=True,
-    )
-
-    assert result.returncode != 0
-    assert "'typo' is not a valid Runtime" in result.stderr

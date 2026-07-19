@@ -1,12 +1,48 @@
+import queue
+import threading
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
-from humanoid.orchestrator.monitor import LoggingMonitor, OrchestratorMonitor
+from humanoid.orchestrator.monitor import (
+    NODE_RATE_SUBSCRIBER_QUEUE_SIZE,
+    LoggingMonitor,
+    NodeRateMonitor,
+    OrchestratorMonitor,
+)
 from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import Mode, OrchestratorMode
+
+TEST_TARGET_RATE_HZ = 100.0
+TEST_HEALTHY_RATE_HZ = 95.0
+
+
+class NodeRateSubscriberStub:
+    """Block like Subscriber and signal once every initial sample was consumed."""
+
+    def __init__(self, samples: list[NodeRateSample] | None = None):
+        self._samples: queue.Queue[NodeRateSample] = queue.Queue()
+        for sample in samples or []:
+            self._samples.put_nowait(sample)
+        self.drained = threading.Event()
+        self.closed = False
+
+    def receive(self, topic: Topic, timeout: int | None = None) -> NodeRateSample | None:
+        assert topic is Topic.NODE_RATE
+        try:
+            if timeout is None:
+                return self._samples.get()
+            return self._samples.get(timeout=timeout / 1000)
+        except queue.Empty:
+            self.drained.set()
+            return None
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_reports_latest_orchestrator_mode():
@@ -18,6 +54,91 @@ def test_reports_latest_orchestrator_mode():
 
     assert snapshot.connected is True
     assert snapshot.mode is Mode.KEYBOARD
+
+
+def test_node_rate_monitor_compares_active_processes_to_target():
+    subscriber = NodeRateSubscriberStub(
+        [
+            NodeRateSample(
+                timestamp=1.0,
+                node_name="HealthyNode",
+                pid=101,
+                target_rate_hz=TEST_TARGET_RATE_HZ,
+                measured_rate_hz=TEST_HEALTHY_RATE_HZ,
+            ),
+            NodeRateSample(
+                timestamp=1.0,
+                node_name="SlowNode",
+                pid=102,
+                target_rate_hz=TEST_TARGET_RATE_HZ,
+                measured_rate_hz=89.0,
+            ),
+        ]
+    )
+    monitor = NodeRateMonitor(
+        subscriber=cast(Subscriber, subscriber),
+        minimum_healthy_ratio=0.9,
+        clock=lambda: 10.0,
+    )
+    assert subscriber.drained.wait(timeout=1.0)
+
+    statuses = monitor.snapshot({"HealthyNode": 101, "SlowNode": 102, "MissingNode": 103})
+    monitor.close()
+
+    assert [status.healthy for status in statuses] == [True, False, False]
+    assert statuses[0].measured_rate_hz == TEST_HEALTHY_RATE_HZ
+    assert statuses[1].target_rate_hz == TEST_TARGET_RATE_HZ
+    assert statuses[2].target_rate_hz is None
+
+
+def test_node_rate_monitor_marks_stale_samples_unhealthy_and_drops_stopped_nodes():
+    subscriber = NodeRateSubscriberStub(
+        [
+            NodeRateSample(
+                timestamp=1.0,
+                node_name="ExampleNode",
+                pid=101,
+                target_rate_hz=10.0,
+                measured_rate_hz=10.0,
+            ),
+        ]
+    )
+    now = 10.0
+    monitor = NodeRateMonitor(
+        subscriber=cast(Subscriber, subscriber),
+        max_age_seconds=2.5,
+        clock=lambda: now,
+    )
+    assert subscriber.drained.wait(timeout=1.0)
+
+    assert monitor.snapshot({"ExampleNode": 101})[0].healthy is True
+    now = 13.0
+    assert monitor.snapshot({"ExampleNode": 101})[0].healthy is False
+    assert monitor.snapshot({}) == []
+    monitor.close()
+
+
+def test_node_rate_monitor_close_releases_subscriber():
+    subscriber = NodeRateSubscriberStub()
+    monitor = NodeRateMonitor(subscriber=cast(Subscriber, subscriber))
+
+    monitor.close()
+
+    assert subscriber.closed is True
+
+
+def test_node_rate_monitor_uses_a_bounded_transport_queue(monkeypatch):
+    subscriber = NodeRateSubscriberStub()
+    subscriber_factory = MagicMock(return_value=subscriber)
+    monkeypatch.setattr("humanoid.orchestrator.monitor.Subscriber", subscriber_factory)
+
+    monitor = NodeRateMonitor()
+    monitor.close()
+
+    subscriber_factory.assert_called_once_with(
+        topics=[Topic.NODE_RATE],
+        queue_size=NODE_RATE_SUBSCRIBER_QUEUE_SIZE,
+    )
 
 
 def test_marks_orchestrator_disconnected_when_messages_become_stale(monkeypatch):

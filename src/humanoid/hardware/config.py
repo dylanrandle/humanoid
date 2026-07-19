@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from humanoid.hardware.actuators.config import ActuatorHardwareConfig
+from humanoid.types.actuator import ActuatorHardwareConfig
 
 
 @dataclass

@@ -59,6 +59,7 @@ export function render(snapshot, busy, elements) {
     busy,
     elements,
   );
+  renderNodeRates(snapshot.node_rates || [], elements);
   for (const name of TELEOP_PROCESSES) {
     renderProcess(name, processes[name], controlsReady, busy, elements);
   }
@@ -72,6 +73,67 @@ export function render(snapshot, busy, elements) {
     busy,
     elements,
   );
+}
+
+function renderNodeRates(nodeRates, elements) {
+  const rows = nodeRates.map((rate) => {
+    const row = elements.nodeRateList.ownerDocument.createElement("article");
+    row.className = "node-rate-row";
+    row.classList.toggle("healthy", rate.healthy);
+    row.classList.toggle("unhealthy", !rate.healthy);
+    row.setAttribute("data-node-rate", rate.node_name);
+
+    const dot = elements.nodeRateList.ownerDocument.createElement("span");
+    dot.className = "node-rate-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    const copy = elements.nodeRateList.ownerDocument.createElement("div");
+    copy.className = "node-rate-copy";
+    const name = elements.nodeRateList.ownerDocument.createElement("strong");
+    name.textContent = formatNodeName(rate.node_name);
+    const detail = elements.nodeRateList.ownerDocument.createElement("small");
+    detail.textContent = rateDetail(rate);
+    copy.replaceChildren(name, detail);
+
+    const state = elements.nodeRateList.ownerDocument.createElement("span");
+    state.className = "node-rate-state";
+    state.textContent = rate.healthy ? "Healthy" : "Unhealthy";
+    row.replaceChildren(dot, copy, state);
+    return row;
+  });
+
+  if (rows.length === 0) {
+    const empty = elements.nodeRateList.ownerDocument.createElement("p");
+    empty.className = "node-rate-empty";
+    empty.textContent = "Start a process to view its loop rate.";
+    elements.nodeRateList.replaceChildren(empty);
+    elements.nodeRateSummary.textContent = "No active nodes";
+    elements.nodeRateSummary.classList.remove("healthy", "unhealthy");
+    return;
+  }
+
+  elements.nodeRateList.replaceChildren(...rows);
+  const healthyCount = nodeRates.filter((rate) => rate.healthy).length;
+  const allHealthy = healthyCount === nodeRates.length;
+  elements.nodeRateSummary.textContent = `${healthyCount} of ${nodeRates.length} healthy`;
+  elements.nodeRateSummary.classList.toggle("healthy", allHealthy);
+  elements.nodeRateSummary.classList.toggle("unhealthy", !allHealthy);
+}
+
+function rateDetail(rate) {
+  if (rate.target_rate_hz === null) return "Waiting for telemetry";
+  if (rate.measured_rate_hz === null) {
+    return `Measuring · target ${formatRate(rate.target_rate_hz)}`;
+  }
+  return `${formatRate(rate.measured_rate_hz)} measured · ${formatRate(rate.target_rate_hz)} target`;
+}
+
+function formatRate(rate) {
+  return `${rate.toFixed(1)} Hz`;
+}
+
+function formatNodeName(name) {
+  return name.replace(/Node$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2");
 }
 
 function renderLogging(logging, controlsReady, busy, elements) {
@@ -303,6 +365,13 @@ export function renderDisconnected(
   elements.stackStatus.textContent = "Unavailable";
   elements.stackDetail.textContent = message;
   elements.stackAction.disabled = true;
+  elements.nodeRateSummary.textContent = "Unavailable";
+  elements.nodeRateSummary.classList.remove("healthy", "unhealthy");
+  const nodeRateMessage =
+    elements.nodeRateList.ownerDocument.createElement("p");
+  nodeRateMessage.className = "node-rate-empty";
+  nodeRateMessage.textContent = "Reconnect to view node-rate health.";
+  elements.nodeRateList.replaceChildren(nodeRateMessage);
   elements.runtimeButtons.forEach((button) => {
     button.disabled = true;
   });

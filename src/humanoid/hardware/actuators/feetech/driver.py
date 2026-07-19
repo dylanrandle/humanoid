@@ -6,7 +6,6 @@ from typing import Any, cast
 
 from vassar_feetech_servo_sdk import ServoController
 
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.actuators.driver import ActuatorDriver
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACTUATOR_ID_MAX,
@@ -16,6 +15,7 @@ from humanoid.hardware.actuators.feetech.config import (
     validate_feetech_acceleration,
 )
 from humanoid.logger import get_logger
+from humanoid.types.actuator import ActuatorControlMode
 
 logger = get_logger(__name__)
 

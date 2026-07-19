@@ -6,11 +6,11 @@ A Python framework for multi-robot control and teleoperation in simulation and o
 
 - **Multi-robot support**: Compatible with SO101, ElRobot, and Panda robot platforms
 - **Actuator control**: Runtime-independent joint control with optional typed Feetech hardware
+- **MuJoCo digital twin**: Native rigid-body dynamics behind the same LCM interface as hardware
 - **Visualization**: Real-time robot visualization using MeshCat
 - **LCM middleware**: Lightweight Communications and Marshalling for inter-process communication
 - **Operational space control**: Advanced control algorithms for precise robot manipulation
-- **Keyboard teleoperation**: Interactive control interface for testing and development
-- **Oculus teleoperation**: VR controller-based teleoperation for intuitive robot control
+- **Teleoperation**: Keyboard and Oculus control interfaces
 
 ## Requirements
 
@@ -59,50 +59,14 @@ The project is operated through a local web UI. Start it with:
 uv run start
 ```
 
-The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). It supports:
+The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Use it to select the
+robot and runtime, manage the stack and teleoperation processes, choose a control mode,
+monitor node health, and record or replay LCM sessions.
 
-- Switching between simulation and real-hardware runtimes while the system is stopped.
-- Selecting the robot model while the system is stopped.
-- Starting and stopping the main stack.
-- Starting and stopping the Oculus and keyboard teleop nodes independently.
-- Selecting Idle, Homing presets (Home or Rest), Oculus, or Keyboard control.
-- Starting and stopping LCM recording from the console, with the active file and
-  logger failures reported in the data panel. Each recording is stored as
-  `logs/recording_<timestamp>/recording.lcm` alongside a `robot.json` snapshot of
-  the robot configuration.
-- Selecting a managed recording and replaying it through the simulation or real
-  runtime. The console requires the selected robot and its complete configuration
-  to match the saved snapshot. Real-hardware replay requires an explicit operator
-  acknowledgement.
-
-Starting the main stack launches the robot driver, controller, visualizer, logger, orchestrator, and homing policy. The server binds to localhost and only stops processes it launched. Real-hardware selection and startup require an acknowledgement enforced by the server, and stale browser configuration is rejected.
-
-Replay publishes the recorded command and mode channels on the normal LCM network.
-Stop any other robot stacks or standalone drivers before starting playback. The replay
-selector reads complete recording bundles directly from `logs/`; no browser upload is
-required.
-
-Oculus device setup is documented in the [oculus_reader](https://github.com/rail-berkeley/oculus_reader) repository.
-
-The hardware abstraction is documented in
-[`src/humanoid/hardware/README.md`](src/humanoid/hardware/README.md).
-Root-state estimators and estimation algorithms are documented in
-[`src/humanoid/state_estimation/README.md`](src/humanoid/state_estimation/README.md).
-Feetech-specific setup and maintenance commands live with the driver in
-[`src/humanoid/hardware/actuators/feetech/README.md`](src/humanoid/hardware/actuators/feetech/README.md).
-
-### Running Tests
-
-After installing the optional development dependencies above, run the complete
-verification suite with:
-
-```bash
-uv run check
-```
-
-This runs the same formatting, linting, type-checking, and test suite as CI. The
-Pytest suite includes the Node.js UI tests. To run only Python and UI tests, use
-`uv run pytest`; to run only the UI tests, use `npm test`.
+Simulation uses MuJoCo and real-hardware mode uses the hardware driver; both expose the
+same LCM interface to the rest of the stack. Hardware actions require explicit operator
+acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
+LCM network.
 
 ## Project Structure
 
@@ -117,6 +81,7 @@ humanoid/
 │   ├── orchestrator/     # Control-mode client, monitoring, and service
 │   ├── policy/           # Control policies (keyboard teleop, homing, oculus, etc.)
 │   ├── robots/           # Robot definitions and URDF assets
+│   ├── simulation/       # Native MuJoCo model, bindings, and physics engine
 │   ├── state_estimation/ # Root-state estimators and estimation algorithms
 │   ├── types/            # Type definitions and LCM message types
 │   ├── ui/               # Local operator console backend and frontend
@@ -126,33 +91,31 @@ humanoid/
 └── scripts/              # Utility scripts
 ```
 
+## Documentation
+
+- [Hardware integrations](src/humanoid/hardware/README.md)
+- [Actuator hardware](src/humanoid/hardware/actuators/README.md)
+- [Feetech actuator setup and maintenance](src/humanoid/hardware/actuators/feetech/README.md)
+- [Native MuJoCo simulation](src/humanoid/simulation/README.md)
+- [State estimation](src/humanoid/state_estimation/README.md)
+
+Oculus device setup is documented in the
+[oculus_reader](https://github.com/rail-berkeley/oculus_reader) repository.
+
 ## Development
 
-### Code Quality
+### Running Tests
 
-The project uses several tools to maintain code quality:
-
-- **Ruff**: Linting and code formatting
-- **Pytest**: Testing framework
-- **Type checking**: Static type analysis with ty
-
-Run the complete CI-equivalent verification suite:
+After installing the optional development dependencies above, run the complete
+verification suite with:
 
 ```bash
 uv run check
 ```
 
-Run linting:
-
-```bash
-uv run ruff check .
-```
-
-Run type checking:
-
-```bash
-uv run ty check
-```
+This runs the same formatting, linting, type-checking, and test suite as CI. The
+Pytest suite includes the Node.js UI tests. To run only Python and UI tests, use
+`uv run pytest`; to run only the UI tests, use `npm test`.
 
 ### UI Constants
 

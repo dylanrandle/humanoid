@@ -1,11 +1,11 @@
 """Actuator configuration and runtime interfaces."""
 
-from humanoid.hardware.actuators.config import (
+from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
+from humanoid.types.actuator import (
     ActuatorConfig,
     ActuatorControlMode,
     ActuatorHardwareConfig,
 )
-from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
 
 __all__ = [
     "ActuatorConfig",

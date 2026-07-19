@@ -24,7 +24,7 @@ from humanoid.orchestrator.constants import (
     STALE_CONFIGURATION_ERROR,
     TELEOP_PROCESSES,
 )
-from humanoid.orchestrator.monitor import LoggingMonitor, OrchestratorMonitor
+from humanoid.orchestrator.monitor import LoggingMonitor, NodeRateMonitor, OrchestratorMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.homing import HomingPreset
@@ -47,12 +47,13 @@ logger = get_logger(__name__)
 class OrchestratorService:
     """Coordinates process lifecycle and orchestrator requests."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - service collaborators are intentionally injectable
         self,
         node_manager: NodeManager | None = None,
         orchestrator_client: OrchestratorClient | None = None,
         orchestrator_monitor: OrchestratorMonitor | None = None,
         logging_monitor: LoggingMonitor | None = None,
+        node_rate_monitor: NodeRateMonitor | None = None,
         replay_manager: ReplayManager | None = None,
     ):
         self.node_manager = node_manager if node_manager is not None else NodeManager()
@@ -63,6 +64,9 @@ class OrchestratorService:
             orchestrator_monitor if orchestrator_monitor is not None else OrchestratorMonitor()
         )
         self.logging_monitor = logging_monitor if logging_monitor is not None else LoggingMonitor()
+        self.node_rate_monitor = (
+            node_rate_monitor if node_rate_monitor is not None else NodeRateMonitor()
+        )
         self.replay_manager = replay_manager if replay_manager is not None else ReplayManager()
         self.recording_catalog = RecordingCatalog()
         self._lock = threading.RLock()
@@ -95,6 +99,7 @@ class OrchestratorService:
                 robot=self.node_manager.robot,
                 robots=list(RobotName),
                 processes=processes,
+                node_rates=self.node_rate_monitor.snapshot(self.node_manager.active_nodes()),
                 logging=self.logging_monitor.snapshot(),
                 recordings=self.recording_catalog.list(),
                 replay=replay,
@@ -267,6 +272,7 @@ class OrchestratorService:
         finally:
             self.orchestrator_monitor.close()
             self.logging_monitor.close()
+            self.node_rate_monitor.close()
             self.replay_manager.close()
 
     def _stop_stack(self) -> None:

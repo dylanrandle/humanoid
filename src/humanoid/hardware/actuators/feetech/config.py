@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from humanoid.hardware.actuators.config import (
+from humanoid.types.actuator import (
     ActuatorConfig,
     ActuatorControllerConfig,
 )

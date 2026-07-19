@@ -6,10 +6,10 @@ import pytest
 
 from humanoid.constants import Topic
 from humanoid.controllers.operational_space import ControlResult
-from humanoid.hardware.actuators.config import (
+from humanoid.nodes.robot.controller import RobotControllerNode
+from humanoid.types.actuator import (
     ActuatorControlMode,
 )
-from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (

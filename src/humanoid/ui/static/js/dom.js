@@ -13,6 +13,8 @@ export const els = {
   stackDetail: document.querySelector("#stack-detail"),
   stackAction: document.querySelector("#stack-action"),
   stackActionLabel: document.querySelector("#stack-action-label"),
+  nodeRateSummary: document.querySelector("#node-rate-summary"),
+  nodeRateList: document.querySelector("#node-rate-list"),
   processes: Object.fromEntries(
     TELEOP_PROCESSES.map((name) => [
       name,

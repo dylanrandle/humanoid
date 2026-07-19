@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.policy.homing import HomingPolicy
+from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.robot import RobotJointCommand, RobotState

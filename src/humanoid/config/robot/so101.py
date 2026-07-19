@@ -2,12 +2,12 @@
 
 import numpy as np
 
-from humanoid.hardware.actuators.config import ActuatorControlMode, ActuatorHardwareConfig
 from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
 )
 from humanoid.hardware.config import RobotHardwareConfig
+from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     RobotConfig,

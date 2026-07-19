@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
@@ -25,12 +26,39 @@ class ProcessContext(Protocol):
 
 
 @dataclass(frozen=True)
+class NodeRateSample:
+    """Loop-rate measurement published by a running node process."""
+
+    timestamp: float
+    node_name: str
+    pid: int
+    target_rate_hz: float
+    measured_rate_hz: float
+
+
+@dataclass(frozen=True)
+class NodeRateStatus:
+    """Freshness-qualified node-rate health shown in the operator console."""
+
+    node_name: str
+    pid: int
+    target_rate_hz: float | None
+    measured_rate_hz: float | None
+    healthy: bool
+    age_seconds: float | None
+
+
+@dataclass(frozen=True)
 class NodeGroup:
     name: ProcessName
     display_name: str
     nodes: tuple[type[Node], ...]
     deferred_nodes: tuple[type[Node], ...] = ()
-    allowed_runtimes: frozenset[Runtime] | None = None
+    runtime_nodes: Mapping[Runtime, tuple[type[Node], ...]] = field(default_factory=dict)
+
+    def nodes_for_runtime(self, runtime: Runtime) -> tuple[type[Node], ...]:
+        """Return runtime-specific nodes followed by the group's common nodes."""
+        return (*self.runtime_nodes.get(runtime, ()), *self.nodes)
 
 
 @dataclass

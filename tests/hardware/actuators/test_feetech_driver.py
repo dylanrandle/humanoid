@@ -3,7 +3,6 @@ from unittest.mock import Mock, call, patch
 import pytest
 from vassar_feetech_servo_sdk import ServoController
 
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACCELERATION_MAX,
     FEETECH_ACCELERATION_MIN,
@@ -19,6 +18,7 @@ from humanoid.hardware.actuators.feetech.driver import (
     SPEED_UNIT_RAD_S,
     FeetechActuatorDriver,
 )
+from humanoid.types.actuator import ActuatorControlMode
 
 TEST_PORT = "/dev/test-feetech"
 TEST_BAUD_RATE = 115_200

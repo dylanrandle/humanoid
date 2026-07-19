@@ -8,12 +8,14 @@ from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
 from humanoid.types.lcm import (
     logging_status_t,
+    node_rate_sample_t,
     orchestrator_mode_t,
     robot_joint_command_t,
     robot_state_t,
 )
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -57,6 +59,23 @@ def _make_base_command():
 
 
 class TestPublisher:
+    def test_publish_node_rate(self, mock_lcm):
+        publisher = Publisher()
+        sample = NodeRateSample(
+            timestamp=1.0,
+            node_name="ExampleNode",
+            pid=123,
+            target_rate_hz=100.0,
+            measured_rate_hz=98.0,
+        )
+
+        publisher.publish(sample, topic=Topic.NODE_RATE)
+
+        channel, data_bytes = mock_lcm.publish.call_args[0]
+        assert channel == Topic.NODE_RATE.value
+        recovered = LCMConverter.node_rate_sample_from_lcm(node_rate_sample_t.decode(data_bytes))
+        assert recovered == sample
+
     def test_publishes_to_explicit_topic(self, mock_lcm):
         publisher = Publisher()
         cmd = _make_joint_command()

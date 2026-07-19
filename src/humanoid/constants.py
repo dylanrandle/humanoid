@@ -2,6 +2,7 @@ from enum import Enum
 
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
+from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.process import Runtime
 from humanoid.types.robot import (
@@ -20,6 +21,9 @@ DEFAULT_HUMANOID_ROBOT = RobotName.ELROBOT_MOBILE
 
 
 class Topic(Enum):
+    # Per-node loop-rate telemetry consumed by the operator console.
+    NODE_RATE = "NODE/RATE"
+
     # Robot state (single publisher: robot driver)
     ROBOT_STATE = "ROBOT/STATE"
 
@@ -52,6 +56,7 @@ class Topic(Enum):
 
 
 TOPIC_TO_TYPE: dict[Topic, type] = {
+    Topic.NODE_RATE: NodeRateSample,
     Topic.ROBOT_STATE: RobotState,
     Topic.ROBOT_JOINT_COMMAND: RobotJointCommand,
     Topic.ROBOT_TOOL_COMMAND: RobotToolCommand,

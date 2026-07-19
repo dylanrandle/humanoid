@@ -1,29 +1,22 @@
 """Actuator-system construction from typed robot hardware configuration."""
 
-from humanoid.hardware.actuators.config import ActuatorControlMode, ActuatorHardwareConfig
 from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
 )
 from humanoid.hardware.actuators.feetech.driver import FeetechActuatorDriver
-from humanoid.hardware.actuators.simulation import SimulatedActuatorSystem
 from humanoid.hardware.actuators.system import (
     ActuatorSystem,
     CompositeActuatorSystem,
 )
-from humanoid.types.process import Runtime
+from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
 
 
 def create_actuator_system(
-    runtime: Runtime,
     control_modes: dict[str, ActuatorControlMode],
     hardware: ActuatorHardwareConfig | None,
-    initial_positions: dict[str, float],
 ) -> ActuatorSystem:
-    """Create the simulation or real actuator system for one robot."""
-    if runtime is Runtime.SIM:
-        return SimulatedActuatorSystem(control_modes, initial_positions)
-
+    """Create the physical actuator system for one robot."""
     if hardware is None:
         raise RuntimeError("Real actuator control requires configured actuator hardware.")
     if hardware.joints.keys() != control_modes.keys():

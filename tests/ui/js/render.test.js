@@ -28,9 +28,13 @@ function element(dataset = {}) {
     textContent: "",
     value: "",
     options: [],
+    children: [],
     ownerDocument: { createElement: () => element() },
     setAttribute(name, value) { this[name] = value; },
-    replaceChildren(...children) { this.options = children; },
+    replaceChildren(...children) {
+      this.options = children;
+      this.children = children;
+    },
   };
 }
 
@@ -48,6 +52,8 @@ function elements() {
     stackDetail: element(),
     stackAction: element(),
     stackActionLabel: element(),
+    nodeRateSummary: element(),
+    nodeRateList: element(),
     processes: {
       keyboard: { row: element(), status: element(), error: element(), action: element() },
       oculus: { row: element(), status: element(), error: element(), action: element() },
@@ -66,6 +72,41 @@ function elements() {
     modePulse: element(),
   };
 }
+
+test("node target and measured rates render healthy and unhealthy states", () => {
+  const ui = elements();
+  const current = snapshot();
+  current.node_rates = [
+    {
+      node_name: "RobotControllerNode",
+      pid: 101,
+      target_rate_hz: 500,
+      measured_rate_hz: 492.5,
+      healthy: true,
+      age_seconds: 0.1,
+    },
+    {
+      node_name: "RobotVisualizerNode",
+      pid: 102,
+      target_rate_hz: 30,
+      measured_rate_hz: 22,
+      healthy: false,
+      age_seconds: 0.2,
+    },
+  ];
+
+  render(current, new Set(), ui);
+
+  assert.equal(ui.nodeRateSummary.textContent, "1 of 2 healthy");
+  assert.ok(ui.nodeRateSummary.classList.values.has("unhealthy"));
+  assert.equal(ui.nodeRateList.children.length, 2);
+  assert.ok(ui.nodeRateList.children[0].classList.values.has("healthy"));
+  assert.ok(ui.nodeRateList.children[1].classList.values.has("unhealthy"));
+  assert.equal(
+    ui.nodeRateList.children[0].children[1].children[1].textContent,
+    "492.5 Hz measured · 500.0 Hz target",
+  );
+});
 
 function processStatus(overrides = {}) {
   return {
@@ -90,6 +131,7 @@ function snapshot() {
       keyboard: processStatus(),
       oculus: processStatus(),
     },
+    node_rates: [],
     logging: {
       timestamp: 0,
       state: "stopped",
@@ -175,6 +217,8 @@ test("disconnected and external-stack errors disable every control", () => {
   assert.equal(ui.systemStateLabel.textContent, "Console disconnected");
   assert.equal(ui.stackDetail.textContent, message);
   assert.equal(ui.stackAction.disabled, true);
+  assert.equal(ui.nodeRateSummary.textContent, "Unavailable");
+  assert.match(ui.nodeRateList.children[0].textContent, /Reconnect/);
   assert.ok(ui.runtimeButtons.every((button) => button.disabled));
   assert.ok(Object.values(ui.processes).every(({ action }) => action.disabled));
   assert.ok(ui.loggingButtons.every((button) => button.disabled));

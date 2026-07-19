@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from humanoid.hardware.actuators.config import ActuatorControlMode
+from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.controllers import OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (

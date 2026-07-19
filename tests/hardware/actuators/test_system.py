@@ -1,9 +1,9 @@
 import pytest
 
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.actuators.driver import ActuatorDriver
 from humanoid.hardware.actuators.feetech.config import FeetechActuatorConfig
 from humanoid.hardware.actuators.system import CompositeActuatorSystem
+from humanoid.types.actuator import ActuatorControlMode
 
 EXPECTED_POSITION = 0.5
 EXPECTED_VELOCITY = 0.25

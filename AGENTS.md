@@ -18,3 +18,10 @@ The command runs formatting checks, linting, static type analysis, and the compl
 uv run ruff format
 uv run ruff check --fix
 ```
+
+# Project Organization Rules
+
+- Centralize shared type definitions in `src/humanoid/types/` and import them from there.
+- Keep concrete configuration instances, including project defaults, in
+  `src/humanoid/config/`; modules in `src/humanoid/types/` should define configuration
+  shapes without instantiating them.

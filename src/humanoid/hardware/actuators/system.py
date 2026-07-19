@@ -3,8 +3,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from humanoid.hardware.actuators.config import ActuatorConfig, ActuatorControlMode
 from humanoid.hardware.actuators.driver import ActuatorDriver
+from humanoid.types.actuator import ActuatorConfig, ActuatorControlMode
 
 
 @dataclass(frozen=True)

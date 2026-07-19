@@ -5,6 +5,7 @@ from types import MappingProxyType
 
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import LoggingStatus
+from humanoid.types.node import NodeRateStatus
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
@@ -100,6 +101,7 @@ class OrchestratorStatus:
     robot: RobotName
     robots: list[RobotName]
     processes: dict[ProcessName, ProcessStatus]
+    node_rates: list[NodeRateStatus]
     logging: LoggingStatus
     recordings: list[RecordingSummary]
     replay: ReplayStatus

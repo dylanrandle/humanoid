@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="/css/base.css" />
     <link rel="stylesheet" href="/css/header-hero.css" />
     <link rel="stylesheet" href="/css/stack.css" />
+    <link rel="stylesheet" href="/css/health.css" />
     <link rel="stylesheet" href="/css/controls.css" />
     <link rel="stylesheet" href="/css/data.css" />
     <link rel="stylesheet" href="/css/responsive.css" />
@@ -379,6 +380,27 @@
               </p>
               <p class="process-error" id="replay-error" hidden></p>
             </article>
+          </div>
+        </section>
+
+        <section
+          class="panel node-health-panel"
+          aria-labelledby="node-health-heading"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">05 · Runtime telemetry</p>
+              <h2 id="node-health-heading">Node rates</h2>
+            </div>
+            <span class="panel-note node-rate-summary" id="node-rate-summary"
+              >No active nodes</span
+            >
+          </div>
+
+          <div class="node-rate-list" id="node-rate-list">
+            <p class="node-rate-empty">
+              Start a process to view its loop rate.
+            </p>
           </div>
         </section>
       </main>

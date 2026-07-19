@@ -1,0 +1,9 @@
+package humanoid.types.lcm;
+
+struct node_rate_sample_t {
+    int64_t timestamp;
+    string node_name;
+    int64_t pid;
+    double target_rate_hz;
+    double measured_rate_hz;
+}

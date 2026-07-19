@@ -3,11 +3,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.robot.elrobot_mobile import ELROBOT_MOBILE_CONFIG
-from humanoid.hardware.actuators.config import (
-    ActuatorControlMode,
-)
 from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.state_estimation.root.base import (
@@ -17,8 +13,10 @@ from humanoid.state_estimation.root.base import (
 from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimator,
 )
+from humanoid.types.actuator import (
+    ActuatorControlMode,
+)
 from humanoid.types.homing import HomingPreset
-from humanoid.types.process import Runtime
 from humanoid.types.robot import (
     RobotConfig,
     RobotJointCommand,
@@ -233,32 +231,6 @@ def test_mixed_modes_route_position_and_velocity_separately():
     assert written_velocities["joint_1"] == pytest.approx(velocities[1])
 
 
-def test_mobile_simulation_initial_positions_round_trip_home_configuration():
-    config = ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE]
-    actuator_system = StubActuatorSystem()
-    with (
-        patch("humanoid.nodes.robot.driver.Subscriber"),
-        patch("humanoid.nodes.robot.driver.Publisher"),
-        patch(
-            "humanoid.nodes.robot.driver.create_actuator_system",
-            return_value=actuator_system,
-        ) as create_actuator_system,
-    ):
-        driver = RobotDriverNode(robot_config=config, runtime=Runtime.SIM)
-
-    initial_positions = create_actuator_system.call_args.args[3]
-    joint_idx_to_position = {
-        driver.joint_indices[joint_name]: position
-        for joint_name, position in initial_positions.items()
-    }
-    reconstructed_home = driver.robot.joint_positions_to_q(joint_idx_to_position)
-
-    assert [initial_positions[f"wheel_{index}"] for index in range(1, 4)] == pytest.approx(
-        [0.0, 0.0, 0.0]
-    )
-    np.testing.assert_allclose(reconstructed_home, config.homing_presets[HomingPreset.HOME])
-
-
 def test_velocity_clamping():
     driver = _make_mixed_driver()
     driver.subscriber.receive = Mock(  # ty: ignore[invalid-assignment]
@@ -464,7 +436,6 @@ def test_mobile_driver_uses_root_state_estimator():
             robot_config=ELROBOT_MOBILE_CONFIG,
             actuator_system=actuator_system,
             root_state_estimator=root_state_estimator,
-            runtime=Runtime.SIM,
         )
 
     assert driver._root_q_slice is not None
@@ -504,8 +475,7 @@ def test_mobile_driver_uses_root_state_estimator():
     assert actuator_system.stop_calls == 1
 
 
-@pytest.mark.parametrize("runtime", [Runtime.SIM, Runtime.REAL])
-def test_mobile_driver_uses_dead_reckoning_in_every_runtime(runtime):
+def test_mobile_driver_uses_dead_reckoning():
     actuator_system = StubActuatorSystem()
     with (
         patch("humanoid.nodes.robot.driver.Subscriber"),
@@ -514,7 +484,6 @@ def test_mobile_driver_uses_dead_reckoning_in_every_runtime(runtime):
         driver = RobotDriverNode(
             robot_config=ELROBOT_MOBILE_CONFIG,
             actuator_system=actuator_system,
-            runtime=runtime,
         )
 
     assert isinstance(driver.root_state_estimator, WheelDeadReckoningRootStateEstimator)
@@ -538,7 +507,6 @@ def test_mobile_driver_ignores_commanded_root_velocity():
             robot_config=ELROBOT_MOBILE_CONFIG,
             actuator_system=actuator_system,
             root_state_estimator=root_state_estimator,
-            runtime=Runtime.SIM,
         )
 
     assert driver._root_v_slice is not None

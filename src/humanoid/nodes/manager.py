@@ -72,13 +72,6 @@ class NodeManager:
     def start(self, name: ProcessName) -> ProcessStatus:
         definition = NODE_GROUPS[name]
         with self._lock:
-            if (
-                definition.allowed_runtimes is not None
-                and self.runtime not in definition.allowed_runtimes
-            ):
-                raise NodeManagerError(
-                    f"{definition.display_name} is not available in {self.runtime.value} runtime."
-                )
             if self._status_locked(name).running:
                 raise NodeManagerError(f"{definition.display_name} is already running.")
 
@@ -89,7 +82,7 @@ class NodeManager:
             )
             self._groups[name] = group
             try:
-                self._start_nodes(group, definition.nodes)
+                self._start_nodes(group, definition.nodes_for_runtime(self.runtime))
             except Exception as exc:
                 message = f"Could not start {definition.display_name}: {exc}"
                 group.failure_exit_code = 1
@@ -127,6 +120,16 @@ class NodeManager:
             self._stop_group(name, failure=failure)
         with self._lock:
             return {name: self._status_locked(name) for name in PROCESS_ORDER}
+
+    def active_nodes(self) -> dict[str, int]:
+        """Return the process ID of every currently running node class."""
+        with self._lock:
+            return {
+                process.name: process.pid
+                for group in self._groups.values()
+                for process in group.processes
+                if process.is_alive() and process.pid is not None
+            }
 
     def close(self) -> None:
         for name in PROCESS_STOP_ORDER:

@@ -1,4 +1,4 @@
-"""Robot hardware and simulation driver node."""
+"""Robot hardware driver node and injectable actuator-test harness."""
 
 import time
 from collections.abc import Callable
@@ -6,9 +6,8 @@ from collections.abc import Callable
 import numpy as np
 import pinocchio as pin
 
-from humanoid.config import IS_SIMULATION, ROBOT_CONFIG
+from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.actuators.factory import create_actuator_system
 from humanoid.hardware.actuators.system import ActuatorSystem
 from humanoid.logger import get_logger
@@ -16,14 +15,15 @@ from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
+from humanoid.robots.command import normalize_robot_joint_command
+from humanoid.robots.watchdog import VelocityCommandWatchdog
 from humanoid.state_estimation.root.base import (
     RootState,
     RootStateEstimator,
 )
 from humanoid.state_estimation.root.factory import create_root_state_estimator
-from humanoid.types.homing import HomingPreset
-from humanoid.types.process import Runtime
-from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotState
+from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.robot import RobotConfig, RobotState
 
 logger = get_logger(__name__)
 
@@ -38,17 +38,10 @@ class RobotDriverNode(Node):
         rate_hz: float = DEFAULT_RATE_HZ,
         actuator_system: ActuatorSystem | None = None,
         root_state_estimator: RootStateEstimator | None = None,
-        runtime: Runtime | None = None,
         command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
         clock: Callable[[], float] = time.perf_counter,
     ):
-        if command_timeout_seconds <= 0:
-            raise ValueError("Robot command timeout must be positive.")
         self.rate_hz = rate_hz
-        self.command_timeout_seconds = command_timeout_seconds
-        self._clock = clock
-        self._last_command_time: float | None = None
-        self._velocity_actuators_stopped = True
         self.subscriber = Subscriber(topics=[Topic.ROBOT_JOINT_COMMAND])
         self.publisher = Publisher()
 
@@ -75,21 +68,14 @@ class RobotDriverNode(Node):
             if self.actuator_control_modes[joint_name] is ActuatorControlMode.VELOCITY
         ]
 
-        selected_runtime = runtime
-        if selected_runtime is None:
-            selected_runtime = Runtime.SIM if IS_SIMULATION else Runtime.REAL
-        initial_positions = {
-            joint_name: self.robot.joint_position_from_q(
-                robot_config.homing_presets[HomingPreset.HOME],
-                self.joint_indices[joint_name],
-            )
-            for joint_name in self.actuator_joint_names
-        }
         self.actuator_system = actuator_system or create_actuator_system(
-            selected_runtime,
             self.actuator_control_modes,
             robot_config.hardware.actuators if robot_config.hardware is not None else None,
-            initial_positions,
+        )
+        self._command_watchdog = VelocityCommandWatchdog(
+            self._stop_actuators,
+            command_timeout_seconds,
+            clock,
         )
         self._root_q_slice = self.robot.get_root_q_slice()
         self._root_v_slice = self.robot.get_root_v_slice()
@@ -113,38 +99,29 @@ class RobotDriverNode(Node):
     def receive(self) -> None:
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
         if command is None:
-            self._stop_if_command_stale()
+            if self._command_watchdog.stop_if_stale():
+                logger.warning("Robot command watchdog stopped velocity-controlled actuators")
             return
 
         logger.debug("Received command: %s", command)
-        self._validate_command_dimensions(command)
-
-        clamped_positions = np.clip(
-            command.joint_positions,
+        normalized = normalize_robot_joint_command(
+            command,
             self.joint_lower_limits,
             self.joint_upper_limits,
+            self.joint_velocity_limits,
         )
         positions = {
             joint_name: float(
-                clamped_positions[
+                normalized.joint_positions[
                     self.robot.joint_idx_to_position_idx(self.joint_indices[joint_name])
                 ]
             )
             for joint_name in self.position_controlled_joints
         }
 
-        clamped_velocities = (
-            np.clip(
-                command.joint_velocities,
-                -self.joint_velocity_limits,
-                self.joint_velocity_limits,
-            )
-            if command.joint_velocities is not None
-            else np.zeros_like(self.joint_velocity_limits)
-        )
         velocities = {
             joint_name: float(
-                clamped_velocities[
+                normalized.joint_velocities[
                     self.robot.joint_idx_to_velocity_idx(self.joint_indices[joint_name])
                 ]
             )
@@ -153,44 +130,10 @@ class RobotDriverNode(Node):
 
         self.actuator_system.write_positions(positions)
         self.actuator_system.write_velocities(velocities)
-        self._last_command_time = self._clock()
-        self._velocity_actuators_stopped = not any(velocities.values())
+        self._command_watchdog.observe_command(velocity_active=any(velocities.values()))
 
-    def _stop_if_command_stale(self) -> None:
-        if (
-            self._last_command_time is None
-            or self._velocity_actuators_stopped
-            or self._clock() - self._last_command_time < self.command_timeout_seconds
-        ):
-            return
-        logger.warning("Robot command watchdog stopped velocity-controlled actuators")
+    def _stop_actuators(self) -> None:
         self.actuator_system.stop()
-        self._velocity_actuators_stopped = True
-
-    def _validate_command_dimensions(self, command: RobotJointCommand) -> None:
-        expected_positions = len(self.joint_lower_limits)
-        received_positions = len(command.joint_positions)
-        if received_positions != expected_positions:
-            raise ValueError(
-                "Robot joint command has "
-                f"{received_positions} positions; the selected robot requires "
-                f"{expected_positions}."
-            )
-        if not np.isfinite(command.joint_positions).all():
-            raise ValueError("Robot joint command positions must all be finite.")
-
-        if command.joint_velocities is None:
-            return
-        expected_velocities = len(self.joint_velocity_limits)
-        received_velocities = len(command.joint_velocities)
-        if received_velocities != expected_velocities:
-            raise ValueError(
-                "Robot joint command has "
-                f"{received_velocities} velocities; the selected robot requires "
-                f"{expected_velocities}."
-            )
-        if not np.isfinite(command.joint_velocities).all():
-            raise ValueError("Robot joint command velocities must all be finite.")
 
     def publish(self) -> None:
         actuator_states = self.actuator_system.read_states()
@@ -262,7 +205,7 @@ class RobotDriverNode(Node):
 
     def on_close(self) -> None:
         try:
-            self.actuator_system.stop()
+            self._command_watchdog.stop()
         finally:
             try:
                 self.subscriber.close()

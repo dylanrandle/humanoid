@@ -3,42 +3,14 @@ from unittest.mock import patch
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.hardware.actuators.config import ActuatorControlMode, ActuatorHardwareConfig
 from humanoid.hardware.actuators.factory import create_actuator_system
 from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
 )
-from humanoid.hardware.actuators.simulation import SimulatedActuatorSystem
 from humanoid.hardware.actuators.system import CompositeActuatorSystem
-from humanoid.robots.base import Robot
-from humanoid.types.process import Runtime
-from humanoid.types.robot import RobotConfig, RobotName
-
-
-@pytest.mark.parametrize("config", ROBOT_CONFIGS.values(), ids=lambda config: config.name)
-def test_every_robot_can_create_a_simulated_actuator_system(config: RobotConfig):
-    robot = Robot(config)
-    initial_positions = {
-        joint_name: float(index) for index, joint_name in enumerate(config.actuator_control_modes)
-    }
-
-    actuator_system = create_actuator_system(
-        Runtime.SIM,
-        config.actuator_control_modes,
-        config.hardware.actuators if config.hardware is not None else None,
-        initial_positions,
-    )
-
-    assert isinstance(actuator_system, SimulatedActuatorSystem)
-    actuator_system.connect()
-    states = actuator_system.read_states()
-    actuator_system.disconnect()
-    assert set(robot.actuator_joint_names) == set(config.actuator_control_modes)
-    assert states.keys() == config.actuator_control_modes.keys()
-    assert {joint_name: state.position for joint_name, state in states.items()} == pytest.approx(
-        initial_positions
-    )
+from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
+from humanoid.types.robot import RobotName
 
 
 def test_robot_without_actuator_hardware_fails_closed_in_real_runtime():
@@ -46,10 +18,8 @@ def test_robot_without_actuator_hardware_fails_closed_in_real_runtime():
 
     with pytest.raises(RuntimeError, match="requires configured actuator hardware"):
         create_actuator_system(
-            Runtime.REAL,
             config.actuator_control_modes,
             None,
-            dict.fromkeys(config.actuator_control_modes, 0.0),
         )
 
 
@@ -66,10 +36,8 @@ def test_real_runtime_rejects_mismatched_control_modes_at_public_boundary():
 
     with pytest.raises(ValueError, match="bindings must match"):
         create_actuator_system(
-            Runtime.REAL,
             {"different_joint": ActuatorControlMode.POSITION},
             hardware,
-            {"different_joint": 0.0},
         )
 
 
@@ -79,10 +47,8 @@ def test_real_runtime_uses_nested_physical_actuator_hardware():
 
     with patch("humanoid.hardware.actuators.factory.FeetechActuatorDriver"):
         actuator_system = create_actuator_system(
-            Runtime.REAL,
             config.actuator_control_modes,
             config.hardware.actuators,
-            dict.fromkeys(config.actuator_control_modes, 0.0),
         )
 
     assert isinstance(actuator_system, CompositeActuatorSystem)
@@ -120,7 +86,7 @@ def test_multiple_feetech_controllers_require_distinct_explicit_ports(
     }
 
     with pytest.raises(ValueError, match=message):
-        create_actuator_system(Runtime.REAL, modes, hardware, dict.fromkeys(modes, 0.0))
+        create_actuator_system(modes, hardware)
 
 
 def test_multiple_feetech_controllers_receive_distinct_connection_configs():
@@ -131,7 +97,7 @@ def test_multiple_feetech_controllers_receive_distinct_connection_configs():
     }
 
     with patch("humanoid.hardware.actuators.factory.FeetechActuatorDriver") as driver_cls:
-        create_actuator_system(Runtime.REAL, modes, hardware, dict.fromkeys(modes, 0.0))
+        create_actuator_system(modes, hardware)
 
     passed_configs = [call.args[2] for call in driver_cls.call_args_list]
     assert {config.port for config in passed_configs} == {"/dev/left", "/dev/right"}

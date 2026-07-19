@@ -1,5 +1,6 @@
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
+from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -9,7 +10,8 @@ from humanoid.types.robot import (
 )
 
 AcceptedTypes = (
-    RobotJointCommand
+    NodeRateSample
+    | RobotJointCommand
     | RobotToolCommand
     | RobotBaseCommand
     | RobotState

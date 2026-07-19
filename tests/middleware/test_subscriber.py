@@ -10,6 +10,7 @@ from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.node import NodeRateSample
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotJointCommand,
@@ -115,10 +116,24 @@ class TestSubscriber:
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
                 Topic.LOGGING_STATUS,
+                Topic.NODE_RATE,
             ]
         )
 
         cases = [
+            (
+                Topic.NODE_RATE,
+                LCMConverter.node_rate_sample_to_lcm(
+                    NodeRateSample(
+                        timestamp=1.0,
+                        node_name="ExampleNode",
+                        pid=123,
+                        target_rate_hz=100.0,
+                        measured_rate_hz=98.0,
+                    )
+                ),
+                NodeRateSample,
+            ),
             (
                 Topic.ROBOT_JOINT_COMMAND,
                 LCMConverter.robot_joint_command_to_lcm(_make_joint_command()),

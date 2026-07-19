@@ -3,7 +3,6 @@ import sys
 
 import numpy as np
 
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACTUATOR_ID_MAX,
     FEETECH_ACTUATOR_ID_MIN,
@@ -15,6 +14,7 @@ from humanoid.hardware.actuators.feetech.scripts.common import (
     controller_config_from_args,
 )
 from humanoid.logger import get_logger
+from humanoid.types.actuator import ActuatorControlMode
 
 logger = get_logger(__name__)
 

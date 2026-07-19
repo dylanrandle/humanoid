@@ -8,6 +8,7 @@ from flask.testing import FlaskClient
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.node import NodeRateStatus
 from humanoid.types.orchestrator import (
     Mode,
     OrchestratorError,
@@ -71,6 +72,7 @@ def test_serves_split_ui_assets(server_client):
     assert b'data-logging-action="stop"' in response.data
     assert b'id="replay-recording"' in response.data
     assert b'id="replay-action"' in response.data
+    assert b'id="node-rate-list"' in response.data
     assert b"Home and Rest stay highlighted" not in response.data
     assert response.headers["Cache-Control"] == "no-cache"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
@@ -89,6 +91,10 @@ def test_serves_split_ui_assets(server_client):
     assert response.status_code == HTTPStatus.OK
     assert b".data-panel" in response.data
     assert b"overflow-wrap: anywhere" in response.data
+
+    response = client.get("/css/health.css")
+    assert response.status_code == HTTPStatus.OK
+    assert b".node-rate-row.healthy" in response.data
 
 
 def test_routes_status(server_client):
@@ -127,6 +133,16 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 last_output=None,
             ),
         },
+        node_rates=[
+            NodeRateStatus(
+                node_name="RobotControllerNode",
+                pid=456,
+                target_rate_hz=500.0,
+                measured_rate_hz=497.2,
+                healthy=True,
+                age_seconds=0.2,
+            )
+        ],
         logging=LoggingStatus(
             timestamp=1.0,
             state=LoggingState.RUNNING,
@@ -179,6 +195,16 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 "last_output": None,
             },
         },
+        "node_rates": [
+            {
+                "node_name": "RobotControllerNode",
+                "pid": 456,
+                "target_rate_hz": 500.0,
+                "measured_rate_hz": 497.2,
+                "healthy": True,
+                "age_seconds": 0.2,
+            }
+        ],
         "logging": {
             "timestamp": 1.0,
             "state": "running",

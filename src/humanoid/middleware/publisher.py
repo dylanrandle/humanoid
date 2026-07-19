@@ -6,6 +6,7 @@ from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.middleware import AcceptedTypes
+from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -27,7 +28,9 @@ class Publisher:
         if expected_type is not type(data):
             raise TypeError(f"Topic {topic} expects {expected_type}, but got {type(data).__name__}")
 
-        if isinstance(data, RobotJointCommand):
+        if isinstance(data, NodeRateSample):
+            lcm_data = LCMConverter.node_rate_sample_to_lcm(data)
+        elif isinstance(data, RobotJointCommand):
             lcm_data = LCMConverter.robot_joint_command_to_lcm(data)
         elif isinstance(data, RobotState):
             lcm_data = LCMConverter.robot_state_to_lcm(data)

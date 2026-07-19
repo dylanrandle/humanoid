@@ -5,9 +5,9 @@ from enum import StrEnum
 import numpy as np
 import pinocchio as pin
 
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.state_estimation.config import RobotStateEstimationConfig
+from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.controllers import OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 
@@ -92,6 +92,14 @@ class RobotJointCommand:
     timestamp: float
     joint_positions: np.ndarray
     joint_velocities: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class NormalizedRobotJointCommand:
+    """Validated, limit-clamped generalized position and velocity targets."""
+
+    joint_positions: np.ndarray
+    joint_velocities: np.ndarray
 
 
 @dataclass

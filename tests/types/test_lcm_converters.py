@@ -2,7 +2,23 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.node import NodeRateSample
 from humanoid.types.robot import RobotBaseCommand, RobotJointCommand, RobotState, RobotToolCommand
+
+
+def test_node_rate_sample_encode_decode():
+    sample = NodeRateSample(
+        timestamp=12.5,
+        node_name="RobotControllerNode",
+        pid=123,
+        target_rate_hz=500.0,
+        measured_rate_hz=492.5,
+    )
+
+    lcm_sample = LCMConverter.node_rate_sample_to_lcm(sample)
+    recovered = LCMConverter.node_rate_sample_from_lcm(type(lcm_sample).decode(lcm_sample.encode()))
+
+    assert recovered == sample
 
 
 def test_robot_joint_command_conversion():

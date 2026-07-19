@@ -1,10 +1,10 @@
 import numpy as np
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.policy.base import Policy
 from humanoid.robots.base import Robot
 from humanoid.types.action import Action
+from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig

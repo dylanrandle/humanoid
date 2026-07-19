@@ -11,6 +11,7 @@ from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     homing_target_t,
     logging_status_t,
+    node_rate_sample_t,
     orchestrator_event_t,
     orchestrator_mode_t,
     robot_base_command_t,
@@ -21,6 +22,7 @@ from humanoid.types.lcm import (
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.middleware import AcceptedTypes
+from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -73,7 +75,10 @@ class Subscriber:
             topic = Topic(channel)
             expected_type = TOPIC_TO_TYPE.get(topic)
 
-            if expected_type is RobotJointCommand:
+            if expected_type is NodeRateSample:
+                lcm_msg = node_rate_sample_t.decode(data)
+                decoded_data = LCMConverter.node_rate_sample_from_lcm(lcm_msg)
+            elif expected_type is RobotJointCommand:
                 lcm_msg = robot_joint_command_t.decode(data)
                 decoded_data = LCMConverter.robot_joint_command_from_lcm(lcm_msg)
             elif expected_type is RobotState:
@@ -107,6 +112,11 @@ class Subscriber:
             q.put_nowait(decoded_data)
         except Exception as e:
             logger.error(f"Error decoding message on channel {channel}: {e}")
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.NODE_RATE], timeout: int | None = None
+    ) -> NodeRateSample | None: ...
 
     @overload
     def receive(
