@@ -9,7 +9,7 @@ import struct
 
 class robot_state_t(object):
 
-    __slots__ = ["timestamp", "num_joints", "num_positions", "num_velocities", "joint_positions", "joint_velocities", "motor_temperatures"]
+    __slots__ = ["timestamp", "num_joints", "num_positions", "num_velocities", "joint_positions", "joint_velocities", "actuator_temperatures"]
 
     __typenames__ = ["int64_t", "int32_t", "int32_t", "int32_t", "double", "double", "double"]
 
@@ -28,7 +28,7 @@ class robot_state_t(object):
         """ LCM Type: double[num_positions] """
         self.joint_velocities = []
         """ LCM Type: double[num_velocities] """
-        self.motor_temperatures = []
+        self.actuator_temperatures = []
         """ LCM Type: double[num_joints] """
 
     def encode(self):
@@ -41,7 +41,7 @@ class robot_state_t(object):
         buf.write(struct.pack(">qiii", self.timestamp, self.num_joints, self.num_positions, self.num_velocities))
         buf.write(struct.pack('>%dd' % self.num_positions, *self.joint_positions[:self.num_positions]))
         buf.write(struct.pack('>%dd' % self.num_velocities, *self.joint_velocities[:self.num_velocities]))
-        buf.write(struct.pack('>%dd' % self.num_joints, *self.motor_temperatures[:self.num_joints]))
+        buf.write(struct.pack('>%dd' % self.num_joints, *self.actuator_temperatures[:self.num_joints]))
 
     @staticmethod
     def decode(data: bytes):
@@ -59,13 +59,13 @@ class robot_state_t(object):
         self.timestamp, self.num_joints, self.num_positions, self.num_velocities = struct.unpack(">qiii", buf.read(20))
         self.joint_positions = struct.unpack('>%dd' % self.num_positions, buf.read(self.num_positions * 8))
         self.joint_velocities = struct.unpack('>%dd' % self.num_velocities, buf.read(self.num_velocities * 8))
-        self.motor_temperatures = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
+        self.actuator_temperatures = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
         return self
 
     @staticmethod
     def _get_hash_recursive(parents):
         if robot_state_t in parents: return 0
-        tmphash = (0x5250b4fdf77aa59e) & 0xffffffffffffffff
+        tmphash = (0xa3aaa9aee14cb817) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None

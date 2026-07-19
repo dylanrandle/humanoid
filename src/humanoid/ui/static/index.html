@@ -34,7 +34,9 @@
       <main>
         <section class="hero" aria-labelledby="page-title">
           <div>
-            <p class="kicker">Operator console · <span id="robot-name">robot</span></p>
+            <p class="kicker">
+              Operator console · <span id="robot-name">robot</span>
+            </p>
             <h1 id="page-title">One surface.<br />Every control mode.</h1>
           </div>
 
@@ -44,10 +46,16 @@
                 <p class="eyebrow">Runtime</p>
                 <h2>Execution target</h2>
               </div>
-              <span class="lock-note" id="configuration-lock-note">Unlocked</span>
+              <span class="lock-note" id="configuration-lock-note"
+                >Unlocked</span
+              >
             </div>
 
-            <div class="runtime-toggle" role="group" aria-label="Execution runtime">
+            <div
+              class="runtime-toggle"
+              role="group"
+              aria-label="Execution runtime"
+            >
               <button class="runtime-option" data-runtime="sim" type="button">
                 <span class="runtime-icon" aria-hidden="true">S</span>
                 <span>
@@ -55,7 +63,11 @@
                   <small>Safe sandbox</small>
                 </span>
               </button>
-              <button class="runtime-option real" data-runtime="real" type="button">
+              <button
+                class="runtime-option real"
+                data-runtime="real"
+                type="button"
+              >
                 <span class="runtime-icon" aria-hidden="true">R</span>
                 <span>
                   <strong>Real robot</strong>
@@ -72,7 +84,7 @@
               <select id="robot-select" disabled></select>
             </label>
             <p class="runtime-footnote" id="runtime-footnote">
-              Simulation uses the in-process motor model and does not command physical servos.
+              Simulation does not command physical hardware.
             </p>
           </div>
         </section>
@@ -84,20 +96,30 @@
               <p class="eyebrow">Main system</p>
               <h2 id="stack-heading">Robot stack</h2>
               <p id="stack-description">
-                Driver, controller, visualizer, orchestrator, logger, and homing policy.
+                Driver, controller, visualizer, orchestrator, logger, and homing
+                policy.
               </p>
             </div>
           </div>
 
           <div class="stack-action">
             <div class="process-readout">
-              <span class="process-light" id="stack-light" aria-hidden="true"></span>
+              <span
+                class="process-light"
+                id="stack-light"
+                aria-hidden="true"
+              ></span>
               <span>
                 <strong id="stack-status">Stopped</strong>
                 <small id="stack-detail">Ready to start</small>
               </span>
             </div>
-            <button class="primary-action" id="stack-action" type="button" disabled>
+            <button
+              class="primary-action"
+              id="stack-action"
+              type="button"
+              disabled
+            >
               <span id="stack-action-label">Start stack</span>
               <span class="action-arrow" aria-hidden="true">↗</span>
             </button>
@@ -118,19 +140,32 @@
               <article class="process-row" data-process-row="oculus">
                 <div class="process-glyph" aria-hidden="true">
                   <svg viewBox="0 0 32 32" role="img">
-                    <path d="M6.5 11.5h19l2.5 5.7-3 6.3-6.2-1.9h-5.6L7 23.5l-3-6.3 2.5-5.7Z" />
+                    <path
+                      d="M6.5 11.5h19l2.5 5.7-3 6.3-6.2-1.9h-5.6L7 23.5l-3-6.3 2.5-5.7Z"
+                    />
                     <path d="M11 17.2h2.7M18.3 17.2H21" />
                   </svg>
                 </div>
                 <div class="process-copy">
                   <div class="process-title">
                     <h3>Oculus</h3>
-                    <span class="mini-status" data-process-status="oculus">Stopped</span>
+                    <span class="mini-status" data-process-status="oculus"
+                      >Stopped</span
+                    >
                   </div>
                   <p>VR pose, gripper, and mobile-base control.</p>
-                  <p class="process-error" data-process-error="oculus" hidden></p>
+                  <p
+                    class="process-error"
+                    data-process-error="oculus"
+                    hidden
+                  ></p>
                 </div>
-                <button class="secondary-action" data-process-action="oculus" type="button" disabled>
+                <button
+                  class="secondary-action"
+                  data-process-action="oculus"
+                  type="button"
+                  disabled
+                >
                   Start
                 </button>
               </article>
@@ -139,29 +174,46 @@
                 <div class="process-glyph keyboard" aria-hidden="true">
                   <svg viewBox="0 0 32 32" role="img">
                     <rect x="4.5" y="8.5" width="23" height="15" rx="2" />
-                    <path d="M9 13h2m3 0h2m3 0h2m-12 4h2m3 0h2m3 0h2M11 20h10" />
+                    <path
+                      d="M9 13h2m3 0h2m3 0h2m-12 4h2m3 0h2m3 0h2M11 20h10"
+                    />
                   </svg>
                 </div>
                 <div class="process-copy">
                   <div class="process-title">
                     <h3>Keyboard</h3>
-                    <span class="mini-status" data-process-status="keyboard">Stopped</span>
+                    <span class="mini-status" data-process-status="keyboard"
+                      >Stopped</span
+                    >
                   </div>
                   <p>Global keyboard input for end-effector control.</p>
-                  <p class="process-error" data-process-error="keyboard" hidden></p>
+                  <p
+                    class="process-error"
+                    data-process-error="keyboard"
+                    hidden
+                  ></p>
                 </div>
-                <button class="secondary-action" data-process-action="keyboard" type="button" disabled>
+                <button
+                  class="secondary-action"
+                  data-process-action="keyboard"
+                  type="button"
+                  disabled
+                >
                   Start
                 </button>
               </article>
             </div>
 
             <p class="panel-footnote">
-              Starting a node does not activate it. Select the matching control mode to route its commands.
+              Starting a node does not activate it. Select the matching control
+              mode to route its commands.
             </p>
           </section>
 
-          <section class="panel orchestrator-panel" aria-labelledby="orchestrator-heading">
+          <section
+            class="panel orchestrator-panel"
+            aria-labelledby="orchestrator-heading"
+          >
             <div class="section-heading">
               <div>
                 <p class="eyebrow">03 · Command routing</p>
@@ -174,7 +226,12 @@
             </div>
 
             <div class="mode-list" role="group" aria-label="Orchestrator mode">
-              <button class="mode-option" data-orchestrator-mode="idle" type="button" disabled>
+              <button
+                class="mode-option"
+                data-orchestrator-mode="idle"
+                type="button"
+                disabled
+              >
                 <span class="mode-index">A</span>
                 <span>
                   <strong>Idle</strong>
@@ -210,7 +267,12 @@
                 </span>
                 <span class="mode-check" aria-hidden="true">●</span>
               </button>
-              <button class="mode-option" data-orchestrator-mode="oculus" type="button" disabled>
+              <button
+                class="mode-option"
+                data-orchestrator-mode="oculus"
+                type="button"
+                disabled
+              >
                 <span class="mode-index">D</span>
                 <span>
                   <strong>Oculus teleop</strong>
@@ -218,7 +280,12 @@
                 </span>
                 <span class="mode-check" aria-hidden="true">●</span>
               </button>
-              <button class="mode-option" data-orchestrator-mode="keyboard" type="button" disabled>
+              <button
+                class="mode-option"
+                data-orchestrator-mode="keyboard"
+                type="button"
+                disabled
+              >
                 <span class="mode-index">E</span>
                 <span>
                   <strong>Keyboard teleop</strong>
@@ -284,13 +351,27 @@
                   </div>
                   <span class="mini-status" id="replay-status">Ready</span>
                 </div>
-                <p>Play recorded command and mode channels on the selected runtime.</p>
+                <p>
+                  Play recorded command and mode channels on the selected
+                  runtime.
+                </p>
               </div>
-              <label class="replay-recording-label" for="replay-recording">Recording</label>
-              <select id="replay-recording" class="replay-recording-select" disabled>
+              <label class="replay-recording-label" for="replay-recording"
+                >Recording</label
+              >
+              <select
+                id="replay-recording"
+                class="replay-recording-select"
+                disabled
+              >
                 <option value="">No recordings available</option>
               </select>
-              <button class="secondary-action replay-action" id="replay-action" type="button" disabled>
+              <button
+                class="secondary-action replay-action"
+                id="replay-action"
+                type="button"
+                disabled
+              >
                 Play replay
               </button>
               <p class="data-tool-note" id="replay-detail">

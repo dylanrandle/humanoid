@@ -6,5 +6,7 @@ export function showToast(message) {
   window.clearTimeout(toastTimer);
   els.toastMessage.textContent = message;
   els.toast.hidden = false;
-  toastTimer = window.setTimeout(() => { els.toast.hidden = true; }, 5000);
+  toastTimer = window.setTimeout(() => {
+    els.toast.hidden = true;
+  }, 5000);
 }

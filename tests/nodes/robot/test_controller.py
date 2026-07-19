@@ -6,26 +6,29 @@ import pytest
 
 from humanoid.constants import Topic
 from humanoid.controllers.operational_space import ControlResult
+from humanoid.hardware.actuators.config import (
+    ActuatorControlMode,
+)
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
     RobotConfig,
     RobotJointCommand,
+    RobotName,
     RobotState,
     RobotToolCommand,
 )
-from humanoid.types.servo import ServoControlMode
 
 
 def _make_robot_config() -> RobotConfig:
     return RobotConfig(
-        name="panda",
+        name=RobotName.PANDA,
         tool_frame="panda_hand",
         home_position=np.zeros(7),
         rest_position=np.ones(7),
-        joint_idx_to_servo_id={i: i + 1 for i in range(7)},
-        servo_control_modes=dict.fromkeys(range(1, 8), ServoControlMode.POSITION),
+        actuator_control_modes={f"joint_{i}": ActuatorControlMode.POSITION for i in range(7)},
+        hardware=None,
     )
 
 
@@ -81,7 +84,7 @@ def _make_state():
         timestamp=0.0,
         joint_positions=np.arange(7, dtype=float),
         joint_velocities=np.zeros(7),
-        motor_temperatures=np.zeros(7),
+        actuator_temperatures=np.zeros(7),
     )
 
 

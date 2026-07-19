@@ -29,7 +29,7 @@ def _observation_from_q(q: np.ndarray) -> Observation:
         timestamp=0.0,
         joint_positions=q.copy(),
         joint_velocities=np.zeros_like(q),
-        motor_temperatures=np.zeros_like(q),
+        actuator_temperatures=np.zeros_like(q),
     )
     return Observation(robot_state=state)
 

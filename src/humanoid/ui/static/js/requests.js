@@ -27,7 +27,10 @@ export function runtimeRequest(snapshot, runtime, confirmHardware) {
   if (selectingReal && !confirmHardware(REAL_RUNTIME_CONFIRMATION)) return null;
   return {
     path: API.RUNTIME,
-    payload: { [PayloadKey.RUNTIME]: runtime, ...safetyPayload(snapshot, selectingReal) },
+    payload: {
+      [PayloadKey.RUNTIME]: runtime,
+      ...safetyPayload(snapshot, selectingReal),
+    },
   };
 }
 
@@ -43,15 +46,18 @@ export function processRequest(snapshot, name, confirmHardware) {
   const process = snapshot?.processes[name];
   if (!process) return null;
   const action = process.running ? ProcessAction.STOP : ProcessAction.START;
-  const startingRealStack = name === ProcessName.STACK
-    && action === ProcessAction.START
-    && snapshot.runtime === Runtime.REAL;
-  if (startingRealStack && !confirmHardware(REAL_STACK_CONFIRMATION)) return null;
+  const startingRealStack =
+    name === ProcessName.STACK &&
+    action === ProcessAction.START &&
+    snapshot.runtime === Runtime.REAL;
+  if (startingRealStack && !confirmHardware(REAL_STACK_CONFIRMATION))
+    return null;
   return {
     path: API.process(name, action),
-    payload: action === ProcessAction.START
-      ? safetyPayload(snapshot, startingRealStack)
-      : {},
+    payload:
+      action === ProcessAction.START
+        ? safetyPayload(snapshot, startingRealStack)
+        : {},
   };
 }
 
@@ -66,7 +72,8 @@ export function replayRequest(snapshot, recordingId, confirmHardware) {
   }
   if (!recordingId) return null;
   const replayingOnHardware = snapshot.runtime === Runtime.REAL;
-  if (replayingOnHardware && !confirmHardware(REAL_REPLAY_CONFIRMATION)) return null;
+  if (replayingOnHardware && !confirmHardware(REAL_REPLAY_CONFIRMATION))
+    return null;
   return {
     path: API.replay(ProcessAction.START),
     payload: {

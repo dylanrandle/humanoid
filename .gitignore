@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Node.js dependencies
+node_modules/
+
 # LCM Java types
 lcm-java
 

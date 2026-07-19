@@ -7,12 +7,15 @@ from humanoid.recording import (
     DEFAULT_RECORDING_ROOT,
     RECORDING_LOG_FILENAME,
     RECORDING_MANIFEST_FILENAME,
+    RECORDING_SCHEMA_VERSION,
     RecordingCatalog,
     RecordingError,
     serialize_robot_config,
 )
 from humanoid.types.robot import RobotName
 from humanoid.utils.paths import find_repo_root
+
+EXPECTED_GRIPPER_ACTUATOR_ID = 8
 
 
 def test_default_recording_root_is_anchored_to_repository():
@@ -30,6 +33,7 @@ def test_create_writes_robot_config_beside_exact_log_path(tmp_path):
     assert recording.manifest_path == recording.directory / RECORDING_MANIFEST_FILENAME
     manifest = json.loads(recording.manifest_path.read_text())
     assert manifest["recording_id"] == recording.id
+    assert manifest["schema_version"] == RECORDING_SCHEMA_VERSION
     assert manifest["robot"] == RobotName.PANDA
     assert manifest["robot_config"] == serialize_robot_config(config)
 
@@ -78,3 +82,27 @@ def test_serialized_config_distinguishes_equal_sized_robots():
     assert isinstance(elrobot_home, list)
     assert len(panda_home) == len(elrobot_home)
     assert panda != elrobot
+
+
+def test_serialized_config_includes_physical_actuator_details():
+    config = serialize_robot_config(ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE])
+    hardware = config["hardware"]
+
+    assert isinstance(hardware, dict)
+    actuators = hardware["actuators"]
+    assert isinstance(actuators, dict)
+    controllers = actuators["controllers"]
+    assert isinstance(controllers, dict)
+    assert "main" in controllers
+    joints = actuators["joints"]
+    assert isinstance(joints, dict)
+    gripper = joints["gripper_1"]
+    assert isinstance(gripper, dict)
+    assert gripper["actuator_id"] == EXPECTED_GRIPPER_ACTUATOR_ID
+    assert gripper["inverted"] is True
+
+
+def test_serialized_panda_config_has_no_physical_hardware():
+    config = serialize_robot_config(ROBOT_CONFIGS[RobotName.PANDA])
+
+    assert config["hardware"] is None

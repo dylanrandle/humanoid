@@ -27,7 +27,9 @@ const state = {
 
 function refresh() {
   if (state.refreshPromise) return state.refreshPromise;
-  state.refreshPromise = loadStatus().finally(() => { state.refreshPromise = null; });
+  state.refreshPromise = loadStatus().finally(() => {
+    state.refreshPromise = null;
+  });
   return state.refreshPromise;
 }
 
@@ -72,7 +74,11 @@ els.robotSelect.addEventListener("change", () => {
 });
 
 els.stackAction.addEventListener("click", () => {
-  const request = processRequest(state.snapshot, ProcessName.STACK, window.confirm);
+  const request = processRequest(
+    state.snapshot,
+    ProcessName.STACK,
+    window.confirm,
+  );
   if (!request) return;
   perform(ProcessName.STACK, () => post(request.path, request.payload));
 });
@@ -98,7 +104,11 @@ els.replayRecording.addEventListener("change", () => {
 });
 
 els.replayAction.addEventListener("click", () => {
-  const request = replayRequest(state.snapshot, els.replayRecording.value, window.confirm);
+  const request = replayRequest(
+    state.snapshot,
+    els.replayRecording.value,
+    window.confirm,
+  );
   if (!request) return;
   perform(BusyKey.REPLAY, () => post(request.path, request.payload));
 });
@@ -118,4 +128,6 @@ els.orchestratorButtons.forEach((button) => {
 });
 
 refresh();
-window.setInterval(() => { void refresh(); }, 1000);
+window.setInterval(() => {
+  void refresh();
+}, 1000);

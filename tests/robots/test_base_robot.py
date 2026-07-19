@@ -160,6 +160,23 @@ class TestGetFramePose:
             panda_robot.get_frame_pose("not_a_real_frame", panda_robot.config.home_position)
 
 
+class TestJointPositionFromQ:
+    def test_scalar_joint_reads_position_coordinate(self, panda_robot):
+        joint_idx = 0
+        joint = panda_robot.model.joints[joint_idx + 1]
+        q = pin.neutral(panda_robot.model)
+        q[joint.idx_q] = 0.5
+
+        assert panda_robot.joint_position_from_q(q, joint_idx) == pytest.approx(0.5)
+
+    def test_continuous_joint_decodes_cos_sin_coordinates(self, mobile_robot):
+        wheel_joint_idx = 1
+        angle = -0.7
+        q = mobile_robot.joint_positions_to_q({wheel_joint_idx: angle})
+
+        assert mobile_robot.joint_position_from_q(q, wheel_joint_idx) == pytest.approx(angle)
+
+
 class TestJointPositionsToQ:
     def test_empty_returns_neutral(self, panda_robot):
         q = panda_robot.joint_positions_to_q({})

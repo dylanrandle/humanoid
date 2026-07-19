@@ -39,12 +39,15 @@ def jog_joint(  # noqa: PLR0915
         robot_config: Robot configuration
         timeout_ms: Timeout in milliseconds for reading robot state
     """
-    if joint_idx not in robot_config.joint_idx_to_servo_id:
-        valid = sorted(robot_config.joint_idx_to_servo_id.keys())
+    robot = Robot(robot_config)
+    actuator_joint_indices = {
+        robot.joint_name_to_idx(joint_name) for joint_name in robot_config.actuator_control_modes
+    }
+    if joint_idx not in actuator_joint_indices:
+        valid = sorted(actuator_joint_indices)
         raise ValueError(f"Invalid joint index: {joint_idx}. Valid indices are: {valid}.")
 
-    robot = Robot(robot_config)
-    num_joints = len(robot_config.joint_idx_to_servo_id)
+    num_joints = len(actuator_joint_indices)
     position_idx = robot.joint_idx_to_position_idx(joint_idx)
 
     logger.info(f"Starting jog mode for joint {joint_idx}")
@@ -140,13 +143,13 @@ def main():
         epilog="""
 Examples:
   # Jog joint 0 using default step size
-  python -m humanoid.motions.jog --joint-idx 0
+  uv run python -m humanoid.robots.utils.jog_joint --joint-idx 0
 
   # Jog joint 2 using custom step size
-  python -m humanoid.motions.jog --joint-idx 2 --step-size 0.1
+  uv run python -m humanoid.robots.utils.jog_joint --joint-idx 2 --step-size 0.1
 
   # Jog joint 1 with custom publish rate
-  python -m humanoid.motions.jog --joint-idx 1 --rate 50
+  uv run python -m humanoid.robots.utils.jog_joint --joint-idx 1 --rate 50
         """,
     )
     parser.add_argument(

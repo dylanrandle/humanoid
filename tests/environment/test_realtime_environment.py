@@ -28,7 +28,7 @@ def _make_state(timestamp: float = 0.0) -> RobotState:
         timestamp=timestamp,
         joint_positions=np.arange(7, dtype=float),
         joint_velocities=np.zeros(7),
-        motor_temperatures=np.zeros(7),
+        actuator_temperatures=np.zeros(7),
     )
 
 

@@ -96,7 +96,8 @@ export const API = Object.freeze({
 
 function resolveRoute(route, parameters) {
   return Object.entries(parameters).reduce(
-    (result, [name, value]) => result.replace(`<${name}>`, encodeURIComponent(value)),
+    (result, [name, value]) =>
+      result.replace(`<${name}>`, encodeURIComponent(value)),
     route,
   );
 }

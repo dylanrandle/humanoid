@@ -80,19 +80,19 @@ class LCMConverter:
 
         Args:
             state: RobotState dataclass with timestamp, joint_positions, joint_velocities,
-                   and motor_temperatures arrays
+                   and actuator_temperatures arrays
 
         Returns:
             robot_state_t LCM type ready for transmission
         """
         lcm_state = robot_state_t()
         lcm_state.timestamp = int(state.timestamp * 1e9)  # Convert to nanoseconds
-        lcm_state.num_joints = len(state.motor_temperatures)
+        lcm_state.num_joints = len(state.actuator_temperatures)
         lcm_state.num_positions = len(state.joint_positions)
         lcm_state.num_velocities = len(state.joint_velocities)
         lcm_state.joint_positions = state.joint_positions.tolist()
         lcm_state.joint_velocities = state.joint_velocities.tolist()
-        lcm_state.motor_temperatures = state.motor_temperatures.tolist()
+        lcm_state.actuator_temperatures = state.actuator_temperatures.tolist()
 
         return lcm_state
 
@@ -108,13 +108,13 @@ class LCMConverter:
         """
         joint_positions = np.array(lcm_state.joint_positions)
         joint_velocities = np.array(lcm_state.joint_velocities)
-        motor_temperatures = np.array(lcm_state.motor_temperatures)
+        actuator_temperatures = np.array(lcm_state.actuator_temperatures)
 
         return RobotState(
             timestamp=lcm_state.timestamp / 1e9,  # Convert from nanoseconds
             joint_positions=joint_positions,
             joint_velocities=joint_velocities,
-            motor_temperatures=motor_temperatures,
+            actuator_temperatures=actuator_temperatures,
         )
 
     @staticmethod

@@ -31,7 +31,7 @@ def _obs(mode: Mode | None) -> Observation:
         timestamp=0.0,
         joint_positions=np.zeros(3),
         joint_velocities=np.zeros(3),
-        motor_temperatures=np.zeros(3),
+        actuator_temperatures=np.zeros(3),
     )
     return Observation(robot_state=state, mode=mode)
 

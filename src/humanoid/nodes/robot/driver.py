@@ -1,72 +1,89 @@
 """Robot hardware and simulation driver node."""
 
 import time
+from collections.abc import Callable
 
 import numpy as np
 import pinocchio as pin
 
 from humanoid.config import IS_SIMULATION, ROBOT_CONFIG
 from humanoid.constants import Topic
+from humanoid.hardware.actuators.config import ActuatorControlMode
+from humanoid.hardware.actuators.factory import create_actuator_system
+from humanoid.hardware.actuators.system import ActuatorSystem
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
-from humanoid.motors.base import MotorController
-from humanoid.motors.feetech.controller import FeetechMotorController
-from humanoid.motors.simulation import SimulatedMotorController
 from humanoid.nodes.base import Node
 from humanoid.robots.base import Robot
+from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotState
-from humanoid.types.servo import ServoControlMode
 
 logger = get_logger(__name__)
 
 DEFAULT_RATE_HZ = 500.0
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 0.25
 
 
 class RobotDriverNode(Node):
-    def __init__(self, robot_config: RobotConfig = ROBOT_CONFIG, rate_hz: float = DEFAULT_RATE_HZ):
+    def __init__(  # noqa: PLR0913 - hardware dependencies are intentionally injectable
+        self,
+        robot_config: RobotConfig = ROBOT_CONFIG,
+        rate_hz: float = DEFAULT_RATE_HZ,
+        actuator_system: ActuatorSystem | None = None,
+        runtime: Runtime | None = None,
+        command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
+        clock: Callable[[], float] = time.perf_counter,
+    ):
+        if command_timeout_seconds <= 0:
+            raise ValueError("Robot command timeout must be positive.")
         self.rate_hz = rate_hz
+        self.command_timeout_seconds = command_timeout_seconds
+        self._clock = clock
+        self._last_command_time: float | None = None
+        self._velocity_actuators_stopped = True
         self.subscriber = Subscriber(topics=[Topic.ROBOT_JOINT_COMMAND])
         self.publisher = Publisher()
 
-        # Build command routing from the selected robot configuration.
-        self.joint_idx_to_servo_id = robot_config.joint_idx_to_servo_id
-        self.servo_id_to_joint_idx = robot_config.servo_id_to_joint_idx
-        self.sorted_joint_indices = sorted(self.joint_idx_to_servo_id.keys())
-
-        # Load robot model to access joint limits
         self.robot = Robot(robot_config)
+        self.actuator_control_modes = robot_config.actuator_control_modes
+        self.actuator_joint_names = self.robot.actuator_joint_names
+        self.joint_indices = {
+            joint_name: self.robot.joint_name_to_idx(joint_name)
+            for joint_name in self.actuator_joint_names
+        }
+
         self.joint_lower_limits = self.robot.model.lowerPositionLimit
         self.joint_upper_limits = self.robot.model.upperPositionLimit
         self.joint_velocity_limits = self.robot.model.velocityLimit
 
-        # Store position/velocity controlled joints
-        self.position_controlled_joints: list[int] = []
-        self.velocity_controlled_joints: list[int] = []
-        for joint_idx, servo_id in self.joint_idx_to_servo_id.items():
-            control_mode = robot_config.servo_control_modes[servo_id]
-            if control_mode == ServoControlMode.POSITION:
-                self.position_controlled_joints.append(joint_idx)
-            elif control_mode == ServoControlMode.VELOCITY:
-                self.velocity_controlled_joints.append(joint_idx)
-            else:
-                raise ValueError(f"Unrecognized servo control mode: {control_mode}")
+        self.position_controlled_joints = [
+            joint_name
+            for joint_name in self.actuator_joint_names
+            if self.actuator_control_modes[joint_name] is ActuatorControlMode.POSITION
+        ]
+        self.velocity_controlled_joints = [
+            joint_name
+            for joint_name in self.actuator_joint_names
+            if self.actuator_control_modes[joint_name] is ActuatorControlMode.VELOCITY
+        ]
 
-        if IS_SIMULATION:
-            logger.info("Using simulated motor controller")
-            self.controller: MotorController = SimulatedMotorController(robot_config=robot_config)
-        else:
-            logger.info("Using Feetech motor controller")
-            self.controller: MotorController = FeetechMotorController(
-                servo_ids=robot_config.servo_ids,
-                inverted_servo_ids=robot_config.inverted_servo_ids,
+        selected_runtime = runtime
+        if selected_runtime is None:
+            selected_runtime = Runtime.SIM if IS_SIMULATION else Runtime.REAL
+        initial_positions = {
+            joint_name: self.robot.joint_position_from_q(
+                robot_config.home_position,
+                self.joint_indices[joint_name],
             )
-
-        self.controller.connect()
-
-        # Open-loop base-state echo: without an IMU we have no real measurement
-        # for the planar root joint, so we publish the most-recently-commanded
-        # root q in RobotState. Seed it at neutral until the first command.
+            for joint_name in self.actuator_joint_names
+        }
+        self.actuator_system = actuator_system or create_actuator_system(
+            selected_runtime,
+            self.actuator_control_modes,
+            robot_config.hardware.actuators if robot_config.hardware is not None else None,
+            initial_positions,
+        )
         self._root_q_slice = self.robot.get_root_q_slice()
         self._last_root_q: np.ndarray | None = (
             pin.neutral(self.robot.model)[self._root_q_slice].copy()
@@ -74,43 +91,67 @@ class RobotDriverNode(Node):
             else None
         )
 
-    def receive(self):
+        self.actuator_system.connect()
+
+    def receive(self) -> None:
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
         if command is None:
+            self._stop_if_command_stale()
             return
 
-        logger.debug(f"Received command: {command}")
+        logger.debug("Received command: %s", command)
         self._validate_command_dimensions(command)
 
-        # Cache the planar root joint's commanded q so we can echo it back in
-        # the published RobotState (no hardware feedback for the base).
         if self._root_q_slice is not None:
             self._last_root_q = command.joint_positions[self._root_q_slice].copy()
 
-        # Clamp joint positions to respect limits
         clamped_positions = np.clip(
-            command.joint_positions, self.joint_lower_limits, self.joint_upper_limits
+            command.joint_positions,
+            self.joint_lower_limits,
+            self.joint_upper_limits,
         )
-
-        positions = {}
-        for joint_idx in self.position_controlled_joints:
-            servo_id = self.joint_idx_to_servo_id[joint_idx]
-            position_idx = self.robot.joint_idx_to_position_idx(joint_idx)
-            positions[servo_id] = float(clamped_positions[position_idx])
-
-        velocities = {}
-        if command.joint_velocities is not None:
-            # Clamp joint velocities to respect limits
-            clamped_velocities = np.clip(
-                command.joint_velocities, -self.joint_velocity_limits, self.joint_velocity_limits
+        positions = {
+            joint_name: float(
+                clamped_positions[
+                    self.robot.joint_idx_to_position_idx(self.joint_indices[joint_name])
+                ]
             )
-            for joint_idx in self.velocity_controlled_joints:
-                servo_id = self.joint_idx_to_servo_id[joint_idx]
-                velocity_idx = self.robot.joint_idx_to_velocity_idx(joint_idx)
-                velocities[servo_id] = float(clamped_velocities[velocity_idx])
+            for joint_name in self.position_controlled_joints
+        }
 
-        self.controller.write_position(positions)
-        self.controller.write_velocity(velocities)
+        clamped_velocities = (
+            np.clip(
+                command.joint_velocities,
+                -self.joint_velocity_limits,
+                self.joint_velocity_limits,
+            )
+            if command.joint_velocities is not None
+            else np.zeros_like(self.joint_velocity_limits)
+        )
+        velocities = {
+            joint_name: float(
+                clamped_velocities[
+                    self.robot.joint_idx_to_velocity_idx(self.joint_indices[joint_name])
+                ]
+            )
+            for joint_name in self.velocity_controlled_joints
+        }
+
+        self.actuator_system.write_positions(positions)
+        self.actuator_system.write_velocities(velocities)
+        self._last_command_time = self._clock()
+        self._velocity_actuators_stopped = not any(velocities.values())
+
+    def _stop_if_command_stale(self) -> None:
+        if (
+            self._last_command_time is None
+            or self._velocity_actuators_stopped
+            or self._clock() - self._last_command_time < self.command_timeout_seconds
+        ):
+            return
+        logger.warning("Robot command watchdog stopped velocity-controlled actuators")
+        self.actuator_system.stop()
+        self._velocity_actuators_stopped = True
 
     def _validate_command_dimensions(self, command: RobotJointCommand) -> None:
         expected_positions = len(self.joint_lower_limits)
@@ -137,36 +178,59 @@ class RobotDriverNode(Node):
         if not np.isfinite(command.joint_velocities).all():
             raise ValueError("Robot joint command velocities must all be finite.")
 
-    def publish(self):
-        positions = self.controller.read_all_positions()
-        velocities = self.controller.read_all_velocities()
-        temperatures = self.controller.read_all_temperatures()
-
+    def publish(self) -> None:
+        actuator_states = self.actuator_system.read_states()
+        missing_positions = [
+            joint_name
+            for joint_name in self.actuator_joint_names
+            if joint_name not in actuator_states or actuator_states[joint_name].position is None
+        ]
+        missing_velocities = [
+            joint_name
+            for joint_name in self.actuator_joint_names
+            if joint_name not in actuator_states or actuator_states[joint_name].velocity is None
+        ]
+        if missing_positions or missing_velocities:
+            details = []
+            if missing_positions:
+                details.append(f"positions: {', '.join(missing_positions)}")
+            if missing_velocities:
+                details.append(f"velocities: {', '.join(missing_velocities)}")
+            raise RuntimeError(f"Incomplete actuator feedback ({'; '.join(details)}).")
         joint_idx_to_position = {
-            self.servo_id_to_joint_idx[sid]: pos for sid, pos in positions.items()
+            self.joint_indices[joint_name]: state.position
+            for joint_name, state in actuator_states.items()
+            if state.position is not None
         }
         joint_idx_to_velocity = {
-            self.servo_id_to_joint_idx[sid]: vel for sid, vel in velocities.items()
+            self.joint_indices[joint_name]: state.velocity
+            for joint_name, state in actuator_states.items()
+            if state.velocity is not None
         }
-
-        motor_temperatures = np.array(
+        actuator_temperatures = np.array(
             [
-                temperatures.get(self.joint_idx_to_servo_id[joint_idx], 0.0)
-                for joint_idx in self.sorted_joint_indices
+                (
+                    actuator_states[joint_name].temperature
+                    if joint_name in actuator_states
+                    and actuator_states[joint_name].temperature is not None
+                    else 0.0
+                )
+                for joint_name in self.actuator_joint_names
             ]
         )
 
         q = self.robot.joint_positions_to_q(joint_idx_to_position)
+        v = self.robot.joint_velocities_to_v(joint_idx_to_velocity)
         if self._root_q_slice is not None and self._last_root_q is not None:
             q[self._root_q_slice] = self._last_root_q
 
         robot_state = RobotState(
             timestamp=time.perf_counter(),
             joint_positions=q,
-            joint_velocities=self.robot.joint_velocities_to_v(joint_idx_to_velocity),
-            motor_temperatures=motor_temperatures,
+            joint_velocities=v,
+            actuator_temperatures=actuator_temperatures,
         )
-        logger.debug(f"Measured state: {robot_state}")
+        logger.debug("Measured state: %s", robot_state)
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
 
     def setup(self) -> None:
@@ -177,11 +241,16 @@ class RobotDriverNode(Node):
         self.publish()
 
     def on_close(self) -> None:
-        self.subscriber.close()
-        self.controller.disconnect()
+        try:
+            self.actuator_system.stop()
+        finally:
+            try:
+                self.subscriber.close()
+            finally:
+                self.actuator_system.disconnect()
 
 
-def main():
+def main() -> None:
     driver = RobotDriverNode()
     driver.run()
 

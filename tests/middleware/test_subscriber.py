@@ -39,7 +39,7 @@ def _make_state():
         timestamp=2.0,
         joint_positions=np.array([0.1, 0.2]),
         joint_velocities=np.array([0.3, 0.4]),
-        motor_temperatures=np.array([30.0, 31.0]),
+        actuator_temperatures=np.array([30.0, 31.0]),
     )
 
 
@@ -105,7 +105,7 @@ class TestSubscriber:
         result = sub.receive(Topic.ROBOT_STATE, timeout=10)
         assert isinstance(result, RobotState)
         np.testing.assert_allclose(result.joint_positions, state.joint_positions)
-        np.testing.assert_allclose(result.motor_temperatures, state.motor_temperatures)
+        np.testing.assert_allclose(result.actuator_temperatures, state.actuator_temperatures)
 
     def test_handle_message_decodes_each_supported_type(self, mock_lcm):
         sub = Subscriber(
@@ -176,7 +176,7 @@ class TestSubscriber:
             timestamp=99.0,
             joint_positions=np.array([9.0, 9.0]),
             joint_velocities=np.array([9.0, 9.0]),
-            motor_temperatures=np.array([99.0, 99.0]),
+            actuator_temperatures=np.array([99.0, 99.0]),
         )
 
         sub._handle_message(

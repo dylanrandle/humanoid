@@ -15,13 +15,20 @@ export function render(snapshot, busy, elements) {
   const processes = snapshot.processes;
   const stack = processes[ProcessName.STACK];
   const stackActive = stack.running;
-  const replayActive = snapshot.replay.running || processes[ProcessName.REPLAY].running;
+  const replayActive =
+    snapshot.replay.running || processes[ProcessName.REPLAY].running;
   const controlsReady = stackActive && snapshot.orchestrator.connected;
-  const anyRunning = Object.values(processes).some((process) => process.running);
-  const configurationBusy = busy.has(BusyKey.RUNTIME) || busy.has(BusyKey.ROBOT);
+  const anyRunning = Object.values(processes).some(
+    (process) => process.running,
+  );
+  const configurationBusy =
+    busy.has(BusyKey.RUNTIME) || busy.has(BusyKey.ROBOT);
 
   elements.robotName.textContent = formatRobotName(snapshot.robot);
-  elements.systemState.classList.toggle("online", controlsReady || replayActive);
+  elements.systemState.classList.toggle(
+    "online",
+    controlsReady || replayActive,
+  );
   elements.systemStateLabel.textContent = systemStateLabel(
     stack.running,
     replayActive,
@@ -36,12 +43,22 @@ export function render(snapshot, busy, elements) {
   }
   renderRobotSelector(elements.robotSelect, snapshot.robots, snapshot.robot);
   elements.robotSelect.disabled = anyRunning || configurationBusy;
-  elements.configurationLockNote.textContent = anyRunning ? "Locked while active" : "Unlocked";
-  elements.runtimeFootnote.textContent = snapshot.runtime === Runtime.SIM
-    ? "Simulation uses the in-process motor model and does not command physical servos."
-    : "Real runtime can command physical servos. Clear the workspace before starting.";
+  elements.configurationLockNote.textContent = anyRunning
+    ? "Locked while active"
+    : "Unlocked";
+  elements.runtimeFootnote.textContent =
+    snapshot.runtime === Runtime.SIM
+      ? "Simulation does not command physical hardware."
+      : "Real runtime can command physical servos. Clear the workspace before starting.";
 
-  renderStack(stack, controlsReady, replayActive, snapshot.runtime, busy, elements);
+  renderStack(
+    stack,
+    controlsReady,
+    replayActive,
+    snapshot.runtime,
+    busy,
+    elements,
+  );
   for (const name of TELEOP_PROCESSES) {
     renderProcess(name, processes[name], controlsReady, busy, elements);
   }
@@ -59,14 +76,18 @@ export function render(snapshot, busy, elements) {
 
 function renderLogging(logging, controlsReady, busy, elements) {
   const isBusy = busy.has(BusyKey.LOGGING);
-  const active = logging.state === LoggingState.STARTING
-    || logging.state === LoggingState.RUNNING;
+  const active =
+    logging.state === LoggingState.STARTING ||
+    logging.state === LoggingState.RUNNING;
 
   for (const button of elements.loggingButtons) {
     const startsLogging = button.dataset.loggingAction === "start";
-    button.disabled = !controlsReady || isBusy || (
-      startsLogging ? active || logging.state === LoggingState.STOPPING : !active
-    );
+    button.disabled =
+      !controlsReady ||
+      isBusy ||
+      (startsLogging
+        ? active || logging.state === LoggingState.STOPPING
+        : !active);
   }
 
   const labels = {
@@ -85,24 +106,39 @@ function renderLogging(logging, controlsReady, busy, elements) {
   } else if (logging.state === LoggingState.STARTING) {
     elements.loggingDetail.textContent = "Starting lcm-logger…";
   } else if (logging.state === LoggingState.STOPPING) {
-    elements.loggingDetail.textContent = "Stopping and flushing the current log…";
+    elements.loggingDetail.textContent =
+      "Stopping and flushing the current log…";
   } else if (logging.state === LoggingState.FAILED) {
     elements.loggingDetail.textContent = "Data logging is unavailable.";
   } else {
-    elements.loggingDetail.textContent = "Logs are written to the project logs directory.";
+    elements.loggingDetail.textContent =
+      "Logs are written to the project logs directory.";
   }
 
   const failed = logging.state === LoggingState.FAILED;
   elements.loggingError.hidden = !failed;
-  elements.loggingError.textContent = failed ? logging.error || "Data logging failed." : "";
+  elements.loggingError.textContent = failed
+    ? logging.error || "Data logging failed."
+    : "";
 }
 
-function renderStack(stack, controlsReady, replayActive, runtime, busy, elements) {
+function renderStack(
+  stack,
+  controlsReady,
+  replayActive,
+  runtime,
+  busy,
+  elements,
+) {
   const running = stack.running;
   elements.stackLight.classList.toggle("online", running);
   elements.stackAction.classList.toggle("stop", running);
-  elements.stackAction.classList.toggle("real-start", !running && runtime === Runtime.REAL);
-  elements.stackAction.disabled = busy.has(ProcessName.STACK) || (!running && replayActive);
+  elements.stackAction.classList.toggle(
+    "real-start",
+    !running && runtime === Runtime.REAL,
+  );
+  elements.stackAction.disabled =
+    busy.has(ProcessName.STACK) || (!running && replayActive);
 
   if (busy.has(ProcessName.STACK)) {
     elements.stackStatus.textContent = running ? "Stopping" : "Starting";
@@ -110,21 +146,23 @@ function renderStack(stack, controlsReady, replayActive, runtime, busy, elements
     elements.stackActionLabel.textContent = "Working…";
   } else if (running && !controlsReady) {
     elements.stackStatus.textContent = "Starting";
-    elements.stackDetail.textContent = "Waiting for robot state and orchestrator";
+    elements.stackDetail.textContent =
+      "Waiting for robot state and orchestrator";
     elements.stackActionLabel.textContent = "Stop stack";
   } else if (running) {
     elements.stackStatus.textContent = "Running";
     elements.stackDetail.textContent = `PID ${stack.pid} · ${formatUptime(stack.uptime_seconds)}`;
     elements.stackActionLabel.textContent = "Stop stack";
   } else {
-    elements.stackStatus.textContent = stack.exit_code && stack.exit_code !== 0
-      ? `Exited (${stack.exit_code})`
-      : "Stopped";
-    elements.stackDetail.textContent = stack.last_output
-      || `Ready in ${runtime === Runtime.SIM ? "simulation" : "real"} mode`;
-    elements.stackActionLabel.textContent = runtime === Runtime.REAL
-      ? "Start real stack"
-      : "Start stack";
+    elements.stackStatus.textContent =
+      stack.exit_code && stack.exit_code !== 0
+        ? `Exited (${stack.exit_code})`
+        : "Stopped";
+    elements.stackDetail.textContent =
+      stack.last_output ||
+      `Ready in ${runtime === Runtime.SIM ? "simulation" : "real"} mode`;
+    elements.stackActionLabel.textContent =
+      runtime === Runtime.REAL ? "Start real stack" : "Start stack";
   }
 }
 
@@ -132,26 +170,33 @@ function renderReplay(snapshot, anyRunning, replayActive, busy, elements) {
   const replay = snapshot.replay;
   const isBusy = busy.has(BusyKey.REPLAY);
   renderRecordingSelector(elements.replayRecording, snapshot.recordings);
-  const selectedRecording = snapshot.recordings.find(
-    (recording) => recording.id === elements.replayRecording.value,
-  ) || null;
+  const selectedRecording =
+    snapshot.recordings.find(
+      (recording) => recording.id === elements.replayRecording.value,
+    ) || null;
   const compatible = selectedRecording?.robot === snapshot.robot;
 
-  elements.replayRecording.disabled = replayActive || isBusy || snapshot.recordings.length === 0;
+  elements.replayRecording.disabled =
+    replayActive || isBusy || snapshot.recordings.length === 0;
   elements.replayAction.textContent = isBusy
-    ? replayActive ? "Stopping…" : "Starting…"
-    : replayActive ? "Stop replay" : "Play replay";
-  elements.replayAction.disabled = isBusy || (
-    !replayActive
-    && (!selectedRecording || !compatible || anyRunning)
-  );
+    ? replayActive
+      ? "Stopping…"
+      : "Starting…"
+    : replayActive
+      ? "Stop replay"
+      : "Play replay";
+  elements.replayAction.disabled =
+    isBusy ||
+    (!replayActive && (!selectedRecording || !compatible || anyRunning));
 
   if (replayActive) {
     elements.replayStatus.textContent = "Playing";
-    elements.replayDetail.textContent = "Publishing recorded command and mode channels.";
+    elements.replayDetail.textContent =
+      "Publishing recorded command and mode channels.";
   } else if (replay.outcome === ReplayOutcome.COMPLETED) {
     elements.replayStatus.textContent = "Complete";
-    elements.replayDetail.textContent = "Replay finished. Select Play replay to run it again.";
+    elements.replayDetail.textContent =
+      "Replay finished. Select Play replay to run it again.";
   } else if (replay.outcome === ReplayOutcome.STOPPED) {
     elements.replayStatus.textContent = "Stopped";
     elements.replayDetail.textContent = "Replay was stopped by the operator.";
@@ -160,16 +205,19 @@ function renderReplay(snapshot, anyRunning, replayActive, busy, elements) {
     elements.replayDetail.textContent = "Replay stopped before completing.";
   } else if (anyRunning) {
     elements.replayStatus.textContent = "Unavailable";
-    elements.replayDetail.textContent = "Stop the stack and teleop nodes before replaying.";
+    elements.replayDetail.textContent =
+      "Stop the stack and teleop nodes before replaying.";
   } else if (snapshot.recordings.length === 0) {
     elements.replayStatus.textContent = "Unavailable";
-    elements.replayDetail.textContent = "Create a recording before starting replay.";
+    elements.replayDetail.textContent =
+      "Create a recording before starting replay.";
   } else if (selectedRecording && !compatible) {
     elements.replayStatus.textContent = "Incompatible";
     elements.replayDetail.textContent = `Select the ${formatRobotName(selectedRecording.robot)} robot.`;
   } else if (snapshot.runtime === Runtime.REAL) {
     elements.replayStatus.textContent = "Hardware";
-    elements.replayDetail.textContent = "Replay will command real hardware after confirmation.";
+    elements.replayDetail.textContent =
+      "Replay will command real hardware after confirmation.";
   } else {
     elements.replayStatus.textContent = "Ready";
     elements.replayDetail.textContent = selectedRecording
@@ -179,7 +227,9 @@ function renderReplay(snapshot, anyRunning, replayActive, busy, elements) {
 
   const failed = !replayActive && replay.outcome === ReplayOutcome.FAILED;
   elements.replayError.hidden = !failed;
-  elements.replayError.textContent = failed ? replay.last_output || "Replay failed." : "";
+  elements.replayError.textContent = failed
+    ? replay.last_output || "Replay failed."
+    : "";
 }
 
 function renderProcess(name, process, controlsReady, busy, rootElements) {
@@ -188,12 +238,21 @@ function renderProcess(name, process, controlsReady, busy, rootElements) {
 
   elements.row.classList.toggle("running", process.running);
   elements.status.textContent = isBusy
-    ? process.running ? "Stopping" : "Starting"
-    : process.running ? "Running" : "Stopped";
-  elements.action.textContent = isBusy ? "Working…" : process.running ? "Stop" : "Start";
+    ? process.running
+      ? "Stopping"
+      : "Starting"
+    : process.running
+      ? "Running"
+      : "Stopped";
+  elements.action.textContent = isBusy
+    ? "Working…"
+    : process.running
+      ? "Stop"
+      : "Start";
   elements.action.disabled = isBusy || (!process.running && !controlsReady);
 
-  const failed = !process.running && process.exit_code !== null && process.exit_code !== 0;
+  const failed =
+    !process.running && process.exit_code !== null && process.exit_code !== 0;
   elements.error.hidden = !failed;
   elements.error.textContent = failed
     ? process.last_output || `Exited with code ${process.exit_code}`
@@ -209,8 +268,13 @@ function renderOrchestrator(
   elements,
 ) {
   const mode = orchestrator[PayloadKey.MODE];
-  const preset = orchestrator[PayloadKey.PARAMETERS][OrchestratorParameter.PRESET] || null;
-  elements.activeMode.textContent = orchestratorLabel(mode, preset, stackActive);
+  const preset =
+    orchestrator[PayloadKey.PARAMETERS][OrchestratorParameter.PRESET] || null;
+  elements.activeMode.textContent = orchestratorLabel(
+    mode,
+    preset,
+    stackActive,
+  );
   elements.modePulse.classList.toggle("online", Boolean(mode));
 
   for (const button of elements.orchestratorButtons) {
@@ -219,25 +283,36 @@ function renderOrchestrator(
     const active = requestedPreset
       ? requestedMode === Mode.HOMING && requestedPreset === preset
       : preset === null && requestedMode === mode;
-    const teleopUnavailable = TELEOP_PROCESSES.includes(requestedMode)
-      && !processes[requestedMode].running;
+    const teleopUnavailable =
+      TELEOP_PROCESSES.includes(requestedMode) &&
+      !processes[requestedMode].running;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
-    button.disabled = !controlsReady || busy.has(BusyKey.ORCHESTRATOR) || teleopUnavailable;
+    button.disabled =
+      !controlsReady || busy.has(BusyKey.ORCHESTRATOR) || teleopUnavailable;
   }
 }
 
-export function renderDisconnected(message = "Check the start process", elements) {
+export function renderDisconnected(
+  message = "Check the start process",
+  elements,
+) {
   elements.systemState.classList.remove("online");
   elements.systemStateLabel.textContent = "Console disconnected";
   elements.stackLight.classList.remove("online");
   elements.stackStatus.textContent = "Unavailable";
   elements.stackDetail.textContent = message;
   elements.stackAction.disabled = true;
-  elements.runtimeButtons.forEach((button) => { button.disabled = true; });
+  elements.runtimeButtons.forEach((button) => {
+    button.disabled = true;
+  });
   elements.robotSelect.disabled = true;
-  Object.values(elements.processes).forEach(({ action }) => { action.disabled = true; });
-  elements.loggingButtons.forEach((button) => { button.disabled = true; });
+  Object.values(elements.processes).forEach(({ action }) => {
+    action.disabled = true;
+  });
+  elements.loggingButtons.forEach((button) => {
+    button.disabled = true;
+  });
   elements.loggingStatus.textContent = "Unavailable";
   elements.loggingDetail.textContent = "Reconnect to view data logging status.";
   elements.loggingError.hidden = true;
@@ -246,18 +321,24 @@ export function renderDisconnected(message = "Check the start process", elements
   elements.replayStatus.textContent = "Unavailable";
   elements.replayDetail.textContent = "Reconnect to view replay status.";
   elements.replayError.hidden = true;
-  elements.orchestratorButtons.forEach((button) => { button.disabled = true; });
+  elements.orchestratorButtons.forEach((button) => {
+    button.disabled = true;
+  });
 }
 
 function renderRecordingSelector(select, recordings) {
   const current = select.value;
   const expectedValues = ["", ...recordings.map((recording) => recording.id)];
   const currentValues = [...select.options].map((option) => option.value);
-  if (currentValues.length !== expectedValues.length
-    || currentValues.some((value, index) => value !== expectedValues[index])) {
+  if (
+    currentValues.length !== expectedValues.length ||
+    currentValues.some((value, index) => value !== expectedValues[index])
+  ) {
     const placeholder = select.ownerDocument.createElement("option");
     placeholder.value = "";
-    placeholder.textContent = recordings.length ? "Select a recording" : "No recordings available";
+    placeholder.textContent = recordings.length
+      ? "Select a recording"
+      : "No recordings available";
     const options = recordings.map((recording) => {
       const option = select.ownerDocument.createElement("option");
       option.value = recording.id;
@@ -266,13 +347,17 @@ function renderRecordingSelector(select, recordings) {
     });
     select.replaceChildren(placeholder, ...options);
   }
-  select.value = recordings.some((recording) => recording.id === current) ? current : "";
+  select.value = recordings.some((recording) => recording.id === current)
+    ? current
+    : "";
 }
 
 function renderRobotSelector(select, robots, selectedRobot) {
   const currentRobots = [...select.options].map((option) => option.value);
-  if (currentRobots.length !== robots.length
-    || currentRobots.some((robot, index) => robot !== robots[index])) {
+  if (
+    currentRobots.length !== robots.length ||
+    currentRobots.some((robot, index) => robot !== robots[index])
+  ) {
     const options = robots.map((robot) => {
       const option = select.ownerDocument.createElement("option");
       option.value = robot;

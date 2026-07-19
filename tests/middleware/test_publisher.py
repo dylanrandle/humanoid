@@ -44,7 +44,7 @@ def _make_state():
         timestamp=2.0,
         joint_positions=np.array([0.1, 0.2]),
         joint_velocities=np.array([0.3, 0.4]),
-        motor_temperatures=np.array([30.0, 31.0]),
+        actuator_temperatures=np.array([30.0, 31.0]),
     )
 
 
@@ -98,7 +98,7 @@ class TestPublisher:
         channel, data_bytes = mock_lcm.publish.call_args[0]
         assert channel == Topic.ROBOT_STATE.value
         recovered = LCMConverter.robot_state_from_lcm(robot_state_t.decode(data_bytes))
-        np.testing.assert_allclose(recovered.motor_temperatures, state.motor_temperatures)
+        np.testing.assert_allclose(recovered.actuator_temperatures, state.actuator_temperatures)
 
     def test_publish_tool_command(self, mock_lcm):
         publisher = Publisher()

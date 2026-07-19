@@ -77,7 +77,8 @@ def _api_routes() -> str:
 
 function resolveRoute(route, parameters) {
   return Object.entries(parameters).reduce(
-    (result, [name, value]) => result.replace(`<${name}>`, encodeURIComponent(value)),
+    (result, [name, value]) =>
+      result.replace(`<${name}>`, encodeURIComponent(value)),
     route,
   );
 }

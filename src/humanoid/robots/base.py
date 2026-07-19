@@ -149,6 +149,22 @@ class Robot:
         self.collision_data = pin.GeometryData(self.collision_model)
         self.visual_data = pin.GeometryData(self.visual_model)
 
+        self._joint_name_to_idx = {
+            str(self.model.names[model_idx]): model_idx - 1
+            for model_idx in range(1, self.model.njoints)
+        }
+        self._validate_actuator_configuration()
+
+    def _validate_actuator_configuration(self) -> None:
+        """Validate logical controlled joints and optional physical bindings."""
+        config = self.config
+        missing_actuator_joints = (
+            set(config.actuator_control_modes) - self._joint_name_to_idx.keys()
+        )
+        if missing_actuator_joints:
+            missing = ", ".join(sorted(missing_actuator_joints))
+            raise ValueError(f"Actuator joints not found in the robot model: {missing}")
+
     @property
     def config(self) -> RobotConfig:
         """Get the robot configuration.
@@ -202,6 +218,14 @@ class Robot:
             List of joint names (excluding the universe joint)
         """
         return [self.model.names[i] for i in range(1, self.model.njoints)]
+
+    @property
+    def actuator_joint_names(self) -> list[str]:
+        """Configured actuator joints in model order."""
+        return sorted(
+            self.config.actuator_control_modes,
+            key=self.joint_name_to_idx,
+        )
 
     def print_info(self) -> None:
         """Print information about the robot model."""
@@ -259,15 +283,26 @@ class Robot:
         frame_id = self.get_frame_id(frame_name)
         return self.data.oMf[frame_id]
 
+    def joint_position_from_q(self, q: np.ndarray, joint_idx: int) -> float:
+        """Decode one actuator position from a Pinocchio configuration vector."""
+        joint = self.model.joints[joint_idx + 1]
+        if joint.nq == REVOLUTE_UNBOUNDED_NQ and joint.nv == REVOLUTE_UNBOUNDED_NV:
+            return float(np.arctan2(q[joint.idx_q + 1], q[joint.idx_q]))
+        if joint.nq == 1:
+            return float(q[joint.idx_q])
+        raise ValueError(
+            f"Joint {self.model.names[joint_idx + 1]!r} does not have a scalar actuator position."
+        )
+
     def joint_positions_to_q(self, joint_idx_to_position: dict[int, float]) -> np.ndarray:
-        """Convert servo positions to a Pinocchio configuration vector q.
+        """Convert actuator positions to a Pinocchio configuration vector q.
 
         Joints with no entry (e.g., a planar base joint added as root_joint) are left
         at neutral. Continuous (revolute-unbounded) joints have nq=2; their angle θ is
         stored as [cos(θ), sin(θ)].
 
         Args:
-            joint_idx_to_position: 0-based joint index → servo position (rad)
+            joint_idx_to_position: 0-based joint index → actuator position (rad)
 
         Returns:
             q: Configuration vector of length model.nq
@@ -283,12 +318,12 @@ class Robot:
         return q
 
     def joint_velocities_to_v(self, joint_idx_to_velocity: dict[int, float]) -> np.ndarray:
-        """Convert servo velocities to a Pinocchio velocity vector v.
+        """Convert actuator velocities to a Pinocchio velocity vector v.
 
         Joints with no entry (e.g., a planar base joint) are left at zero.
 
         Args:
-            joint_idx_to_velocity: 0-based joint index → servo velocity (rad/s)
+            joint_idx_to_velocity: 0-based joint index → actuator velocity (rad/s)
 
         Returns:
             v: Velocity vector of length model.nv
@@ -326,6 +361,19 @@ class Robot:
             Starting index of this joint's position coordinates in q
         """
         return self.model.joints[joint_idx + 1].idx_q
+
+    def joint_name_to_idx(self, joint_name: str) -> int:
+        """Return the zero-based Pinocchio joint index for a URDF joint name."""
+        try:
+            return self._joint_name_to_idx[joint_name]
+        except KeyError as exc:
+            raise ValueError(f"Joint {joint_name!r} not found in the robot model.") from exc
+
+    def joint_idx_to_name(self, joint_idx: int) -> str:
+        """Return the URDF joint name for a zero-based Pinocchio joint index."""
+        if not 0 <= joint_idx < self.model.njoints - 1:
+            raise ValueError(f"Joint index {joint_idx} is outside the robot model.")
+        return str(self.model.names[joint_idx + 1])
 
     def joint_idx_to_velocity_idx(self, joint_idx: int) -> int:
         """Return the index into the velocity vector v for the given joint.

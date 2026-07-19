@@ -13,12 +13,17 @@ export const els = {
   stackDetail: document.querySelector("#stack-detail"),
   stackAction: document.querySelector("#stack-action"),
   stackActionLabel: document.querySelector("#stack-action-label"),
-  processes: Object.fromEntries(TELEOP_PROCESSES.map((name) => [name, {
-    row: document.querySelector(`[data-process-row="${name}"]`),
-    status: document.querySelector(`[data-process-status="${name}"]`),
-    error: document.querySelector(`[data-process-error="${name}"]`),
-    action: document.querySelector(`[data-process-action="${name}"]`),
-  }])),
+  processes: Object.fromEntries(
+    TELEOP_PROCESSES.map((name) => [
+      name,
+      {
+        row: document.querySelector(`[data-process-row="${name}"]`),
+        status: document.querySelector(`[data-process-status="${name}"]`),
+        error: document.querySelector(`[data-process-error="${name}"]`),
+        action: document.querySelector(`[data-process-action="${name}"]`),
+      },
+    ]),
+  ),
   loggingButtons: [...document.querySelectorAll("[data-logging-action]")],
   loggingStatus: document.querySelector("#logging-status"),
   loggingDetail: document.querySelector("#logging-detail"),
@@ -28,7 +33,9 @@ export const els = {
   replayDetail: document.querySelector("#replay-detail"),
   replayError: document.querySelector("#replay-error"),
   replayAction: document.querySelector("#replay-action"),
-  orchestratorButtons: [...document.querySelectorAll("[data-orchestrator-mode]")],
+  orchestratorButtons: [
+    ...document.querySelectorAll("[data-orchestrator-mode]"),
+  ],
   activeMode: document.querySelector("#active-mode"),
   modePulse: document.querySelector(".mode-pulse"),
   toast: document.querySelector("#toast"),

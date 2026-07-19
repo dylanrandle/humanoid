@@ -5,7 +5,7 @@ A Python framework for multi-robot control and teleoperation in simulation and o
 ## Features
 
 - **Multi-robot support**: Compatible with SO101, ElRobot, and Panda robot platforms
-- **Motor control**: Support for Feetech servo motors with configuration utilities
+- **Actuator control**: Runtime-independent joint control with optional typed Feetech hardware
 - **Visualization**: Real-time robot visualization using MeshCat
 - **LCM middleware**: Lightweight Communications and Marshalling for inter-process communication
 - **Operational space control**: Advanced control algorithms for precise robot manipulation
@@ -15,7 +15,6 @@ A Python framework for multi-robot control and teleoperation in simulation and o
 ## Requirements
 
 - Python 3.13 or higher
-- [Node.js](https://nodejs.org/) 22 or higher (required for UI tests)
 - [uv](https://github.com/astral-sh/uv) package manager
 
 ## Installation
@@ -26,25 +25,28 @@ A Python framework for multi-robot control and teleoperation in simulation and o
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. **Install Node.js 22 or higher** for UI development and tests. The expected major
-   version is recorded in `.node-version` for compatible version managers.
-
-3. **Clone the repository**:
+2. **Clone the repository**:
 
    ```bash
    git clone <repository-url>
    cd humanoid
    ```
 
-4. **Install dependencies**:
+3. **Install the Python dependencies**:
 
    ```bash
    uv sync
    ```
 
-5. **Install development dependencies** (optional):
+4. **Install development dependencies** (optional):
+
+   Node.js and `npm ci` are only required when developing the web UI, formatting
+   static assets, or running the complete verification suite. The expected Node.js
+   major version is recorded in `.node-version` for compatible version managers.
+
    ```bash
    uv sync --group dev
+   npm ci
    ```
 
 ## Usage
@@ -82,41 +84,15 @@ required.
 
 Oculus device setup is documented in the [oculus_reader](https://github.com/rail-berkeley/oculus_reader) repository.
 
-### Motor Utilities
-
-The package includes several utilities for working with Feetech servo motors:
-
-**Scan for connected motors**:
-
-```bash
-uv run python -m humanoid.motors.feetech.scripts.scan
-```
-
-**Jog a motor**:
-
-```bash
-uv run python -m humanoid.motors.feetech.scripts.jog
-```
-
-**Set motor ID**:
-
-```bash
-uv run python -m humanoid.motors.feetech.scripts.set_id
-```
-
-**Zero motor position**:
-
-```bash
-uv run python -m humanoid.motors.feetech.scripts.zero
-```
-
-**Configure motor gains**:
-
-```bash
-uv run python -m humanoid.motors.feetech.scripts.set_gains
-```
+The hardware abstraction is documented in
+[`src/humanoid/hardware/README.md`](src/humanoid/hardware/README.md).
+Feetech-specific setup and maintenance commands live with the driver in
+[`src/humanoid/hardware/actuators/feetech/README.md`](src/humanoid/hardware/actuators/feetech/README.md).
 
 ### Running Tests
+
+After installing the optional development dependencies above, run the complete
+verification suite with:
 
 ```bash
 uv run check
@@ -133,8 +109,8 @@ humanoid/
 ├── src/humanoid/
 │   ├── controllers/      # Control algorithms (operational space, etc.)
 │   ├── environment/      # Environment interfaces (realtime, base)
+│   ├── hardware/         # Simulated and real device interfaces
 │   ├── middleware/       # Communication middleware
-│   ├── motors/           # Motor drivers (Feetech, simulation)
 │   ├── nodes/            # Process-managed nodes grouped by domain
 │   ├── orchestrator/     # Control-mode client, monitoring, and service
 │   ├── policy/           # Control policies (keyboard teleop, homing, oculus, etc.)
@@ -203,7 +179,7 @@ To inspect LCM messages:
 
 ## Configuration
 
-Robot and system configuration can be customized through the configuration system. See [`config.py`](src/humanoid/config.py) for available options.
+Robot and system configuration can be customized through the configuration package. Robot definitions live in [`src/humanoid/config/robot/`](src/humanoid/config/robot/), with shared selection and visualizer settings alongside them.
 
 ## Troubleshooting
 

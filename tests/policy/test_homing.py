@@ -6,10 +6,10 @@ import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.policy.homing import HomingPolicy
 from humanoid.types.observation import Observation
 from humanoid.types.robot import RobotJointCommand, RobotState
-from humanoid.types.servo import ServoControlMode
 
 
 def _observation(q: np.ndarray, q_cmd: np.ndarray | None = None) -> Observation:
@@ -17,7 +17,7 @@ def _observation(q: np.ndarray, q_cmd: np.ndarray | None = None) -> Observation:
         timestamp=0.0,
         joint_positions=q.copy(),
         joint_velocities=np.zeros_like(q),
-        motor_temperatures=np.zeros_like(q),
+        actuator_temperatures=np.zeros_like(q),
     )
     joint_cmd = (
         RobotJointCommand(timestamp=0.0, joint_positions=q_cmd.copy())
@@ -71,11 +71,10 @@ class TestWithTarget:
     def test_velocity_controlled_joints_held_at_q_start(self, panda_config):
         """Velocity-controlled joints must not be moved by homing."""
         # Build a config where one joint is velocity-controlled.
-        servo_modes = dict(panda_config.servo_control_modes)
-        # Switch the first joint's servo to velocity control.
-        first_servo = panda_config.joint_idx_to_servo_id[0]
-        servo_modes[first_servo] = ServoControlMode.VELOCITY
-        mixed = replace(panda_config, servo_control_modes=servo_modes)
+        control_modes = dict(panda_config.actuator_control_modes)
+        first_joint = next(iter(control_modes))
+        control_modes[first_joint] = ActuatorControlMode.VELOCITY
+        mixed = replace(panda_config, actuator_control_modes=control_modes)
 
         policy = HomingPolicy(speed=1.0, dt=0.01, robot_config=mixed)
         q_start = panda_config.home_position.copy()

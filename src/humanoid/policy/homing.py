@@ -1,13 +1,13 @@
 import numpy as np
 
 from humanoid.config import ROBOT_CONFIG
+from humanoid.hardware.actuators.config import ActuatorControlMode
 from humanoid.policy.base import Policy
 from humanoid.robots.base import Robot
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig
-from humanoid.types.servo import ServoControlMode
 
 
 class HomingPolicy(Policy):
@@ -104,8 +104,9 @@ def _position_controlled_position_indices(robot_config: RobotConfig) -> list[int
     """Return position-vector indices for joints that are position-controlled."""
     robot = Robot(robot_config)
     indices: list[int] = []
-    for joint_idx, servo_id in robot_config.joint_idx_to_servo_id.items():
-        if robot_config.servo_control_modes[servo_id] is not ServoControlMode.POSITION:
+    for joint_name, control_mode in robot_config.actuator_control_modes.items():
+        if control_mode is not ActuatorControlMode.POSITION:
             continue
+        joint_idx = robot.joint_name_to_idx(joint_name)
         indices.append(robot.joint_idx_to_position_idx(joint_idx))
     return indices

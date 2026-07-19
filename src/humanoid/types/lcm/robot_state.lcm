@@ -7,5 +7,5 @@ struct robot_state_t {
     int32_t num_velocities;
     double joint_positions[num_positions];
     double joint_velocities[num_velocities];
-    double motor_temperatures[num_joints];
+    double actuator_temperatures[num_joints];
 }

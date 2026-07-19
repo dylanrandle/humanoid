@@ -6,6 +6,7 @@ from humanoid.utils.paths import find_repo_root
 
 CHECK_COMMANDS = (
     ("ruff", "format", "--check"),
+    ("npm", "run", "format:check"),
     ("ruff", "check"),
     ("ty", "check"),
     ("pytest",),

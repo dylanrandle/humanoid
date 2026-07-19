@@ -75,7 +75,7 @@ def test_robot_state_conversion():
     temps = np.arange(n_joints, dtype=float)
 
     state = RobotState(
-        timestamp=timestamp, joint_positions=q, joint_velocities=v, motor_temperatures=temps
+        timestamp=timestamp, joint_positions=q, joint_velocities=v, actuator_temperatures=temps
     )
 
     lcm_state = LCMConverter.robot_state_to_lcm(state)
@@ -86,14 +86,14 @@ def test_robot_state_conversion():
     assert lcm_state.timestamp == int(timestamp * 1e9)
     np.testing.assert_allclose(lcm_state.joint_positions, q)
     np.testing.assert_allclose(lcm_state.joint_velocities, v)
-    np.testing.assert_allclose(lcm_state.motor_temperatures, temps)
+    np.testing.assert_allclose(lcm_state.actuator_temperatures, temps)
 
     state_recovered = LCMConverter.robot_state_from_lcm(lcm_state)
 
     assert np.isclose(state_recovered.timestamp, timestamp, rtol=1e-9)
     np.testing.assert_allclose(state_recovered.joint_positions, q)
     np.testing.assert_allclose(state_recovered.joint_velocities, v)
-    np.testing.assert_allclose(state_recovered.motor_temperatures, temps)
+    np.testing.assert_allclose(state_recovered.actuator_temperatures, temps)
 
 
 def test_robot_state_encode_decode():
@@ -103,7 +103,7 @@ def test_robot_state_encode_decode():
     temps = np.array([30.0, 31.0, 32.0])  # n_joints=3
 
     state = RobotState(
-        timestamp=0.5, joint_positions=q, joint_velocities=v, motor_temperatures=temps
+        timestamp=0.5, joint_positions=q, joint_velocities=v, actuator_temperatures=temps
     )
     lcm_state = LCMConverter.robot_state_to_lcm(state)
 
@@ -111,7 +111,7 @@ def test_robot_state_encode_decode():
 
     np.testing.assert_allclose(recovered.joint_positions, q)
     np.testing.assert_allclose(recovered.joint_velocities, v)
-    np.testing.assert_allclose(recovered.motor_temperatures, temps)
+    np.testing.assert_allclose(recovered.actuator_temperatures, temps)
 
 
 def test_robot_tool_command_conversion():
