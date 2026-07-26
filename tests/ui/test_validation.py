@@ -11,8 +11,10 @@ from humanoid.types.orchestrator import (
 )
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 from humanoid.ui.errors import ApiError
 from humanoid.ui.validation import (
+    parse_mujoco_scene,
     parse_orchestrator_request,
     parse_process_action,
     parse_process_name,
@@ -27,6 +29,7 @@ from humanoid.ui.validation import (
     [
         (parse_runtime, Runtime.SIM.value, Runtime.SIM),
         (parse_robot_name, RobotName.PANDA.value, RobotName.PANDA),
+        (parse_mujoco_scene, MujocoScene.FLOOR_AND_CUBE.value, MujocoScene.FLOOR_AND_CUBE),
         (parse_process_name, ProcessName.STACK.value, ProcessName.STACK),
         (parse_process_action, ProcessAction.START.value, ProcessAction.START),
     ],
@@ -58,6 +61,7 @@ def test_parse_orchestrator_request_parameterizes_modes(mode, parameters, expect
     [
         (parse_runtime, "hardware", HTTPStatus.BAD_REQUEST),
         (parse_robot_name, "unknown", HTTPStatus.BAD_REQUEST),
+        (parse_mujoco_scene, "warehouse", HTTPStatus.BAD_REQUEST),
         (parse_process_name, "unknown", HTTPStatus.NOT_FOUND),
         (parse_process_action, "restart", HTTPStatus.NOT_FOUND),
     ],
@@ -95,9 +99,10 @@ def test_parse_orchestrator_request_rejects_invalid_parameters(mode, parameters)
 
 
 def test_parse_safety_context_returns_typed_values():
-    assert parse_safety_context("sim", "panda", True) == SafetyContext(
+    assert parse_safety_context("sim", "panda", "empty", True) == SafetyContext(
         expected_runtime=Runtime.SIM,
         expected_robot=RobotName.PANDA,
+        expected_scene=MujocoScene.EMPTY,
         real_hardware_acknowledged=True,
     )
 
@@ -105,6 +110,6 @@ def test_parse_safety_context_returns_typed_values():
 @pytest.mark.parametrize("acknowledged", [None, "true", 1])
 def test_parse_safety_context_requires_boolean_acknowledgement(acknowledged):
     with pytest.raises(ApiError) as error:
-        parse_safety_context("sim", "panda", acknowledged)
+        parse_safety_context("sim", "panda", "empty", acknowledged)
 
     assert error.value.status is HTTPStatus.BAD_REQUEST

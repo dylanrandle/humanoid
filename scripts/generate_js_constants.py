@@ -9,6 +9,7 @@ from humanoid.types.logging import LoggingState
 from humanoid.types.orchestrator import Mode, OrchestratorParameter
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
 from humanoid.types.replay import ReplayOutcome
+from humanoid.types.simulation import MujocoScene
 from humanoid.ui.constants import STATIC_ROOT, ApiRoute, PayloadKey
 
 OUTPUT_PATH = STATIC_ROOT / "js" / "constants.js"
@@ -27,6 +28,7 @@ def render_javascript_constants() -> str:
         _enum_object("Mode", Mode),
         _enum_object("LoggingState", LoggingState),
         _enum_object("ReplayOutcome", ReplayOutcome),
+        _enum_object("MujocoScene", MujocoScene),
         _enum_object("OrchestratorParameter", OrchestratorParameter),
         _enum_object("PayloadKey", PayloadKey),
         _enum_object("ApiRoute", ApiRoute),
@@ -46,6 +48,7 @@ def _busy_keys() -> str:
     return """export const BusyKey = Object.freeze({
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   LOGGING: ApiRoute.LOGGING,
   REPLAY: ApiRoute.REPLAY,
   ORCHESTRATOR: ApiRoute.ORCHESTRATOR,
@@ -63,6 +66,7 @@ def _api_routes() -> str:
   STATUS: ApiRoute.STATUS,
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   logging(action) {
     return resolveRoute(ApiRoute.LOGGING, { action });
   },

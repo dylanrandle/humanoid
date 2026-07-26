@@ -44,6 +44,7 @@ function elements() {
     systemStateLabel: element(),
     robotName: element(),
     robotSelect: element(),
+    sceneSelect: element(),
     runtimeButtons: [element({ runtime: "sim" }), element({ runtime: "real" })],
     configurationLockNote: element(),
     runtimeFootnote: element(),
@@ -125,6 +126,8 @@ function snapshot() {
     runtime: "sim",
     robot: "panda",
     robots: ["panda"],
+    scene: "empty",
+    scenes: ["empty", "floor-and-cube"],
     processes: {
       stack: processStatus(),
       replay: processStatus(),
@@ -220,6 +223,7 @@ test("disconnected and external-stack errors disable every control", () => {
   assert.equal(ui.nodeRateSummary.textContent, "Unavailable");
   assert.match(ui.nodeRateList.children[0].textContent, /Reconnect/);
   assert.ok(ui.runtimeButtons.every((button) => button.disabled));
+  assert.equal(ui.sceneSelect.disabled, true);
   assert.ok(Object.values(ui.processes).every(({ action }) => action.disabled));
   assert.ok(ui.loggingButtons.every((button) => button.disabled));
   assert.equal(ui.loggingStatus.textContent, "Unavailable");
@@ -229,6 +233,30 @@ test("disconnected and external-stack errors disable every control", () => {
   assert.equal(ui.replayStatus.textContent, "Unavailable");
   assert.equal(ui.replayError.hidden, true);
   assert.ok(ui.orchestratorButtons.every((button) => button.disabled));
+});
+
+test("scene selection renders named scenes and locks outside stopped simulation", () => {
+  const ui = elements();
+  const current = snapshot();
+
+  render(current, new Set(), ui);
+  assert.deepEqual(
+    ui.sceneSelect.options.map((option) => option.value),
+    ["empty", "floor-and-cube"],
+  );
+  assert.equal(ui.sceneSelect.value, "empty");
+  assert.equal(ui.sceneSelect.disabled, false);
+
+  current.scene = "floor-and-cube";
+  current.processes.stack = processStatus({ running: true });
+  render(current, new Set(), ui);
+  assert.equal(ui.sceneSelect.value, "floor-and-cube");
+  assert.equal(ui.sceneSelect.disabled, true);
+
+  current.processes.stack = processStatus();
+  current.runtime = "real";
+  render(current, new Set(), ui);
+  assert.equal(ui.sceneSelect.disabled, true);
 });
 
 test("replay requires a compatible server-managed recording", () => {

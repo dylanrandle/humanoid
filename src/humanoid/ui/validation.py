@@ -7,6 +7,7 @@ from humanoid.orchestrator.constants import CONTROLLED_PROCESS_NAMES
 from humanoid.types.orchestrator import Mode, OrchestratorRequest, SafetyContext
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 from humanoid.ui.errors import ApiError
 
 
@@ -35,9 +36,19 @@ def parse_robot_name(value: str) -> RobotName:
     )
 
 
+def parse_mujoco_scene(value: str) -> MujocoScene:
+    return _parse_enum(
+        value,
+        MujocoScene,
+        "Unknown MuJoCo scene.",
+        HTTPStatus.BAD_REQUEST,
+    )
+
+
 def parse_safety_context(
     expected_runtime: object,
     expected_robot: object,
+    expected_scene: object,
     real_hardware_acknowledged: object,
 ) -> SafetyContext:
     if not isinstance(real_hardware_acknowledged, bool):
@@ -48,6 +59,7 @@ def parse_safety_context(
     return SafetyContext(
         expected_runtime=parse_runtime(str(expected_runtime or "")),
         expected_robot=parse_robot_name(str(expected_robot or "")),
+        expected_scene=parse_mujoco_scene(str(expected_scene or "")),
         real_hardware_acknowledged=real_hardware_acknowledged,
     )
 

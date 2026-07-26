@@ -15,6 +15,7 @@ import {
   replayRequest,
   robotRequest,
   runtimeRequest,
+  sceneRequest,
 } from "./requests.js";
 import { showToast } from "./toast.js";
 
@@ -71,6 +72,13 @@ els.robotSelect.addEventListener("change", () => {
   const request = robotRequest(state.snapshot, robot);
   if (!request) return;
   perform(BusyKey.ROBOT, () => post(request.path, request.payload));
+});
+
+els.sceneSelect.addEventListener("change", () => {
+  const scene = els.sceneSelect.value;
+  const request = sceneRequest(state.snapshot, scene);
+  if (!request) return;
+  perform(BusyKey.SCENE, () => post(request.path, request.payload));
 });
 
 els.stackAction.addEventListener("click", () => {

@@ -13,7 +13,11 @@ from humanoid.nodes.base import Node
 from humanoid.robots.watchdog import VelocityCommandWatchdog
 from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.robot import RobotConfig
-from humanoid.types.simulation import MujocoSimulationConfig
+from humanoid.types.simulation import MujocoScene, MujocoSimulationConfig
+from humanoid.visualizers.mujoco import (
+    MujocoSimulationVisualizer,
+    relaunch_with_mjpython_on_macos,
+)
 
 logger = get_logger(__name__)
 
@@ -29,11 +33,19 @@ class MujocoSimulationNode(Node):
         robot_config: RobotConfig = ROBOT_CONFIG,
         simulation_config: MujocoSimulationConfig = DEFAULT_MUJOCO_SIMULATION_CONFIG,
         engine: NativeMujocoEngine | None = None,
+        visualizer: MujocoSimulationVisualizer | None = None,
+        scene: MujocoScene | None = None,
         command_timeout_seconds: float = DEFAULT_COMMAND_TIMEOUT_SECONDS,
         clock: Callable[[], float] = time.perf_counter,
         lcm_url: str = DEFAULT_LCM_URL,
     ) -> None:
-        self.engine = engine or NativeMujocoEngine(robot_config, simulation_config)
+        self.scene = scene if scene is not None else MujocoScene.from_environment()
+        self.engine = engine or NativeMujocoEngine(
+            robot_config,
+            simulation_config,
+            scene=self.scene,
+        )
+        self.visualizer = visualizer
         self.rate_hz = simulation_config.publish_rate_hz
         substeps = 1.0 / (self.rate_hz * self.engine.physics_timestep)
         rounded_substeps = round(substeps)
@@ -55,8 +67,12 @@ class MujocoSimulationNode(Node):
         self.publisher = Publisher(url=lcm_url)
 
     def setup(self) -> None:
+        if self.visualizer is None:
+            self.visualizer = MujocoSimulationVisualizer(self.engine.model, self.engine.data)
+        self.visualizer.initialize()
         logger.info(
-            "MuJoCo digital twin ready: %s joints, %.4f s timestep, %s substeps",
+            "MuJoCo digital twin ready: %s scene, %s joints, %.4f s timestep, %s substeps",
+            self.scene,
             len(self.engine.binding.joints),
             self.engine.physics_timestep,
             self.substeps,
@@ -73,6 +89,8 @@ class MujocoSimulationNode(Node):
             logger.warning("Robot command watchdog stopped simulated velocity actuators")
 
         self.engine.step(self.substeps)
+        if self.visualizer is not None:
+            self.visualizer.sync()
         robot_state = self.engine.read_robot_state(timestamp=self._clock())
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
 
@@ -83,11 +101,20 @@ class MujocoSimulationNode(Node):
         try:
             self._command_watchdog.stop()
         finally:
-            self.subscriber.close()
+            try:
+                if self.visualizer is not None:
+                    self.visualizer.close()
+            finally:
+                self.subscriber.close()
+
+    @classmethod
+    def main(cls, *args, **kwargs) -> None:
+        relaunch_with_mjpython_on_macos(__name__)
+        super().main(*args, **kwargs)
 
 
 def main() -> None:
-    MujocoSimulationNode().run()
+    MujocoSimulationNode.main()
 
 
 if __name__ == "__main__":

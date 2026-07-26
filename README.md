@@ -7,7 +7,7 @@ A Python framework for multi-robot control and teleoperation in simulation and o
 - **Multi-robot support**: Compatible with SO101, ElRobot, and Panda robot platforms
 - **Actuator control**: Runtime-independent joint control with optional typed Feetech hardware
 - **MuJoCo digital twin**: Native rigid-body dynamics behind the same LCM interface as hardware
-- **Visualization**: Real-time robot visualization using MeshCat
+- **Visualization**: Native MuJoCo simulation viewer plus MeshCat robot overlays
 - **LCM middleware**: Lightweight Communications and Marshalling for inter-process communication
 - **Operational space control**: Advanced control algorithms for precise robot manipulation
 - **Teleoperation**: Keyboard and Oculus control interfaces
@@ -60,8 +60,8 @@ uv run start
 ```
 
 The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Use it to select the
-robot and runtime, manage the stack and teleoperation processes, choose a control mode,
-monitor node health, and record or replay LCM sessions.
+robot, runtime, and named MuJoCo scene; manage the stack and teleoperation processes;
+choose a control mode; monitor node health; and record or replay LCM sessions.
 
 Simulation uses MuJoCo and real-hardware mode uses the hardware driver; both expose the
 same LCM interface to the rest of the stack. Hardware actions require explicit operator
@@ -86,7 +86,7 @@ humanoid/
 │   ├── types/            # Type definitions and LCM message types
 │   ├── ui/               # Local operator console backend and frontend
 │   ├── utils/            # General utilities
-│   └── visualizers/      # Visualization tools (MeshCat)
+│   └── visualizers/      # Native MuJoCo and MeshCat visualization
 ├── tests/                # Unit tests
 └── scripts/              # Utility scripts
 ```

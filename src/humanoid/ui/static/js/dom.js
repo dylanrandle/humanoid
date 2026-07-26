@@ -5,6 +5,7 @@ export const els = {
   systemStateLabel: document.querySelector("#system-state-label"),
   robotName: document.querySelector("#robot-name"),
   robotSelect: document.querySelector("#robot-select"),
+  sceneSelect: document.querySelector("#scene-select"),
   runtimeButtons: [...document.querySelectorAll("[data-runtime]")],
   configurationLockNote: document.querySelector("#configuration-lock-note"),
   runtimeFootnote: document.querySelector("#runtime-footnote"),

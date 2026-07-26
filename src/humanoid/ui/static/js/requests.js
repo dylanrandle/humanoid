@@ -17,6 +17,7 @@ export function safetyPayload(snapshot, realHardwareAcknowledged = false) {
   return {
     [PayloadKey.EXPECTED_RUNTIME]: snapshot.runtime,
     [PayloadKey.EXPECTED_ROBOT]: snapshot.robot,
+    [PayloadKey.EXPECTED_SCENE]: snapshot.scene,
     [PayloadKey.REAL_HARDWARE_ACKNOWLEDGED]: realHardwareAcknowledged,
   };
 }
@@ -39,6 +40,14 @@ export function robotRequest(snapshot, robot) {
   return {
     path: API.ROBOT,
     payload: { [PayloadKey.ROBOT]: robot, ...safetyPayload(snapshot) },
+  };
+}
+
+export function sceneRequest(snapshot, scene) {
+  if (!snapshot || scene === snapshot.scene) return null;
+  return {
+    path: API.SCENE,
+    payload: { [PayloadKey.SCENE]: scene, ...safetyPayload(snapshot) },
   };
 }
 

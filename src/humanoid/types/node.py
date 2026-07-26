@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from humanoid.nodes.base import Node
     from humanoid.types.process import ProcessName, Runtime
     from humanoid.types.robot import RobotName
+    from humanoid.types.simulation import MujocoScene
 
 
 class ProcessContext(Protocol):
@@ -65,6 +66,7 @@ class NodeGroup:
 class ManagedNodeGroup:
     runtime: Runtime
     robot: RobotName
+    scene: MujocoScene
     started_monotonic: float
     processes: list[BaseProcess] = field(default_factory=list)
     stop_event: threading.Event = field(default_factory=threading.Event)

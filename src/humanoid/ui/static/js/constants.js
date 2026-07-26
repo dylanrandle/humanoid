@@ -39,6 +39,11 @@ export const ReplayOutcome = Object.freeze({
   FAILED: "failed",
 });
 
+export const MujocoScene = Object.freeze({
+  EMPTY: "empty",
+  FLOOR_AND_CUBE: "floor-and-cube",
+});
+
 export const OrchestratorParameter = Object.freeze({
   PRESET: "preset",
 });
@@ -46,10 +51,12 @@ export const OrchestratorParameter = Object.freeze({
 export const PayloadKey = Object.freeze({
   RUNTIME: "runtime",
   ROBOT: "robot",
+  SCENE: "scene",
   MODE: "mode",
   PARAMETERS: "parameters",
   EXPECTED_RUNTIME: "expected_runtime",
   EXPECTED_ROBOT: "expected_robot",
+  EXPECTED_SCENE: "expected_scene",
   REAL_HARDWARE_ACKNOWLEDGED: "real_hardware_acknowledged",
   RECORDING: "recording",
 });
@@ -59,6 +66,7 @@ export const ApiRoute = Object.freeze({
   STATUS: "/api/status",
   RUNTIME: "/api/runtime",
   ROBOT: "/api/robot",
+  SCENE: "/api/scene",
   PROCESSES: "/api/processes/<name>/<action>",
   LOGGING: "/api/logging/<action>",
   REPLAY: "/api/replay/<action>",
@@ -68,6 +76,7 @@ export const ApiRoute = Object.freeze({
 export const BusyKey = Object.freeze({
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   LOGGING: ApiRoute.LOGGING,
   REPLAY: ApiRoute.REPLAY,
   ORCHESTRATOR: ApiRoute.ORCHESTRATOR,
@@ -82,6 +91,7 @@ export const API = Object.freeze({
   STATUS: ApiRoute.STATUS,
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   logging(action) {
     return resolveRoute(ApiRoute.LOGGING, { action });
   },

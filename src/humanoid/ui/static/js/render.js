@@ -22,7 +22,9 @@ export function render(snapshot, busy, elements) {
     (process) => process.running,
   );
   const configurationBusy =
-    busy.has(BusyKey.RUNTIME) || busy.has(BusyKey.ROBOT);
+    busy.has(BusyKey.RUNTIME) ||
+    busy.has(BusyKey.ROBOT) ||
+    busy.has(BusyKey.SCENE);
 
   elements.robotName.textContent = formatRobotName(snapshot.robot);
   elements.systemState.classList.toggle(
@@ -43,6 +45,9 @@ export function render(snapshot, busy, elements) {
   }
   renderRobotSelector(elements.robotSelect, snapshot.robots, snapshot.robot);
   elements.robotSelect.disabled = anyRunning || configurationBusy;
+  renderSceneSelector(elements.sceneSelect, snapshot.scenes, snapshot.scene);
+  elements.sceneSelect.disabled =
+    snapshot.runtime !== Runtime.SIM || anyRunning || configurationBusy;
   elements.configurationLockNote.textContent = anyRunning
     ? "Locked while active"
     : "Unlocked";
@@ -376,6 +381,7 @@ export function renderDisconnected(
     button.disabled = true;
   });
   elements.robotSelect.disabled = true;
+  elements.sceneSelect.disabled = true;
   Object.values(elements.processes).forEach(({ action }) => {
     action.disabled = true;
   });
@@ -436,6 +442,23 @@ function renderRobotSelector(select, robots, selectedRobot) {
     select.replaceChildren(...options);
   }
   select.value = selectedRobot;
+}
+
+function renderSceneSelector(select, scenes, selectedScene) {
+  const currentScenes = [...select.options].map((option) => option.value);
+  if (
+    currentScenes.length !== scenes.length ||
+    currentScenes.some((scene, index) => scene !== scenes[index])
+  ) {
+    const options = scenes.map((scene) => {
+      const option = select.ownerDocument.createElement("option");
+      option.value = scene;
+      option.textContent = scene;
+      return option;
+    });
+    select.replaceChildren(...options);
+  }
+  select.value = selectedScene;
 }
 
 function formatRobotName(name) {

@@ -10,10 +10,11 @@ from humanoid.config.robot.so101 import SO101_CONFIG
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
-from humanoid.nodes.robot.simulation import MujocoSimulationNode
+from humanoid.nodes.robot.simulation import MujocoSimulationNode, main
 from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.robot import NormalizedRobotJointCommand, RobotJointCommand, RobotState
-from humanoid.types.simulation import MujocoSimulationConfig
+from humanoid.types.simulation import MujocoScene, MujocoSimulationConfig
+from humanoid.visualizers.mujoco import MujocoSimulationVisualizer
 
 SPAWNED_SIMULATION_TIMEOUT_SECONDS = 15.0
 
@@ -43,6 +44,8 @@ def _make_node(monkeypatch, *, clock=None, timeout: float = 0.25):
     publisher = MagicMock(spec=Publisher)
     engine = MagicMock(spec=NativeMujocoEngine)
     engine.physics_timestep = 0.001
+    engine.binding = MagicMock()
+    engine.binding.joints = []
     engine.read_robot_state.return_value = _state()
     engine.apply_joint_command.return_value = NormalizedRobotJointCommand(
         joint_positions=np.zeros(6),
@@ -56,18 +59,20 @@ def _make_node(monkeypatch, *, clock=None, timeout: float = 0.25):
         "humanoid.nodes.robot.simulation.Publisher",
         MagicMock(return_value=publisher),
     )
+    visualizer = MagicMock(spec=MujocoSimulationVisualizer)
     node = MujocoSimulationNode(
         robot_config=SO101_CONFIG,
         engine=engine,
+        visualizer=visualizer,
         command_timeout_seconds=timeout,
         clock=clock or MagicMock(return_value=1.0),
     )
-    return node, engine, subscriber, publisher
+    return node, engine, visualizer, subscriber, publisher
 
 
 def test_steps_physics_and_publishes_state(monkeypatch):
     clock = MagicMock(side_effect=[1.0, 1.01])
-    node, engine, subscriber, publisher = _make_node(monkeypatch, clock=clock)
+    node, engine, visualizer, subscriber, publisher = _make_node(monkeypatch, clock=clock)
     command = RobotJointCommand(timestamp=1.0, joint_positions=np.zeros(6))
     subscriber.receive.return_value = command
 
@@ -75,6 +80,7 @@ def test_steps_physics_and_publishes_state(monkeypatch):
 
     engine.apply_joint_command.assert_called_once_with(command)
     engine.step.assert_called_once_with(2)
+    visualizer.sync.assert_called_once_with()
     engine.read_robot_state.assert_called_once_with(timestamp=1.01)
     publisher.publish.assert_called_once_with(
         engine.read_robot_state.return_value,
@@ -84,7 +90,7 @@ def test_steps_physics_and_publishes_state(monkeypatch):
 
 def test_watchdog_stops_velocity_actuators_once(monkeypatch):
     clock = MagicMock(side_effect=[1.0, 1.0, 1.3, 1.3, 1.6, 1.6])
-    node, engine, subscriber, _ = _make_node(monkeypatch, clock=clock, timeout=0.25)
+    node, engine, _, subscriber, _ = _make_node(monkeypatch, clock=clock, timeout=0.25)
     engine.apply_joint_command.return_value = NormalizedRobotJointCommand(
         joint_positions=np.zeros(6),
         joint_velocities=np.ones(6),
@@ -103,14 +109,52 @@ def test_watchdog_stops_velocity_actuators_once(monkeypatch):
 
 
 def test_close_stops_simulation_before_closing_transport(monkeypatch):
-    node, engine, subscriber, _ = _make_node(monkeypatch)
+    node, engine, visualizer, subscriber, _ = _make_node(monkeypatch)
     operations = MagicMock()
     engine.stop_velocity_actuators.side_effect = lambda: operations("stop")
+    visualizer.close.side_effect = lambda: operations("visualizer")
     subscriber.close.side_effect = lambda: operations("close")
 
     node.on_close()
 
-    assert operations.call_args_list == [call("stop"), call("close")]
+    assert operations.call_args_list == [call("stop"), call("visualizer"), call("close")]
+
+
+def test_setup_opens_the_simulation_visualizer(monkeypatch):
+    node, _, visualizer, _, _ = _make_node(monkeypatch)
+
+    node.setup()
+
+    visualizer.initialize.assert_called_once_with()
+
+
+def test_selected_scene_is_forwarded_to_the_engine(monkeypatch):
+    engine_class = MagicMock()
+    engine = engine_class.return_value
+    engine.physics_timestep = 0.001
+    monkeypatch.setattr("humanoid.nodes.robot.simulation.NativeMujocoEngine", engine_class)
+    monkeypatch.setattr("humanoid.nodes.robot.simulation.Subscriber", MagicMock())
+    monkeypatch.setattr("humanoid.nodes.robot.simulation.Publisher", MagicMock())
+
+    MujocoSimulationNode(
+        robot_config=SO101_CONFIG,
+        scene=MujocoScene.FLOOR_AND_CUBE,
+    )
+
+    engine_class.assert_called_once_with(
+        SO101_CONFIG,
+        MujocoSimulationConfig(),
+        scene=MujocoScene.FLOOR_AND_CUBE,
+    )
+
+
+def test_module_entrypoint_uses_macos_aware_node_entrypoint(monkeypatch):
+    node_main = MagicMock()
+    monkeypatch.setattr(MujocoSimulationNode, "main", node_main)
+
+    main()
+
+    node_main.assert_called_once_with()
 
 
 def test_rejects_invalid_timing_or_watchdog(monkeypatch):

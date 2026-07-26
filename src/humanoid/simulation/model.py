@@ -20,8 +20,8 @@ ROOT_YAW_JOINT = "simulation_root_yaw"
 ROOT_JOINT_NAMES = (ROOT_X_JOINT, ROOT_Y_JOINT, ROOT_YAW_JOINT)
 
 _PACKAGE_URI_PATTERN = re.compile(r"package://([^/]+)/([^\"']+)")
-_ROBOT_CONTACT_TYPE = 1
-_EXTERNAL_CONTACT_TYPE = 2
+ROBOT_CONTACT_BIT = 1
+TASK_OBJECT_CONTACT_BIT = 2
 
 
 def build_mujoco_spec(
@@ -54,11 +54,11 @@ def build_mujoco_spec(
         mesh.inertia = mujoco.mjtMeshInertia.mjMESH_INERTIA_SHELL
 
     # Keep robot links from colliding with each other until the SRDF collision
-    # pairs are translated. They can still collide with future scene objects
-    # configured with the reciprocal external contact bits.
+    # pairs are translated. They can still collide with task objects configured
+    # with the reciprocal contact bits.
     for geom in spec.geoms:
-        geom.contype = _ROBOT_CONTACT_TYPE
-        geom.conaffinity = _EXTERNAL_CONTACT_TYPE
+        geom.contype = ROBOT_CONTACT_BIT
+        geom.conaffinity = TASK_OBJECT_CONTACT_BIT
 
     if robot.config.base is not None:
         _add_ideal_planar_root(spec, root_link_name, robot, config)

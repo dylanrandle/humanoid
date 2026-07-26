@@ -10,6 +10,8 @@ import pytest
 from humanoid.constants import (
     DEFAULT_HUMANOID_ROBOT,
     DEFAULT_HUMANOID_RUNTIME,
+    DEFAULT_MUJOCO_SCENE,
+    MUJOCO_SCENE_ENVIRONMENT_VARIABLE,
     ROBOT_ENVIRONMENT_VARIABLE,
     RUNTIME_ENVIRONMENT_VARIABLE,
 )
@@ -31,6 +33,7 @@ from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import ProcessContext
 from humanoid.types.process import ProcessName, Runtime
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 
 
 def _fake_process(
@@ -127,13 +130,14 @@ def test_replay_group_starts_driver_and_visualizer(monkeypatch, runtime):
 def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch):
     processes: list[MagicMock] = []
     context = _fake_context(processes)
-    observed_configurations: list[tuple[str | None, str | None]] = []
+    observed_configurations: list[tuple[str | None, str | None, str | None]] = []
 
     def capture_configuration():
         observed_configurations.append(
             (
                 os.getenv(RUNTIME_ENVIRONMENT_VARIABLE),
                 os.getenv(ROBOT_ENVIRONMENT_VARIABLE),
+                os.getenv(MUJOCO_SCENE_ENVIRONMENT_VARIABLE),
             )
         )
 
@@ -144,10 +148,12 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
     )
     monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, Runtime.SIM)
     monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, RobotName.ELROBOT)
+    monkeypatch.setenv(MUJOCO_SCENE_ENVIRONMENT_VARIABLE, MujocoScene.FLOOR_AND_CUBE)
     _use_process_context(monkeypatch, context)
     manager = NodeManager(
         runtime=Runtime.REAL,
         robot=RobotName.PANDA,
+        scene=MujocoScene.EMPTY,
     )
     monkeypatch.setattr(manager, "_wait_for_robot_state", MagicMock(return_value=True))
 
@@ -161,9 +167,12 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
     assert [entry.kwargs["target"] for entry in context.Process.call_args_list] == [
         node.main for node in expected_nodes
     ]
-    assert observed_configurations == [(Runtime.REAL, RobotName.PANDA)] * len(expected_nodes)
+    assert observed_configurations == [(Runtime.REAL, RobotName.PANDA, MujocoScene.EMPTY)] * len(
+        expected_nodes
+    )
     assert os.getenv(RUNTIME_ENVIRONMENT_VARIABLE) == Runtime.SIM
     assert os.getenv(ROBOT_ENVIRONMENT_VARIABLE) == RobotName.ELROBOT
+    assert os.getenv(MUJOCO_SCENE_ENVIRONMENT_VARIABLE) == MujocoScene.FLOOR_AND_CUBE
     assert status.running is True
 
 
@@ -208,15 +217,34 @@ def test_environment_uses_explicit_defaults(monkeypatch, environment_value):
     if environment_value is None:
         monkeypatch.delenv(RUNTIME_ENVIRONMENT_VARIABLE, raising=False)
         monkeypatch.delenv(ROBOT_ENVIRONMENT_VARIABLE, raising=False)
+        monkeypatch.delenv(MUJOCO_SCENE_ENVIRONMENT_VARIABLE, raising=False)
     else:
         monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, environment_value)
         monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, environment_value)
+        monkeypatch.setenv(MUJOCO_SCENE_ENVIRONMENT_VARIABLE, environment_value)
     _use_process_context(monkeypatch)
 
     manager = NodeManager()
 
     assert manager.runtime is DEFAULT_HUMANOID_RUNTIME
     assert manager.robot is DEFAULT_HUMANOID_ROBOT
+    assert manager.scene is DEFAULT_MUJOCO_SCENE
+
+
+@pytest.mark.parametrize("scene", list(MujocoScene))
+def test_environment_scene_uses_known_values(monkeypatch, scene):
+    monkeypatch.setenv(MUJOCO_SCENE_ENVIRONMENT_VARIABLE, scene)
+    _use_process_context(monkeypatch)
+
+    assert NodeManager().scene is scene
+
+
+def test_environment_scene_rejects_unknown_values(monkeypatch):
+    monkeypatch.setenv(MUJOCO_SCENE_ENVIRONMENT_VARIABLE, "warehouse")
+    _use_process_context(monkeypatch)
+
+    with pytest.raises(ValueError, match="warehouse"):
+        NodeManager()
 
 
 @pytest.mark.parametrize(
@@ -252,6 +280,8 @@ def test_rejects_configuration_change_and_duplicate_start_while_group_is_running
         manager.set_runtime(Runtime.REAL)
     with pytest.raises(NodeManagerError, match="Stop the stack and teleop"):
         manager.set_robot(RobotName.PANDA)
+    with pytest.raises(NodeManagerError, match="Stop the stack and teleop"):
+        manager.set_scene(MujocoScene.FLOOR_AND_CUBE)
     with pytest.raises(NodeManagerError, match="already running"):
         manager.start(ProcessName.KEYBOARD)
 
@@ -263,6 +293,15 @@ def test_changes_robot_while_stopped(monkeypatch):
     manager.set_robot(RobotName.SO101)
 
     assert manager.robot is RobotName.SO101
+
+
+def test_changes_scene_while_stopped(monkeypatch):
+    _use_process_context(monkeypatch)
+    manager = NodeManager()
+
+    manager.set_scene(MujocoScene.FLOOR_AND_CUBE)
+
+    assert manager.scene is MujocoScene.FLOOR_AND_CUBE
 
 
 def test_active_nodes_reports_only_alive_processes(monkeypatch):

@@ -42,6 +42,7 @@ from humanoid.types.orchestrator import (
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import ReplayOutcome, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 
 logger = get_logger(__name__)
 
@@ -98,6 +99,8 @@ class OrchestratorService:
                 runtime=self.node_manager.runtime,
                 robot=self.node_manager.robot,
                 robots=list(RobotName),
+                scene=self.node_manager.scene,
+                scenes=list(MujocoScene),
                 processes=processes,
                 node_rates=self.node_rate_monitor.snapshot(self.node_manager.active_nodes()),
                 logging=self.logging_monitor.snapshot(),
@@ -115,6 +118,9 @@ class OrchestratorService:
 
     def set_robot(self, robot: RobotName, safety: SafetyContext) -> OrchestratorStatus:
         return self._set_configuration(lambda: self.node_manager.set_robot(robot), safety)
+
+    def set_scene(self, scene: MujocoScene, safety: SafetyContext) -> OrchestratorStatus:
+        return self._set_configuration(lambda: self.node_manager.set_scene(scene), safety)
 
     def _set_configuration(
         self,
@@ -357,6 +363,7 @@ class OrchestratorService:
         if (
             safety.expected_runtime is not self.node_manager.runtime
             or safety.expected_robot is not self.node_manager.robot
+            or safety.expected_scene is not self.node_manager.scene
         ):
             raise OrchestratorError(STALE_CONFIGURATION_ERROR)
 

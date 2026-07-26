@@ -9,6 +9,7 @@ from humanoid.types.node import NodeRateStatus
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 
 
 class OrchestratorError(Exception):
@@ -100,6 +101,8 @@ class OrchestratorStatus:
     runtime: Runtime
     robot: RobotName
     robots: list[RobotName]
+    scene: MujocoScene
+    scenes: list[MujocoScene]
     processes: dict[ProcessName, ProcessStatus]
     node_rates: list[NodeRateStatus]
     logging: LoggingStatus
@@ -114,6 +117,7 @@ class SafetyContext:
 
     expected_runtime: Runtime
     expected_robot: RobotName
+    expected_scene: MujocoScene
     real_hardware_acknowledged: bool = False
 
 

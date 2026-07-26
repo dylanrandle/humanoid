@@ -12,12 +12,15 @@ from humanoid.types.robot import (
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.simulation import MujocoScene
 
 DEFAULT_LCM_URL = "udpm://239.255.76.67:7667?ttl=1"
 RUNTIME_ENVIRONMENT_VARIABLE = "HUMANOID_RUNTIME"
 ROBOT_ENVIRONMENT_VARIABLE = "HUMANOID_ROBOT"
+MUJOCO_SCENE_ENVIRONMENT_VARIABLE = "HUMANOID_MUJOCO_SCENE"
 DEFAULT_HUMANOID_RUNTIME = Runtime.SIM
 DEFAULT_HUMANOID_ROBOT = RobotName.ELROBOT_MOBILE
+DEFAULT_MUJOCO_SCENE = MujocoScene.EMPTY
 
 
 class Topic(Enum):

@@ -11,6 +11,7 @@ from multiprocessing.process import BaseProcess
 from typing import cast
 
 from humanoid.constants import (
+    MUJOCO_SCENE_ENVIRONMENT_VARIABLE,
     ROBOT_ENVIRONMENT_VARIABLE,
     RUNTIME_ENVIRONMENT_VARIABLE,
     Topic,
@@ -26,10 +27,14 @@ from humanoid.nodes.groups import (
 from humanoid.types.node import ManagedNodeGroup, NodeGroup, ProcessContext
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 
 logger = get_logger(__name__)
 
-DEFAULT_STATE_TIMEOUT_SECONDS = 10.0
+# Native MuJoCo model compilation and the macOS mjpython handoff compete with
+# the other stack processes during startup. Leave enough time for the default
+# mobile model to publish its first state on slower machines.
+DEFAULT_STATE_TIMEOUT_SECONDS = 30.0
 DEFAULT_STATE_POLL_INTERVAL_SECONDS = 0.1
 DEFAULT_STOP_TIMEOUT_SECONDS = 8.0
 TERMINATE_TIMEOUT_SECONDS = 2.0
@@ -48,11 +53,13 @@ class NodeManager:
         self,
         runtime: Runtime | None = None,
         robot: RobotName | None = None,
+        scene: MujocoScene | None = None,
         state_timeout_seconds: float = DEFAULT_STATE_TIMEOUT_SECONDS,
         state_poll_interval_seconds: float = DEFAULT_STATE_POLL_INTERVAL_SECONDS,
     ):
         self.runtime = runtime if runtime is not None else Runtime.from_environment()
         self.robot = robot if robot is not None else RobotName.from_environment()
+        self.scene = scene if scene is not None else MujocoScene.from_environment()
         self.state_timeout_seconds = state_timeout_seconds
         self.state_poll_interval_seconds = state_poll_interval_seconds
         self._process_context = cast(ProcessContext, get_context(CHILD_PROCESS_CONTEXT))
@@ -69,6 +76,11 @@ class NodeManager:
             self._require_configuration_change_allowed_locked()
             self.robot = robot
 
+    def set_scene(self, scene: MujocoScene) -> None:
+        with self._lock:
+            self._require_configuration_change_allowed_locked()
+            self.scene = scene
+
     def start(self, name: ProcessName) -> ProcessStatus:
         definition = NODE_GROUPS[name]
         with self._lock:
@@ -78,6 +90,7 @@ class NodeManager:
             group = ManagedNodeGroup(
                 runtime=self.runtime,
                 robot=self.robot,
+                scene=self.scene,
                 started_monotonic=time.monotonic(),
             )
             self._groups[name] = group
@@ -169,7 +182,7 @@ class NodeManager:
     ) -> None:
         for node in nodes:
             process = self._process_context.Process(target=node.main, name=node.__name__)
-            with _node_environment(group.runtime, group.robot):
+            with _node_environment(group.runtime, group.robot, group.scene):
                 process.start()
             group.processes.append(process)
 
@@ -336,10 +349,11 @@ def _stopped_status() -> ProcessStatus:
 
 
 @contextlib.contextmanager
-def _node_environment(runtime: Runtime, robot: RobotName):
+def _node_environment(runtime: Runtime, robot: RobotName, scene: MujocoScene):
     values = {
         RUNTIME_ENVIRONMENT_VARIABLE: runtime,
         ROBOT_ENVIRONMENT_VARIABLE: robot,
+        MUJOCO_SCENE_ENVIRONMENT_VARIABLE: scene,
     }
     previous_values = {name: os.environ.get(name) for name in values}
     os.environ.update(values)

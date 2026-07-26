@@ -29,6 +29,7 @@ from humanoid.ui.constants import (
 )
 from humanoid.ui.errors import ApiError
 from humanoid.ui.validation import (
+    parse_mujoco_scene,
     parse_orchestrator_request,
     parse_process_action,
     parse_process_name,
@@ -40,7 +41,9 @@ from humanoid.ui.validation import (
 logger = get_logger(__name__)
 
 
-def create_app(orchestrator_service: OrchestratorService | None = None) -> Flask:
+def create_app(  # noqa: PLR0915 - route registration is intentionally centralized
+    orchestrator_service: OrchestratorService | None = None,
+) -> Flask:
     """Create the operator-console application."""
     if orchestrator_service is None:
         orchestrator_service = OrchestratorService()
@@ -107,6 +110,13 @@ def create_app(orchestrator_service: OrchestratorService | None = None) -> Flask
         safety = _safety_context(payload)
         return _success(orchestrator_service.set_robot(robot, safety))
 
+    @app.post(ApiRoute.SCENE)
+    def set_scene():
+        payload = _json_payload()
+        scene = parse_mujoco_scene(str(payload.get(PayloadKey.SCENE, "")))
+        safety = _safety_context(payload)
+        return _success(orchestrator_service.set_scene(scene, safety))
+
     @app.post(ApiRoute.PROCESSES)
     def update_process(name: str, action: str):
         payload = _json_payload()
@@ -152,6 +162,7 @@ def _safety_context(payload: dict[str, Any]):
     return parse_safety_context(
         payload.get(PayloadKey.EXPECTED_RUNTIME),
         payload.get(PayloadKey.EXPECTED_ROBOT),
+        payload.get(PayloadKey.EXPECTED_SCENE),
         payload.get(PayloadKey.REAL_HARDWARE_ACKNOWLEDGED),
     )
 

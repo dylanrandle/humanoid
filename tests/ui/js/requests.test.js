@@ -8,6 +8,7 @@ import {
   replayRequest,
   robotRequest,
   runtimeRequest,
+  sceneRequest,
 } from "../../../src/humanoid/ui/static/js/requests.js";
 
 test("logging controls use the dedicated start and stop endpoints", () => {
@@ -19,6 +20,7 @@ function snapshot(runtime = Runtime.SIM) {
   return {
     runtime,
     robot: "panda",
+    scene: "empty",
     processes: {
       stack: { running: false },
       replay: { running: false },
@@ -44,6 +46,7 @@ test("replay selects a server-managed recording and stops through JSON", () => {
       recording: "recording_1",
       expected_runtime: "sim",
       expected_robot: "panda",
+      expected_scene: "empty",
       real_hardware_acknowledged: false,
     },
   });
@@ -65,6 +68,7 @@ test("real replay requires confirmation and carries hardware acknowledgement", (
       recording: "recording_1",
       expected_runtime: "real",
       expected_robot: "panda",
+      expected_scene: "empty",
       real_hardware_acknowledged: true,
     },
   });
@@ -81,6 +85,7 @@ test("real runtime selection requires confirmation and carries acknowledgement",
       runtime: "real",
       expected_runtime: "sim",
       expected_robot: "panda",
+      expected_scene: "empty",
       real_hardware_acknowledged: true,
     },
   });
@@ -96,6 +101,7 @@ test("real stack start requires confirmation and carries the observed configurat
     payload: {
       expected_runtime: "real",
       expected_robot: "panda",
+      expected_scene: "empty",
       real_hardware_acknowledged: true,
     },
   });
@@ -120,6 +126,7 @@ test("teleop start and robot selection carry stale-configuration guards", () => 
     payload: {
       expected_runtime: "sim",
       expected_robot: "panda",
+      expected_scene: "empty",
       real_hardware_acknowledged: false,
     },
   });
@@ -129,6 +136,23 @@ test("teleop start and robot selection carry stale-configuration guards", () => 
       robot: "so101",
       expected_runtime: "sim",
       expected_robot: "panda",
+      expected_scene: "empty",
+      real_hardware_acknowledged: false,
+    },
+  });
+});
+
+test("scene selection carries stale-configuration guards", () => {
+  const current = snapshot();
+
+  assert.equal(sceneRequest(current, "empty"), null);
+  assert.deepEqual(sceneRequest(current, "floor-and-cube"), {
+    path: "/api/scene",
+    payload: {
+      scene: "floor-and-cube",
+      expected_runtime: "sim",
+      expected_robot: "panda",
+      expected_scene: "empty",
       real_hardware_acknowledged: false,
     },
   });

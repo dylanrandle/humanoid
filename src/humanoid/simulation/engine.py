@@ -7,14 +7,18 @@ import math
 import mujoco
 import numpy as np
 
-from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
+from humanoid.config.simulation import (
+    DEFAULT_MUJOCO_SIMULATION_CONFIG,
+    FLOOR_AND_CUBE_SCENE_CONFIG,
+)
+from humanoid.constants import DEFAULT_MUJOCO_SCENE
 from humanoid.robots.base import Robot
 from humanoid.robots.command import normalize_robot_joint_command
 from humanoid.simulation.binding import (
     MujocoRobotBinding,
     resolve_mujoco_robot_binding,
 )
-from humanoid.simulation.model import build_mujoco_spec
+from humanoid.simulation.scene import build_mujoco_scene
 from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
@@ -23,7 +27,11 @@ from humanoid.types.robot import (
     RobotJointCommand,
     RobotState,
 )
-from humanoid.types.simulation import MujocoSimulationConfig
+from humanoid.types.simulation import (
+    FloorAndCubeSceneConfig,
+    MujocoScene,
+    MujocoSimulationConfig,
+)
 
 SIMULATED_ACTUATOR_TEMPERATURE = 25.0
 
@@ -35,10 +43,18 @@ class NativeMujocoEngine:
         self,
         robot_config: RobotConfig,
         config: MujocoSimulationConfig = DEFAULT_MUJOCO_SIMULATION_CONFIG,
+        scene: MujocoScene = DEFAULT_MUJOCO_SCENE,
+        floor_and_cube_config: FloorAndCubeSceneConfig = FLOOR_AND_CUBE_SCENE_CONFIG,
     ) -> None:
         self.config = config
+        self.scene = scene
         self.robot = Robot(robot_config)
-        self.spec = build_mujoco_spec(self.robot, config)
+        self.spec = build_mujoco_scene(
+            self.robot,
+            scene,
+            config,
+            floor_and_cube_config,
+        )
         self.model = self.spec.compile()
         self.data = mujoco.MjData(self.model)
         self.binding: MujocoRobotBinding = resolve_mujoco_robot_binding(

@@ -26,6 +26,7 @@ from humanoid.types.orchestrator import (
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingBundle, RecordingSummary, ReplayOutcome, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 
 
 def _process_status(running: bool = False) -> ProcessStatus:
@@ -65,6 +66,7 @@ def _make_service(
     manager = MagicMock(spec=NodeManager)
     manager.runtime = Runtime.SIM
     manager.robot = RobotName.ELROBOT_MOBILE
+    manager.scene = MujocoScene.EMPTY
     manager.status.return_value = _all_processes(
         stack=stack,
         keyboard=keyboard,
@@ -124,11 +126,13 @@ def _safety_context(
     *,
     runtime: Runtime = Runtime.SIM,
     robot: RobotName = RobotName.ELROBOT_MOBILE,
+    scene: MujocoScene = MujocoScene.EMPTY,
     acknowledged: bool = False,
 ) -> SafetyContext:
     return SafetyContext(
         expected_runtime=runtime,
         expected_robot=robot,
+        expected_scene=scene,
         real_hardware_acknowledged=acknowledged,
     )
 
@@ -250,11 +254,22 @@ def test_robot_change_uses_typed_robot_name():
     assert status.robots == list(RobotName)
 
 
+def test_scene_change_uses_typed_scene_name():
+    service, manager, _, _ = _make_service()
+
+    status = service.set_scene(MujocoScene.FLOOR_AND_CUBE, _safety_context())
+
+    manager.set_scene.assert_called_once_with(MujocoScene.FLOOR_AND_CUBE)
+    assert status.scene is MujocoScene.EMPTY
+    assert status.scenes == list(MujocoScene)
+
+
 @pytest.mark.parametrize(
     "safety",
     [
         _safety_context(runtime=Runtime.REAL),
         _safety_context(robot=RobotName.PANDA),
+        _safety_context(scene=MujocoScene.FLOOR_AND_CUBE),
     ],
 )
 def test_configuration_change_rejects_stale_operator_snapshot(safety):

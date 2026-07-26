@@ -21,6 +21,7 @@ from humanoid.types.orchestrator import (
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoScene
 from humanoid.ui.constants import ApiRoute, PayloadKey
 from humanoid.ui.server import create_app
 
@@ -47,6 +48,7 @@ def _safety_payload(*, acknowledged: bool = False) -> dict[str, object]:
     return {
         PayloadKey.EXPECTED_RUNTIME.value: Runtime.SIM,
         PayloadKey.EXPECTED_ROBOT.value: RobotName.ELROBOT_MOBILE,
+        PayloadKey.EXPECTED_SCENE.value: MujocoScene.EMPTY,
         PayloadKey.REAL_HARDWARE_ACKNOWLEDGED.value: acknowledged,
     }
 
@@ -55,6 +57,7 @@ def _safety_context(*, acknowledged: bool = False) -> SafetyContext:
     return SafetyContext(
         expected_runtime=Runtime.SIM,
         expected_robot=RobotName.ELROBOT_MOBILE,
+        expected_scene=MujocoScene.EMPTY,
         real_hardware_acknowledged=acknowledged,
     )
 
@@ -66,6 +69,7 @@ def test_serves_split_ui_assets(server_client):
     assert response.status_code == HTTPStatus.OK
     assert b"Humanoid Control" in response.data
     assert b'id="robot-select"' in response.data
+    assert b'id="scene-select"' in response.data
     assert b'data-orchestrator-mode="homing"' in response.data
     assert b'data-orchestrator-preset="home"' in response.data
     assert b'data-logging-action="start"' in response.data
@@ -115,6 +119,8 @@ def test_serializes_orchestrator_status_dataclass(server_client):
         runtime=Runtime.SIM,
         robot=RobotName.PANDA,
         robots=[RobotName.PANDA],
+        scene=MujocoScene.FLOOR_AND_CUBE,
+        scenes=list(MujocoScene),
         processes={
             ProcessName.STACK: ProcessStatus(
                 running=True,
@@ -177,6 +183,8 @@ def test_serializes_orchestrator_status_dataclass(server_client):
         "runtime": "sim",
         "robot": "panda",
         "robots": ["panda"],
+        "scene": "floor-and-cube",
+        "scenes": ["empty", "floor-and-cube"],
         "processes": {
             "stack": {
                 "running": True,
@@ -252,6 +260,13 @@ def test_serializes_orchestrator_status_dataclass(server_client):
             result={"robot": "panda"},
         ),
         RouteCase(
+            path=ApiRoute.SCENE,
+            payload={PayloadKey.SCENE: "floor-and-cube", **_safety_payload()},
+            method_name="set_scene",
+            arguments=(MujocoScene.FLOOR_AND_CUBE, _safety_context()),
+            result={"scene": "floor-and-cube"},
+        ),
+        RouteCase(
             path="/api/processes/stack/start",
             payload=_safety_payload(),
             method_name="start_process",
@@ -324,6 +339,7 @@ def test_routes_typed_control_actions(
         (ApiRoute.ORCHESTRATOR, "", "application/json", HTTPStatus.BAD_REQUEST),
         ("/api/runtime", '{"runtime":"hardware"}', "application/json", HTTPStatus.BAD_REQUEST),
         ("/api/robot", '{"robot":"unknown"}', "application/json", HTTPStatus.BAD_REQUEST),
+        ("/api/scene", '{"scene":"warehouse"}', "application/json", HTTPStatus.BAD_REQUEST),
         (ApiRoute.RUNTIME, '{"runtime":"sim"}', "application/json", HTTPStatus.BAD_REQUEST),
         (
             "/api/processes/stack/start",
