@@ -40,6 +40,10 @@ arm_controller:
     joints: [arm_1, arm_2, arm_3, arm_4, arm_5, arm_6, arm_7]
     command_interfaces: [position]
     state_interfaces: [position, velocity]
+    # The STS driver preserves measured positions but initializes command
+    # interfaces to zero. Seed trajectories from feedback so activation cannot
+    # create a stale command/limiter history or move real hardware toward zero.
+    set_last_command_interface_value_as_state_on_activation: false
     allow_partial_joints_goal: false
     action_monitor_rate: 20.0
     constraints:
@@ -51,6 +55,7 @@ gripper_controller:
     joints: [gripper_1]
     command_interfaces: [position]
     state_interfaces: [position, velocity]
+    set_last_command_interface_value_as_state_on_activation: false
     allow_partial_joints_goal: false
     action_monitor_rate: 20.0
     constraints:

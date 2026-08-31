@@ -176,8 +176,16 @@ def test_ros_control_interfaces_match_triskel_hardware_and_urdf_limits():
     assert gripper_3_mimic is not None
     assert math.isclose(float(gripper_limit.attrib["lower"]), GRIPPER_CLOSED_POSITION)
     assert math.isclose(float(gripper_limit.attrib["upper"]), GRIPPER_OPEN_POSITION)
-    assert gripper_2_mimic.attrib["multiplier"] == "0.0115"
-    assert gripper_3_mimic.attrib["multiplier"] == "-0.0115"
+    for mimic in (gripper_2_mimic, gripper_3_mimic):
+        multiplier = float(mimic.attrib["multiplier"])
+        offset = float(mimic.attrib["offset"])
+        closed_position = multiplier * GRIPPER_CLOSED_POSITION + offset
+        assert math.isclose(closed_position, 0.0, abs_tol=1e-9)
+
+    assert float(gripper_2_mimic.attrib["multiplier"]) < 0.0
+    assert float(gripper_2_mimic.attrib["offset"]) < 0.0
+    assert float(gripper_3_mimic.attrib["multiplier"]) > 0.0
+    assert float(gripper_3_mimic.attrib["offset"]) > 0.0
 
 
 def test_arm_axes_follow_sts_feedback_coordinates():
@@ -228,6 +236,8 @@ def test_controller_configuration_claims_each_command_interface_once():
     gripper = controllers["gripper_controller"]["ros__parameters"]
     assert arm["joints"] == JOINT_IDS
     assert gripper["joints"] == [GRIPPER_ID]
+    assert arm["set_last_command_interface_value_as_state_on_activation"] is False
+    assert gripper["set_last_command_interface_value_as_state_on_activation"] is False
     assert arm["command_interfaces"] == ["position"]
     assert gripper["command_interfaces"] == ["position"]
 
