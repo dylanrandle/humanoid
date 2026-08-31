@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>triskel_hardware</name>
+  <version>0.2.0</version>
+  <description>ros2_control hardware mapping for the mixed-mode Triskel Feetech bus.</description>
+
+  <maintainer email="dylanrandle@users.noreply.github.com">Dylan Randle</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>hardware_interface</exec_depend>
+  <exec_depend>sts_hardware_interface</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

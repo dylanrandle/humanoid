@@ -1,0 +1,5 @@
+repositories:
+  sts_hardware_interface:
+    type: git
+    url: https://github.com/adityakamath/sts_hardware_interface.git
+    version: bd95bdef4e6d641c7ad5c8af534cae94681056c2

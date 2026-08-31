@@ -9,12 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Node.js dependencies
-node_modules/
-
-# LCM Java types
-lcm-java
-
 # MacOS
 .DS_Store
 
@@ -25,5 +19,7 @@ htmlcov
 # VS Code
 .vscode
 
-# Logging
-logs/
+# ROS 2 / colcon
+ros_ws/build/
+ros_ws/install/
+ros_ws/log/

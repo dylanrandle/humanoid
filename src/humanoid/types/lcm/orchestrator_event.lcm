@@ -1,6 +1,0 @@
-package humanoid.types.lcm;
-
-struct orchestrator_event_t {
-    int64_t timestamp;
-    string kind;
-}

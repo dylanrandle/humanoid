@@ -1,0 +1,79 @@
+name: triskel-ros2
+
+x-service-defaults: &service-defaults
+  image: triskel-ros2-jazzy:test
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.ros2
+    args:
+      ROS_DISTRO: jazzy
+  init: true
+  environment:
+    ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-42}"
+
+x-runtime-defaults: &runtime-defaults
+  <<: *service-defaults
+  ports:
+    - "127.0.0.1:8765:8765"
+    - "127.0.0.1:8080:8080"
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 2s
+  timeout: 2s
+  retries: 60
+  start_period: 10s
+
+services:
+  ros2-test:
+    <<: *service-defaults
+    profiles: ["test"]
+
+  ros2-shell:
+    <<: *service-defaults
+    command: ["bash"]
+    stdin_open: true
+    tty: true
+    profiles: ["shell"]
+
+  ros2-sim:
+    <<: *runtime-defaults
+    command:
+      - ros2
+      - launch
+      - triskel_bringup
+      - operator.launch.py
+      - use_mock_hardware:=true
+      - start_rviz:=false
+      - dashboard_host:=0.0.0.0
+      - visualizer_host:=0.0.0.0
+    healthcheck:
+      <<: *healthcheck-defaults
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent http://127.0.0.1:8765/api/status |
+          jq -e '.status.ready == true and .status.visualization.ready == true' >/dev/null
+
+  ros2-hardware:
+    <<: *runtime-defaults
+    command:
+      - ros2
+      - launch
+      - triskel_bringup
+      - operator.launch.py
+      - use_mock_hardware:=false
+      - serial_port:=/dev/triskel
+      - baud_rate:=${TRISKEL_BAUD_RATE:-1000000}
+      - start_rviz:=false
+      - dashboard_host:=0.0.0.0
+      - visualizer_host:=0.0.0.0
+    devices:
+      - "${TRISKEL_SERIAL_PORT:-/dev/ttyACM0}:/dev/triskel:rw"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent http://127.0.0.1:8765/api/status |
+          jq -e '.status.ready == true and .status.runtime == "real" and .status.visualization.ready == true' >/dev/null
+    profiles: ["hardware"]

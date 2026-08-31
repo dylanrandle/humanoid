@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>triskel_control</name>
+  <version>0.2.0</version>
+  <description>Standard ros2_controllers configuration for the Triskel base, arm, and gripper.</description>
+
+  <maintainer email="dylanrandle@users.noreply.github.com">Dylan Randle</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>omni_wheel_drive_controller</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

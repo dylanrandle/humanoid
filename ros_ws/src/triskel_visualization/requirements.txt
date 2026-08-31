@@ -1,0 +1,2 @@
+viser==1.1.0
+yourdfpy==0.0.60

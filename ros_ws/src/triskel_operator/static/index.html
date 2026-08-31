@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Triskel Operator</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Triskel operator home">
+        <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><small>ROS 2</small><strong>Triskel Operator</strong></span>
+      </a>
+      <div class="system-pill" id="system-pill">
+        <span></span><b id="system-label">Connecting</b>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Mobile manipulation · local control surface</p>
+          <h1>One robot.<br /><em>Native ROS control.</em></h1>
+          <p class="lede">
+            Teleoperate, home, capture, and replay through standard ROS topics and controllers.
+          </p>
+        </div>
+        <div class="profile-card">
+          <label for="robot-select">Robot</label>
+          <select id="robot-select" disabled><option value="triskel">Triskel</option></select>
+          <div class="profile-row"><span>Runtime</span><b id="runtime-value">—</b></div>
+          <div class="profile-row"><span>Control mode</span><b id="mode-value">—</b></div>
+          <p id="runtime-note">Waiting for the ROS graph.</p>
+        </div>
+      </section>
+
+      <section class="status-strip" aria-label="ROS controller and input status">
+        <article><span class="status-dot" data-controller="base"></span><div><small>Base</small><b>Waiting</b></div></article>
+        <article><span class="status-dot" data-controller="arm"></span><div><small>Arm</small><b>Waiting</b></div></article>
+        <article><span class="status-dot" data-controller="gripper"></span><div><small>Gripper</small><b>Waiting</b></div></article>
+        <article><span class="status-dot" data-controller="servo"></span><div><small>MoveIt Servo</small><b>Waiting</b></div></article>
+        <article><span class="status-dot" data-controller="visualization"></span><div><small>Viser</small><b>Waiting</b></div></article>
+        <article><span class="status-dot" data-controller="meta_quest"></span><div><small>Meta Quest</small><b>Waiting</b></div></article>
+      </section>
+
+      <section class="panel visualization-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">01 · Browser visualization</p><h2>Live Triskel model</h2></div>
+          <div class="visualization-actions">
+            <span class="tag" id="visualization-status">Starting Viser</span>
+            <a id="visualization-open" href="#" target="_blank" rel="noreferrer">Open full screen</a>
+          </div>
+        </div>
+        <div class="visualization-shell">
+          <iframe id="visualization-frame" title="Live Triskel Viser visualization"></iframe>
+          <div class="visualization-legend" aria-label="Visualization layers">
+            <span><i class="measured"></i>Measured robot</span>
+            <span><i class="commanded"></i>Limited command</span>
+            <span><i class="target"></i>Task-space target</span>
+          </div>
+          <div class="visualization-message" id="visualization-message">
+            <span class="status-dot"></span>
+            <b>Waiting for the Viser ROS node</b>
+          </div>
+        </div>
+      </section>
+
+      <div class="grid">
+        <section class="panel modes-panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">02 · Robot state</p><h2>Mode &amp; homing</h2></div>
+            <span class="tag">SRDF named poses</span>
+          </div>
+          <div class="mode-grid">
+            <button data-mode="idle"><span>A</span><b>Idle</b><small>Stop operator motion</small></button>
+            <button data-mode="home"><span>B</span><b>Home</b><small>Move arm to home</small></button>
+            <button data-mode="rest"><span>C</span><b>Rest</b><small>Fold into rest pose</small></button>
+            <button data-mode="keyboard"><span>D</span><b>Keyboard teleop</b><small>Browser dead-man control</small></button>
+            <button data-mode="meta_quest"><span>E</span><b>Meta Quest</b><small>OpenXR pose + Joy dead-man</small></button>
+          </div>
+          <p class="error" id="error" hidden></p>
+        </section>
+
+        <section class="panel telemetry-panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">03 · Feedback</p><h2>Live telemetry</h2></div>
+            <span class="tag" id="feedback-age">No samples</span>
+          </div>
+          <div class="telemetry-grid">
+            <div><small>Joint feedback</small><b id="joint-count">0 / 8</b></div>
+            <div><small>Odometry</small><b id="odom-state">Waiting</b></div>
+            <div><small>Runtime</small><b id="runtime-state">Unknown</b></div>
+            <div><small>Robot</small><b>Triskel</b></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel data-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">04 · rosbag2</p><h2>Record &amp; replay</h2></div>
+          <span class="tag">Standard ROS streams</span>
+        </div>
+        <div class="data-grid">
+          <article>
+            <small>Capture</small><h3>Session recording</h3>
+            <p>Capture command, joint-state, odometry, TF, and Servo topics to MCAP.</p>
+            <button class="action" id="record-action">Start recording</button>
+            <b class="detail" id="record-detail">Stopped</b>
+          </article>
+          <article>
+            <small>Playback</small><h3>Command replay</h3>
+            <p>Replay controller command topics against the selected runtime.</p>
+            <select id="recording-select"><option value="">No recordings</option></select>
+            <button class="action" id="replay-action">Start replay</button>
+            <b class="detail" id="replay-detail">Ready</b>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel topic-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">05 · ROS graph</p><h2>Live topic rates</h2></div>
+          <span class="tag">Green healthy · red unhealthy · gray idle</span>
+        </div>
+        <div class="topic-rate-grid" id="topic-rate-grid">
+          <p class="topic-rate-empty">Waiting for ROS samples.</p>
+        </div>
+      </section>
+
+      <section class="panel teleop-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">06 · Dead-man control</p><h2>Keyboard &amp; Meta Quest teleoperation</h2></div>
+          <span class="tag">Hold keys or controls</span>
+        </div>
+        <p class="instructions">
+          Select Keyboard teleop, then hold a key. Commands expire automatically if the browser
+          stops sending heartbeats. Meta Quest teleop accepts OpenXR input as standard ROS
+          <code>PoseStamped</code> and <code>Joy</code> streams, with either grip button acting as
+          its dead-man.
+        </p>
+        <div class="teleop-groups">
+          <article>
+            <h3>Tool translation</h3>
+            <div class="pad">
+              <button data-command="tool_up"><kbd>E</kbd><small>Up</small></button>
+              <button data-command="tool_forward"><kbd>D</kbd><small>Forward</small></button>
+              <button data-command="tool_left"><kbd>W</kbd><small>Left</small></button>
+              <button data-command="tool_right"><kbd>S</kbd><small>Right</small></button>
+              <button data-command="tool_backward"><kbd>A</kbd><small>Back</small></button>
+              <button data-command="tool_down"><kbd>Q</kbd><small>Down</small></button>
+            </div>
+          </article>
+          <article>
+            <h3>Tool rotation</h3>
+            <div class="pad">
+              <button data-command="tool_roll_left"><kbd>K</kbd><small>Roll +</small></button>
+              <button data-command="tool_roll_right"><kbd>I</kbd><small>Roll −</small></button>
+              <button data-command="tool_pitch_up"><kbd>O</kbd><small>Pitch +</small></button>
+              <button data-command="tool_pitch_down"><kbd>U</kbd><small>Pitch −</small></button>
+              <button data-command="tool_yaw_left"><kbd>J</kbd><small>Yaw +</small></button>
+              <button data-command="tool_yaw_right"><kbd>L</kbd><small>Yaw −</small></button>
+            </div>
+          </article>
+          <article>
+            <h3>Mobile base</h3>
+            <div class="pad">
+              <button data-command="base_forward"><kbd>↑</kbd><small>Forward</small></button>
+              <button data-command="base_backward"><kbd>↓</kbd><small>Back</small></button>
+              <button data-command="base_left"><kbd>←</kbd><small>Strafe</small></button>
+              <button data-command="base_right"><kbd>→</kbd><small>Strafe</small></button>
+              <button data-command="base_yaw_left"><kbd>,</kbd><small>Yaw +</small></button>
+              <button data-command="base_yaw_right"><kbd>.</kbd><small>Yaw −</small></button>
+            </div>
+          </article>
+          <article>
+            <h3>Gripper</h3>
+            <div class="pad two">
+              <button data-command="gripper_close"><kbd>[</kbd><small>Close</small></button>
+              <button data-command="gripper_open"><kbd>]</kbd><small>Open</small></button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+    </main>
+
+    <footer><span>Triskel</span><span>ROS 2 Jazzy · localhost operator edge</span></footer>
+    <div class="toast" id="toast" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

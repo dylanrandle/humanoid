@@ -1,46 +1,26 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
-name = "humanoid"
+name = "triskel-development"
 version = "0.2.0"
-description = "A Python framework for multi-robot control and teleoperation in simulation and on real hardware"
+description = "Development tools for the ROS 2 Triskel workspace"
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "flask>=3.1.3",
-    "lcm>=1.5.2",
-    "meshcat>=0.3.2",
-    "mujoco~=3.10.0",
-    "numpy>=2.0.0",
-    "oculus-reader",
-    "pin>=3.2.0",
-    "pin-pink>=4.0.0",
-    "pynput>=1.8.1",
-    "pyserial>=3.5",
-    "qpsolvers[open-source-solvers]>=4.8.2",
-    "vassar-feetech-servo-sdk>=1.5.0",
-]
+requires-python = ">=3.12"
+dependencies = []
 
-[project.scripts]
-start = "humanoid.start:main"
-check = "humanoid.check:main"
+[tool.uv]
+package = false
 
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
-    "pytest-cov>=7.1.0",
+    "pyyaml>=6.0.3",
     "ruff>=0.15",
+    "setuptools>=80.0.0",
     "ty>=0.0.17",
 ]
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
-exclude = [
-    "src/humanoid/types/lcm/*_t.py",  # Auto-generated LCM types
-]
+target-version = "py312"
 
 [tool.ruff.lint]
 select = [
@@ -62,18 +42,13 @@ select = [
 ignore = []
 
 [tool.ruff.lint.isort]
-known-first-party = ["humanoid"]
+known-first-party = ["triskel_operator", "triskel_visualization"]
 
 [tool.ty.src]
 exclude = [
-    "src/humanoid/types/lcm/*_t.py",  # Auto-generated LCM types
+    # ./triskel check covers these in a second pass while ignoring only unavailable ROS imports.
+    "ros_ws/src/*/launch/*.py",
+    "ros_ws/src/triskel_operator/triskel_operator/node.py",
+    "ros_ws/src/triskel_operator/triskel_operator/quest_bridge.py",
+    "ros_ws/src/triskel_visualization/triskel_visualization/node.py",
 ]
-
-[tool.ty.environment]
-extra-paths = ["typings"]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/humanoid"]
-
-[tool.uv.sources]
-oculus-reader = { git = "https://github.com/rail-berkeley/oculus_reader.git", rev = "17bc7b3923f5754d70c4e358867a3bcac1a3c0c3" }

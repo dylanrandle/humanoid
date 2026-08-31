@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>triskel_bringup</name>
+  <version>0.2.0</version>
+  <description>ROS 2 launch composition for Triskel.</description>
+
+  <maintainer email="dylanrandle@users.noreply.github.com">Dylan Randle</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>triskel_control</exec_depend>
+  <exec_depend>triskel_description</exec_depend>
+  <exec_depend>triskel_hardware</exec_depend>
+  <exec_depend>triskel_moveit_config</exec_depend>
+  <exec_depend>triskel_operator</exec_depend>
+  <exec_depend>triskel_visualization</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

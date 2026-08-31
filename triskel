@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+compose_file="${repository_root}/docker/compose.ros2.yaml"
+dashboard_url="http://127.0.0.1:8765"
+visualizer_url="http://127.0.0.1:8080"
+start_timeout_seconds=180
+default_serial_port="/dev/ttyACM0"
+default_baud_rate=1000000
+cd "${repository_root}"
+
+usage() {
+    cat <<'EOF'
+Usage: ./triskel <command> [options]
+
+Stack commands:
+  start [--hardware] [--foreground] [--no-build]
+        [--serial-port /dev/...] [--baud-rate RATE]
+  stop
+  status
+  logs
+
+Development commands:
+  check     Run formatting, lint, type, and structural tests.
+  format    Apply Ruff formatting and safe lint fixes.
+  smoke     Build and run the modular ROS simulation smoke suite.
+  help
+EOF
+}
+
+fail() {
+    printf 'ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "$1 is required."
+}
+
+compose() {
+    docker compose -f "${compose_file}" "$@"
+}
+
+start_stack() {
+    local foreground=false
+    local build=true
+    local hardware=false
+    local serial_port="${default_serial_port}"
+    local serial_port_set=false
+    local baud_rate="${default_baud_rate}"
+
+    while (($# > 0)); do
+        case "$1" in
+            --foreground)
+                foreground=true
+                ;;
+            --no-build)
+                build=false
+                ;;
+            --hardware)
+                hardware=true
+                ;;
+            --serial-port)
+                [[ $# -ge 2 ]] || fail "--serial-port requires a value."
+                serial_port="$2"
+                serial_port_set=true
+                shift
+                ;;
+            --baud-rate)
+                [[ $# -ge 2 ]] || fail "--baud-rate requires a value."
+                baud_rate="$2"
+                shift
+                ;;
+            -h | --help)
+                usage
+                return
+                ;;
+            *)
+                fail "Unknown start option: $1"
+                ;;
+        esac
+        shift
+    done
+
+    if [[ "${hardware}" == false && "${serial_port_set}" == true ]]; then
+        fail "--serial-port requires --hardware."
+    fi
+    if [[ "${hardware}" == false && "${baud_rate}" != "${default_baud_rate}" ]]; then
+        fail "--baud-rate requires --hardware."
+    fi
+    [[ "${serial_port}" == /dev/* ]] || fail "--serial-port must be under /dev."
+    [[ "${baud_rate}" =~ ^[1-9][0-9]*$ ]] || fail "--baud-rate must be a positive integer."
+
+    require_command docker
+
+    local service="ros2-sim"
+    local runtime="simulation"
+    local compose_arguments=(up)
+    if [[ "${hardware}" == true ]]; then
+        service="ros2-hardware"
+        runtime="physical hardware"
+        compose_arguments=(--profile hardware up)
+        export TRISKEL_SERIAL_PORT="${serial_port}"
+        export TRISKEL_BAUD_RATE="${baud_rate}"
+        compose stop ros2-sim >/dev/null 2>&1 || true
+    else
+        compose --profile hardware stop ros2-hardware >/dev/null 2>&1 || true
+    fi
+
+    if [[ "${build}" == true ]]; then
+        compose_arguments+=(--build)
+    fi
+    if [[ "${foreground}" == false ]]; then
+        compose_arguments+=(--detach --wait --wait-timeout "${start_timeout_seconds}")
+    fi
+    compose_arguments+=("${service}")
+
+    if ! compose "${compose_arguments[@]}"; then
+        if [[ "${hardware}" == true ]]; then
+            compose --profile hardware logs --tail 120 "${service}" || true
+        else
+            compose logs --tail 120 "${service}" || true
+        fi
+        fail "Triskel did not become ready."
+    fi
+
+    if [[ "${foreground}" == false ]]; then
+        printf 'Triskel is ready.\n'
+        printf 'Runtime:       %s\n' "${runtime}"
+        printf 'Dashboard:     %s\n' "${dashboard_url}"
+        printf 'Visualization: %s\n' "${visualizer_url}"
+        printf 'Run `./triskel logs` to follow output and `./triskel stop` when finished.\n'
+    fi
+}
+
+stop_stack() {
+    require_command docker
+    compose --profile hardware down --remove-orphans
+}
+
+show_status() {
+    require_command docker
+    compose --profile hardware ps ros2-sim ros2-hardware
+    if curl --fail --silent --show-error "${dashboard_url}/api/status" >/dev/null 2>&1; then
+        printf 'Dashboard: reachable at %s\n' "${dashboard_url}"
+    else
+        printf 'Dashboard: unavailable\n'
+    fi
+}
+
+follow_logs() {
+    require_command docker
+    compose --profile hardware logs --follow --tail 200 ros2-sim ros2-hardware
+}
+
+run_checks() {
+    require_command uv
+    printf '\n> bash -n\n'
+    bash -n triskel docker/ros_entrypoint.sh docker/test_ros2.sh docker/tests/*.bash
+    printf '\n> ruff format --check\n'
+    uv run ruff format --check
+    printf '\n> ruff check\n'
+    uv run ruff check
+    printf '\n> ty check\n'
+    uv run ty check
+    printf '\n> ty check ros_ws/src (ROS imports resolved at runtime)\n'
+    uv run ty check ros_ws/src --no-force-exclude --ignore unresolved-import
+    printf '\n> pytest\n'
+    uv run pytest
+}
+
+apply_formatting() {
+    require_command uv
+    uv run ruff format
+    uv run ruff check --fix
+}
+
+run_smoke_tests() {
+    require_command docker
+    compose --profile test build ros2-test
+    compose --profile test run --rm ros2-test
+}
+
+command_name="${1:-help}"
+if (($# > 0)); then
+    shift
+fi
+
+case "${command_name}" in
+    start) start_stack "$@" ;;
+    stop) stop_stack "$@" ;;
+    status) show_status "$@" ;;
+    logs) follow_logs "$@" ;;
+    check) run_checks "$@" ;;
+    format) apply_formatting "$@" ;;
+    smoke) run_smoke_tests "$@" ;;
+    help | -h | --help) usage ;;
+    *)
+        usage >&2
+        fail "Unknown command: ${command_name}"
+        ;;
+esac

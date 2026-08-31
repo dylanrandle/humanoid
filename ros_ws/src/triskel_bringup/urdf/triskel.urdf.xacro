@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="triskel">
+  <xacro:arg name="use_mock_hardware" default="true" />
+  <xacro:arg name="serial_port" default="/dev/ttyACM0" />
+  <xacro:arg name="baud_rate" default="1000000" />
+
+  <xacro:include filename="$(find triskel_description)/urdf/triskel.urdf" />
+  <xacro:include filename="$(find triskel_hardware)/urdf/triskel.ros2_control.xacro" />
+
+  <xacro:triskel_ros2_control
+    use_mock_hardware="$(arg use_mock_hardware)"
+    serial_port="$(arg serial_port)"
+    baud_rate="$(arg baud_rate)"
+  />
+</robot>

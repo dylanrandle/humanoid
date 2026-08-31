@@ -1,0 +1,73 @@
+ARG ROS_DISTRO=jazzy
+FROM ros:${ROS_DISTRO}-ros-base-noble
+
+ARG ROS_DISTRO
+ENV DEBIAN_FRONTEND=noninteractive \
+    TRISKEL_WS=/workspace/triskel/ros_ws \
+    ROS_DISTRO=${ROS_DISTRO} \
+    PYTHONPATH=/opt/triskel-python
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        git \
+        curl \
+        jq \
+        python3-colcon-common-extensions \
+        python3-pip \
+        python3-rosdep \
+        python3-vcstool \
+        "ros-${ROS_DISTRO}-ros2controlcli" \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/triskel
+
+# Import source dependencies separately so ordinary workspace edits retain the clone layer.
+COPY triskel.repos ./triskel.repos
+COPY ros_ws/src/triskel_visualization/requirements.txt \
+    "${TRISKEL_WS}/src/triskel_visualization/requirements.txt"
+RUN mkdir -p "${TRISKEL_WS}/src" \
+    && vcs import "${TRISKEL_WS}/src" < triskel.repos
+
+RUN python3 -m pip install \
+    --no-cache-dir \
+    --target /opt/triskel-python \
+    --requirement "${TRISKEL_WS}/src/triskel_visualization/requirements.txt"
+
+# Resolve dependencies from manifests before copying implementation files so
+# normal source edits keep the expensive apt/rosdep layer cached.
+COPY ros_ws/src/triskel_bringup/package.xml "${TRISKEL_WS}/src/triskel_bringup/package.xml"
+COPY ros_ws/src/triskel_control/package.xml "${TRISKEL_WS}/src/triskel_control/package.xml"
+COPY ros_ws/src/triskel_description/package.xml "${TRISKEL_WS}/src/triskel_description/package.xml"
+COPY ros_ws/src/triskel_hardware/package.xml "${TRISKEL_WS}/src/triskel_hardware/package.xml"
+COPY ros_ws/src/triskel_moveit_config/package.xml "${TRISKEL_WS}/src/triskel_moveit_config/package.xml"
+COPY ros_ws/src/triskel_operator/package.xml "${TRISKEL_WS}/src/triskel_operator/package.xml"
+COPY ros_ws/src/triskel_visualization/package.xml "${TRISKEL_WS}/src/triskel_visualization/package.xml"
+
+RUN if [[ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]]; then rosdep init; fi \
+    && rosdep update --rosdistro "${ROS_DISTRO}" \
+    && apt-get update \
+    && rosdep install \
+        --from-paths "${TRISKEL_WS}/src" \
+        --ignore-src \
+        --rosdistro "${ROS_DISTRO}" \
+        -r \
+        -y \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY ros_ws/src/ "${TRISKEL_WS}/src/"
+
+RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
+    && colcon build \
+        --base-paths "${TRISKEL_WS}/src" \
+        --build-base "${TRISKEL_WS}/build" \
+        --install-base "${TRISKEL_WS}/install" \
+        --symlink-install \
+        --event-handlers console_direct+
+
+COPY docker/ ./docker/
+RUN chmod +x docker/ros_entrypoint.sh docker/test_ros2.sh
+
+ENTRYPOINT ["/workspace/triskel/docker/ros_entrypoint.sh"]
+CMD ["bash", "/workspace/triskel/docker/test_ros2.sh"]

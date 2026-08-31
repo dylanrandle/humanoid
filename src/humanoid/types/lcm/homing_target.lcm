@@ -1,7 +1,0 @@
-package humanoid.types.lcm;
-
-struct homing_target_t {
-    int64_t timestamp;
-    int32_t num_positions;
-    double target_position[num_positions];
-}

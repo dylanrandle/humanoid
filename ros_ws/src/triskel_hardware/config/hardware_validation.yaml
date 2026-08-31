@@ -1,0 +1,11 @@
+# Values in this file are acceptance criteria, not runtime parameters. Record
+# measured results here before making real hardware the default bringup mode.
+hardware_validation:
+  joint_state_rate_hz_min: 50.0
+  command_timeout_seconds_max: 0.25
+  required_checks:
+    - all_joint_directions_match_urdf
+    - gripper_direction_and_limits_verified
+    - emergency_stop_disables_all_torque
+    - wheel_velocity_signs_match_base_frames
+    - no_motion_on_controller_activation
