@@ -39,6 +39,7 @@ COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 MAX_COMMAND_TIMEOUT_SECONDS = 0.25
 MAX_SMOKE_RUNNER_LINES = 80
 WHEEL_RADIUS = 0.05
+BASE_GROUND_OFFSET = 0.0321
 WHEEL_IDS = [f"wheel_{index}" for index in range(1, 4)]
 JOINT_IDS = [f"arm_{index}" for index in range(1, 8)]
 GRIPPER_ID = "gripper_1"
@@ -194,6 +195,11 @@ def test_controller_configuration_claims_each_command_interface_once():
         math.isclose(base["robot_radius"], radius, abs_tol=1e-6) for radius in wheel_mount_radii
     )
 
+    base_mount_origin = _urdf_joints()["base_mount"].find("origin")
+    assert base_mount_origin is not None
+    _, _, base_ground_offset = (float(value) for value in base_mount_origin.attrib["xyz"].split())
+    assert math.isclose(base_ground_offset, BASE_GROUND_OFFSET)
+
     arm = controllers["arm_controller"]["ros__parameters"]
     gripper = controllers["gripper_controller"]["ros__parameters"]
     assert arm["joints"] == JOINT_IDS
@@ -306,6 +312,14 @@ def test_operator_uses_standard_ros_control_and_recording_interfaces():
     ]
     assert dashboard.index("Record &amp; replay") < dashboard.index("Live topic rates")
 
+    dashboard_styles = (OPERATOR_PACKAGE / "static" / "styles.css").read_text()
+    assert "rotate(var(--angle)) translateY(-11px) rotate(-45deg)" in dashboard_styles
+    assert re.findall(r"\.mark i:nth-child\(\d\) \{ --angle: (\d+)deg; \}", dashboard_styles) == [
+        "0",
+        "120",
+        "240",
+    ]
+
     dashboard_javascript = (OPERATOR_PACKAGE / "static" / "app.js").read_text()
     assert 'if (snapshot.mode !== "keyboard") state.held.clear();' in dashboard_javascript
     inactive_branch = dashboard_javascript.split("if (!active) {", maxsplit=1)[1].split(
@@ -313,12 +327,19 @@ def test_operator_uses_standard_ros_control_and_recording_interfaces():
     )[0]
     assert "state.held.delete(command);" in inactive_branch
 
+
+def test_meta_quest_bridge_owns_reader_connection_and_input_mapping():
     quest_bridge = (OPERATOR_PACKAGE / "triskel_operator" / "quest_bridge.py").read_text()
     assert 'transformations["r"]' in quest_bridge
     assert 'buttons.get("leftJS")' in quest_bridge
     assert 'buttons.get("rightJS")' in quest_bridge
     assert 'buttons.get("A", False)' in quest_bridge
     assert 'buttons.get("Y", False)' in quest_bridge
+    assert "MetaQuestBridge(_load_meta_quest_reader)" in quest_bridge
+    assert "sample_token == self._last_sample_token" in quest_bridge
+    assert '["adb", "connect", target]' in quest_bridge
+    assert "now = time.monotonic()\n            self._last_sample_at = now" in quest_bridge
+    assert "QuestReaderSession(reader)" in quest_bridge
     assert "from triskel_operator.topics import QUEST_JOY_TOPIC, QUEST_POSE_TOPIC" in quest_bridge
 
 
@@ -441,7 +462,12 @@ def test_ros_launch_files_are_valid_python():
     operator_launch = (ROS_SRC / "triskel_bringup" / "launch" / "operator.launch.py").read_text()
     assert '("servo_node_main", "servo_node")' in operator_launch
     assert 'package="triskel_visualization"' in operator_launch
+    assert 'executable="meta_quest_bridge"' in operator_launch
     assert 'DeclareLaunchArgument("start_visualizer", default_value="true")' in operator_launch
+    assert (
+        'DeclareLaunchArgument("start_meta_quest_bridge", default_value="true")' in operator_launch
+    )
+    assert 'DeclareLaunchArgument("quest_ip", default_value="auto")' in operator_launch
 
 
 def test_docker_smoke_suite_is_modular():
@@ -460,6 +486,16 @@ def test_docker_smoke_suite_is_modular():
     assert "tests/test_*.bash" in smoke_runner
 
 
+def test_docker_image_contains_pinned_meta_quest_runtime():
+    dockerfile = (DOCKER_DIRECTORY / "Dockerfile.ros2").read_text()
+    quest_requirements = (OPERATOR_PACKAGE / "requirements.txt").read_text()
+
+    assert "triskel_operator/requirements.txt" in dockerfile
+    assert "git-lfs" in dockerfile
+    assert "adb" in dockerfile
+    assert "oculus-reader @ git+https://github.com/jborbik/oculus_reader.git@" in quest_requirements
+
+
 def test_docker_smoke_environment_is_mock_first_and_covers_runtime_contracts():
     dockerfile = (DOCKER_DIRECTORY / "Dockerfile.ros2").read_text()
     compose = _load_yaml(DOCKER_DIRECTORY / "compose.ros2.yaml")
@@ -474,7 +510,7 @@ def test_docker_smoke_environment_is_mock_first_and_covers_runtime_contracts():
 
     test_service = compose["services"]["ros2-test"]
     assert compose["name"] == "triskel-ros2"
-    assert test_service["image"] == "triskel-ros2-jazzy:test"
+    assert test_service["image"] == "triskel-ros2-jazzy:latest"
     assert test_service["build"]["args"]["ROS_DISTRO"] == "jazzy"
     assert test_service["profiles"] == ["test"]
     assert "devices" not in test_service
@@ -484,6 +520,7 @@ def test_docker_smoke_environment_is_mock_first_and_covers_runtime_contracts():
     assert "use_mock_hardware:=true" in sim_service["command"]
     assert "dashboard_host:=0.0.0.0" in sim_service["command"]
     assert "visualizer_host:=0.0.0.0" in sim_service["command"]
+    assert "quest_ip:=${TRISKEL_QUEST_IP:-auto}" in sim_service["command"]
     assert sim_service["ports"] == ["127.0.0.1:8765:8765", "127.0.0.1:8080:8080"]
     assert "/api/status" in sim_service["healthcheck"]["test"][1]
     assert "devices" not in sim_service
@@ -521,6 +558,21 @@ def test_docker_smoke_environment_is_mock_first_and_covers_runtime_contracts():
     assert "MoveIt Servo did not move an arm joint" in smoke_test
 
 
+def test_runtime_services_persist_meta_quest_adb_authorization():
+    compose = _load_yaml(DOCKER_DIRECTORY / "compose.ros2.yaml")
+    sim_service = compose["services"]["ros2-sim"]
+    hardware_service = compose["services"]["ros2-hardware"]
+
+    assert sim_service["volumes"] == [
+        "quest-adb:/root/.android",
+        "../recordings:/recordings",
+    ]
+    assert hardware_service["volumes"] == sim_service["volumes"]
+    assert "quest-adb" in compose["volumes"]
+    assert "recording_root:=/recordings" in sim_service["command"]
+    assert "recording_root:=/recordings" in hardware_service["command"]
+
+
 def test_root_command_wraps_lifecycle_quality_and_smoke_workflows():
     project = (REPO_ROOT / "pyproject.toml").read_text()
     command_path = REPO_ROOT / "triskel"
@@ -528,12 +580,30 @@ def test_root_command_wraps_lifecycle_quality_and_smoke_workflows():
 
     assert command_path.stat().st_mode & 0o111
     assert "package = false" in project
-    for subcommand in ("start", "stop", "status", "logs", "check", "format", "smoke"):
+    for subcommand in (
+        "start",
+        "stop",
+        "status",
+        "logs",
+        "dashboard",
+        "recordings",
+        "check",
+        "format",
+        "smoke",
+    ):
         assert f"{subcommand})" in command
     assert "--detach --wait --wait-timeout" in command
     assert "down --remove-orphans" in command
     assert "--hardware" in command
     assert "--serial-port" in command
+    assert "--quest-ip" in command
+    assert 'export TRISKEL_QUEST_IP="${quest_ip:-auto}"' in command
+    assert "Recordings:    %s/recordings" in command
+    assert "TRISKEL_SSH_TARGET" in command
+    assert "TRISKEL_REMOTE_ROOT" in command
+    assert "-L 8765:127.0.0.1:8765" in command
+    assert "-L 8080:127.0.0.1:8080" in command
+    assert '"${ssh_target}:${remote_root%/}/recordings/"' in command
     assert 'default_serial_port="/dev/ttyACM0"' in command
     assert "bash -n triskel docker/ros_entrypoint.sh docker/test_ros2.sh" in command
     assert "uv run ruff format --check" in command

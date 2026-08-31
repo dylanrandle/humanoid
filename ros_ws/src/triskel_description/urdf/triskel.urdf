@@ -572,7 +572,8 @@
         </visual>
     </link>
     <joint name="base_mount" type="fixed">
-        <origin xyz="0 0 -8.67362e-19" rpy="0 -0 0" />
+        <!-- Keep base_link on the ground plane while the visual wheel tread rests at z=0. -->
+        <origin xyz="0 0 0.0321" rpy="0 -0 0" />
         <axis xyz="0 0 -1" />
         <parent link="base_link" />
         <child link="lower_plate_link" />

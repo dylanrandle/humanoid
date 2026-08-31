@@ -35,6 +35,8 @@ def generate_launch_description() -> LaunchDescription:
     start_visualizer = LaunchConfiguration("start_visualizer")
     visualizer_host = LaunchConfiguration("visualizer_host")
     visualizer_port = LaunchConfiguration("visualizer_port")
+    start_meta_quest_bridge = LaunchConfiguration("start_meta_quest_bridge")
+    quest_ip = LaunchConfiguration("quest_ip")
 
     bringup_share = Path(get_package_share_directory("triskel_bringup"))
     moveit_share = Path(get_package_share_directory("triskel_moveit_config"))
@@ -98,6 +100,14 @@ def generate_launch_description() -> LaunchDescription:
         ],
         output="screen",
     )
+    meta_quest_bridge = Node(
+        package="triskel_operator",
+        executable="meta_quest_bridge",
+        name="meta_quest_bridge",
+        parameters=[{"ip_address": quest_ip}],
+        condition=IfCondition(start_meta_quest_bridge),
+        output="screen",
+    )
     visualizer_node = Node(
         package="triskel_visualization",
         executable="visualizer",
@@ -123,11 +133,14 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("start_visualizer", default_value="true"),
             DeclareLaunchArgument("visualizer_host", default_value="127.0.0.1"),
             DeclareLaunchArgument("visualizer_port", default_value="8080"),
+            DeclareLaunchArgument("start_meta_quest_bridge", default_value="true"),
+            DeclareLaunchArgument("quest_ip", default_value="auto"),
             DeclareLaunchArgument("recording_root", default_value="~/.ros/triskel/recordings"),
             robot_launch,
             move_group_launch,
             servo_node,
             visualizer_node,
             operator_node,
+            meta_quest_bridge,
         ]
     )

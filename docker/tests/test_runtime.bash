@@ -55,6 +55,8 @@ test_runtime_startup() {
     api_get /api/status | jq -e '
         .status.teleop_devices == ["keyboard", "meta_quest"]
     ' >/dev/null
+    ros2 node list | grep -Fx /meta_quest_bridge >/dev/null \
+        || fail "The Meta Quest bridge did not start with the operator stack."
 
     wait_for_status 10 "Dashboard did not report healthy continuous ROS topic rates." '
         [

@@ -1,0 +1,1 @@
+oculus-reader @ git+https://github.com/jborbik/oculus_reader.git@9689484d319c4798e54d59509b192436647b7427

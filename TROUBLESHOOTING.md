@@ -49,25 +49,40 @@ path only if necessary.
 ## Meta Quest stays in Waiting
 
 The dashboard supports the device even when no headset is connected, but it reports the input
-online only while both pose and Joy samples are fresh. Start the bridge and inspect its ROS
-topics:
+online only while both pose and Joy samples are fresh. The bridge starts with the stack. For
+Docker Desktop, confirm the Wi-Fi address passed to `--quest-ip`, then inspect the process and
+its ROS topics:
 
 ```bash
-ros2 run triskel_operator meta_quest_bridge
+./triskel logs
+docker compose -f docker/compose.ros2.yaml run --rm ros2-shell
+```
+
+From the sourced ROS shell opened by the second command:
+
+```bash
 ros2 topic hz /triskel/teleop/meta_quest/right_controller_pose
 ros2 topic hz /triskel/teleop/meta_quest/joy
 ```
 
-If the bridge cannot import its reader dependency, install the maintained Meta Quest reader
-package into the same ROS Python environment. If no samples arrive, verify `adb devices`,
-accept USB debugging inside the headset, and confirm the Meta Quest teleoperation APK is
-running. Releasing both grip buttons or losing either input stream intentionally stops motion
-after 300 ms.
+If no samples arrive, connect the headset to the Mac once, verify `adb devices`, accept USB
+debugging inside the headset, run `adb tcpip 5555`, and restart with the address reported by
+`adb shell ip route`. The image contains the pinned reader, ADB client, and APK. Releasing both
+grip buttons or losing either input stream intentionally stops motion after 300 ms.
 
 ## Dashboard unavailable
 
 Launch the composite operator stack, wait for all four controllers to become active, then
 open <http://127.0.0.1:8765>. Use `dashboard_host:=0.0.0.0` only on a trusted robot network.
+When the stack is running on a Raspberry Pi, leave its localhost-only binding in place and
+forward both operator ports from the Mac:
+
+```bash
+./triskel dashboard dylan@triskel.local
+```
+
+If forwarding fails, verify ordinary SSH access first and check that ports 8765 and 8080 are
+not already occupied on the Mac.
 
 For the local Docker simulation, the simplest diagnostics are:
 
@@ -85,6 +100,8 @@ its card. Joint feedback, odometry, and the visualization heartbeat are always e
 Quest input becomes required after selecting Meta Quest mode; motion command streams are only
 required while the corresponding dead-man input is active. Gray is therefore normal for an
 idle command topic. Inspect a red stream directly with `ros2 topic hz <topic>`.
+When using Docker Desktop on macOS, run that ROS command from `ros2-shell` as shown in the
+Meta Quest section above.
 
 ## Browser visualization unavailable
 
@@ -98,6 +115,7 @@ launcher so both dashboard and visualization ports are published and readiness i
 Check <http://127.0.0.1:8080> directly and verify the ROS heartbeat:
 
 ```bash
+docker compose -f docker/compose.ros2.yaml run --rm ros2-shell
 ros2 topic echo --once /triskel/visualization/ready
 ```
 

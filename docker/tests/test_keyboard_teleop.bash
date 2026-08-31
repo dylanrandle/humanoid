@@ -5,6 +5,8 @@ test_keyboard_teleop() {
     local servo_status_file="${test_directory}/servo-status.txt"
     local servo_output_file="${test_directory}/servo-output.txt"
     local servo_motion=false
+    local rates_healthy=false
+    local rate_status=""
     local deadline
 
     before_teleop="$(api_get /api/status)"
@@ -66,16 +68,28 @@ test_keyboard_teleop() {
 
     kill "${servo_status_pid}" "${servo_output_pid}" 2>/dev/null || true
     wait "${servo_status_pid}" "${servo_output_pid}" 2>/dev/null || true
-    api_get /api/status | jq -e '
-        [
-            .status.topic_rates[]
-            | select(
-                .topic == "/servo_node/delta_twist_cmds"
-                or .topic == "/arm_controller/joint_trajectory"
-            )
-            | .state
-        ] == ["healthy", "healthy"]
-    ' >/dev/null || fail "Active task-space command rates were not healthy."
+    for _ in {1..10}; do
+        api_post /api/teleop '{"commands":["tool_down"]}' >/dev/null
+        rate_status="$(api_get /api/status)"
+        if jq -e '
+            [
+                .status.topic_rates[]
+                | select(
+                    .topic == "/servo_node/delta_twist_cmds"
+                    or .topic == "/arm_controller/joint_trajectory"
+                )
+                | .state
+            ] == ["healthy", "healthy"]
+        ' <<<"${rate_status}" >/dev/null; then
+            rates_healthy=true
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ "${rates_healthy}" != true ]]; then
+        printf 'Last observed topic-rate status:\n%s\n' "${rate_status}" >&2
+        fail "Active task-space command rates were not healthy."
+    fi
 
     api_post /api/teleop '{"commands":[]}' >/dev/null
     api_post /api/mode '{"mode":"idle"}' >/dev/null

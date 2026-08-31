@@ -16,7 +16,7 @@ Usage: ./triskel <command> [options]
 
 Stack commands:
   start [--hardware] [--foreground] [--no-build]
-        [--serial-port /dev/...] [--baud-rate RATE]
+        [--serial-port /dev/...] [--baud-rate RATE] [--quest-ip ADDRESS]
   stop
   status
   logs
@@ -25,7 +25,14 @@ Development commands:
   check     Run formatting, lint, type, and structural tests.
   format    Apply Ruff formatting and safe lint fixes.
   smoke     Build and run the modular ROS simulation smoke suite.
+
+Remote Pi commands:
+  dashboard [SSH_TARGET]   Forward the dashboard and visualization until Ctrl-C.
+  recordings [SSH_TARGET]  Pull the Pi's recordings into this repository.
   help
+
+SSH_TARGET defaults to TRISKEL_SSH_TARGET. The remote repository defaults to
+~/humanoid; set TRISKEL_REMOTE_ROOT when it lives elsewhere.
 EOF
 }
 
@@ -49,6 +56,7 @@ start_stack() {
     local serial_port="${default_serial_port}"
     local serial_port_set=false
     local baud_rate="${default_baud_rate}"
+    local quest_ip="${TRISKEL_QUEST_IP:-}"
 
     while (($# > 0)); do
         case "$1" in
@@ -72,6 +80,11 @@ start_stack() {
                 baud_rate="$2"
                 shift
                 ;;
+            --quest-ip)
+                [[ $# -ge 2 ]] || fail "--quest-ip requires a value."
+                quest_ip="$2"
+                shift
+                ;;
             -h | --help)
                 usage
                 return
@@ -83,6 +96,10 @@ start_stack() {
         shift
     done
 
+    if [[ "${quest_ip}" == "auto" ]]; then
+        quest_ip=""
+    fi
+
     if [[ "${hardware}" == false && "${serial_port_set}" == true ]]; then
         fail "--serial-port requires --hardware."
     fi
@@ -91,8 +108,12 @@ start_stack() {
     fi
     [[ "${serial_port}" == /dev/* ]] || fail "--serial-port must be under /dev."
     [[ "${baud_rate}" =~ ^[1-9][0-9]*$ ]] || fail "--baud-rate must be a positive integer."
+    if [[ -n "${quest_ip}" && ! "${quest_ip}" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
+        fail "--quest-ip must be an IPv4 address or hostname without a port."
+    fi
 
     require_command docker
+    export TRISKEL_QUEST_IP="${quest_ip:-auto}"
 
     local service="ros2-sim"
     local runtime="simulation"
@@ -130,6 +151,12 @@ start_stack() {
         printf 'Runtime:       %s\n' "${runtime}"
         printf 'Dashboard:     %s\n' "${dashboard_url}"
         printf 'Visualization: %s\n' "${visualizer_url}"
+        printf 'Recordings:    %s/recordings\n' "${repository_root}"
+        if [[ -n "${quest_ip}" ]]; then
+            printf 'Meta Quest:   wireless ADB at %s\n' "${quest_ip}"
+        else
+            printf 'Meta Quest:   waiting for an authorized ADB device\n'
+        fi
         printf 'Run `./triskel logs` to follow output and `./triskel stop` when finished.\n'
     fi
 }
@@ -152,6 +179,55 @@ show_status() {
 follow_logs() {
     require_command docker
     compose --profile hardware logs --follow --tail 200 ros2-sim ros2-hardware
+}
+
+resolve_ssh_target() {
+    (($# <= 1)) || fail "Expected at most one SSH target, such as dylan@triskel.local."
+    ssh_target="${1:-${TRISKEL_SSH_TARGET:-}}"
+    [[ -n "${ssh_target}" ]] \
+        || fail "Pass an SSH target or set TRISKEL_SSH_TARGET (for example, dylan@triskel.local)."
+    [[ "${ssh_target}" != -* && "${ssh_target}" != *[[:space:]]* ]] \
+        || fail "SSH target must be a host or user@host without whitespace."
+}
+
+forward_dashboard() {
+    local ssh_target
+    resolve_ssh_target "$@"
+    require_command ssh
+
+    printf 'Forwarding the Triskel operator console from %s.\n' "${ssh_target}"
+    printf 'Dashboard:     %s\n' "${dashboard_url}"
+    printf 'Visualization: %s\n' "${visualizer_url}"
+    printf 'Press Ctrl-C to close the tunnel.\n'
+    exec ssh \
+        -NT \
+        -o ExitOnForwardFailure=yes \
+        -o ServerAliveInterval=30 \
+        -L 8765:127.0.0.1:8765 \
+        -L 8080:127.0.0.1:8080 \
+        "${ssh_target}"
+}
+
+pull_recordings() {
+    local ssh_target
+    local remote_root="${TRISKEL_REMOTE_ROOT:-~/humanoid}"
+    resolve_ssh_target "$@"
+    require_command rsync
+
+    [[ "${remote_root}" =~ ^(\~/|/)[A-Za-z0-9._/-]+$ ]] \
+        || fail "TRISKEL_REMOTE_ROOT must be a simple absolute or ~/ path."
+
+    mkdir -p "${repository_root}/recordings"
+    printf 'Pulling %s:%s/recordings/ into %s/recordings/.\n' \
+        "${ssh_target}" "${remote_root%/}" "${repository_root}"
+    rsync \
+        --archive \
+        --human-readable \
+        --partial \
+        --progress \
+        -- \
+        "${ssh_target}:${remote_root%/}/recordings/" \
+        "${repository_root}/recordings/"
 }
 
 run_checks() {
@@ -192,6 +268,8 @@ case "${command_name}" in
     stop) stop_stack "$@" ;;
     status) show_status "$@" ;;
     logs) follow_logs "$@" ;;
+    dashboard) forward_dashboard "$@" ;;
+    recordings) pull_recordings "$@" ;;
     check) run_checks "$@" ;;
     format) apply_formatting "$@" ;;
     smoke) run_smoke_tests "$@" ;;

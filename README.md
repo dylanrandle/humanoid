@@ -42,6 +42,43 @@ the current image. Open <http://127.0.0.1:8765>; Viser is embedded in the dashbo
 also available full-screen at <http://127.0.0.1:8080>. Both ports bind only to the local
 machine.
 
+Dashboard recordings are stored on the host under `recordings/`. The directory is bind-mounted
+at `/recordings` in both simulation and hardware containers, so captures remain available after
+the stack is stopped or rebuilt.
+
+When the stack runs on a Raspberry Pi, keep the operator ports private and forward them to the
+Mac over SSH. Pass the SSH target directly or save it for both remote helpers:
+
+```bash
+export TRISKEL_SSH_TARGET=dylan@triskel.local
+./triskel dashboard
+```
+
+The command keeps the tunnel in the foreground until `Ctrl-C`. Open
+<http://127.0.0.1:8765> for the dashboard or <http://127.0.0.1:8080> for full-screen Viser.
+Pull the Pi's recordings into this checkout without deleting existing local captures:
+
+```bash
+./triskel recordings
+```
+
+The recording helper requires `rsync` on the Pi (`sudo apt install rsync` on Ubuntu or
+Raspberry Pi OS). macOS already includes an rsync client.
+
+The remote checkout defaults to `~/humanoid`. Set `TRISKEL_REMOTE_ROOT` if the repository is
+elsewhere, or pass the target without exporting it:
+
+```bash
+TRISKEL_REMOTE_ROOT='~/robot/humanoid' ./triskel recordings dylan@triskel.local
+```
+
+The Meta Quest bridge is part of the stack and waits harmlessly when no headset is present.
+After enabling wireless ADB on the headset, pass its address at startup:
+
+```bash
+./triskel start --quest-ip 192.168.1.123
+```
+
 After completing the physical validation checklist, start the same stack against the STS
 hardware. The standard adapter path is selected automatically:
 
@@ -96,6 +133,8 @@ explicitly opt-in through the `hardware` profile or `./triskel start --hardware`
 
 ```bash
 sudo apt install \
+  adb \
+  git-lfs \
   python3-colcon-common-extensions \
   python3-rosdep \
   python3-vcstool \
@@ -105,8 +144,10 @@ sudo apt install \
   ros-jazzy-ros2-controllers
 
 source /opt/ros/jazzy/setup.bash
+git lfs install
 python3 -m pip install --user --break-system-packages \
-  -r ros_ws/src/triskel_visualization/requirements.txt
+  -r ros_ws/src/triskel_visualization/requirements.txt \
+  -r ros_ws/src/triskel_operator/requirements.txt
 vcs import ros_ws/src < triskel.repos
 rosdep install --from-paths ros_ws/src --ignore-src --rosdistro jazzy -r -y
 cd ros_ws
@@ -146,12 +187,25 @@ MoveIt Servo, the base uses `/cmd_vel`, and the gripper uses its trajectory cont
 
 ### Meta Quest teleoperation
 
-Install and configure the maintained Meta Quest reader package and its headset APK/ADB link,
-then start the ROS hardware-edge adapter in a separately sourced terminal:
+The Meta Quest bridge starts with `triskel_bringup`; no second ROS command is required. Enable
+Developer Mode and USB debugging on the headset, authorize it once over USB, and switch ADB
+to network mode from the host. On macOS, install the host utility first with
+`brew install android-platform-tools`, then run:
 
 ```bash
-ros2 run triskel_operator meta_quest_bridge
+adb devices
+adb tcpip 5555
+adb shell ip route
 ```
+
+Use the address shown after `src` to start the stack with `--quest-ip`. The bridge connects,
+installs or starts its bundled teleoperation APK, and automatically reconnects if the stream
+becomes stale. Accept the headset's ADB authorization prompt on the first bridge connection;
+Docker keeps that authorization key in a named volume across container replacements. On a
+native Linux host with an authorized USB headset, omit `quest_ip` (the launch default is
+`auto`).
+The bridge can be disabled for a replacement input adapter with
+`start_meta_quest_bridge:=false` when using the raw ROS launch command.
 
 Select **Meta Quest** in the dashboard. The bridge publishes only standard ROS
 interfaces, so another OpenXR bridge can be substituted without changing Triskel control:

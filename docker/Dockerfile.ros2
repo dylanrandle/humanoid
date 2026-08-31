@@ -12,6 +12,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         git \
+        git-lfs \
+        adb \
         curl \
         jq \
         python3-colcon-common-extensions \
@@ -27,13 +29,17 @@ WORKDIR /workspace/triskel
 COPY triskel.repos ./triskel.repos
 COPY ros_ws/src/triskel_visualization/requirements.txt \
     "${TRISKEL_WS}/src/triskel_visualization/requirements.txt"
+COPY ros_ws/src/triskel_operator/requirements.txt \
+    "${TRISKEL_WS}/src/triskel_operator/requirements.txt"
 RUN mkdir -p "${TRISKEL_WS}/src" \
     && vcs import "${TRISKEL_WS}/src" < triskel.repos
 
-RUN python3 -m pip install \
+RUN git lfs install --system \
+    && python3 -m pip install \
     --no-cache-dir \
     --target /opt/triskel-python \
-    --requirement "${TRISKEL_WS}/src/triskel_visualization/requirements.txt"
+    --requirement "${TRISKEL_WS}/src/triskel_visualization/requirements.txt" \
+    --requirement "${TRISKEL_WS}/src/triskel_operator/requirements.txt"
 
 # Resolve dependencies from manifests before copying implementation files so
 # normal source edits keep the expensive apt/rosdep layer cached.

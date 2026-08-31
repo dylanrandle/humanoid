@@ -30,6 +30,8 @@ detailed visual meshes with simplified planning collision primitives.
 Meta Quest support is split at a normal ROS device boundary. `meta_quest_bridge`
 converts headset SDK samples to `PoseStamped` and `Joy`; all clutching, freshness checks,
 axis mapping, Servo commands, gripper control, homing, and recording are ROS-side behavior.
+The bridge starts with the composite bringup, treats missing hardware as a waiting state, and
+accepts a wireless ADB address at the launch boundary.
 
 `triskel_visualization` loads the canonical detailed description three times for clearly
 separated views. `/joint_states` drives the solid measured robot; arm and gripper trajectory

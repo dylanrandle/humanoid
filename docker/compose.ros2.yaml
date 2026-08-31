@@ -1,7 +1,7 @@
 name: triskel-ros2
 
 x-service-defaults: &service-defaults
-  image: triskel-ros2-jazzy:test
+  image: triskel-ros2-jazzy:latest
   build:
     context: ..
     dockerfile: docker/Dockerfile.ros2
@@ -10,12 +10,16 @@ x-service-defaults: &service-defaults
   init: true
   environment:
     ROS_DOMAIN_ID: "${ROS_DOMAIN_ID:-42}"
+    TRISKEL_QUEST_IP: "${TRISKEL_QUEST_IP:-auto}"
 
 x-runtime-defaults: &runtime-defaults
   <<: *service-defaults
   ports:
     - "127.0.0.1:8765:8765"
     - "127.0.0.1:8080:8080"
+  volumes:
+    - quest-adb:/root/.android
+    - ../recordings:/recordings
 
 x-healthcheck-defaults: &healthcheck-defaults
   interval: 2s
@@ -46,6 +50,8 @@ services:
       - start_rviz:=false
       - dashboard_host:=0.0.0.0
       - visualizer_host:=0.0.0.0
+      - quest_ip:=${TRISKEL_QUEST_IP:-auto}
+      - recording_root:=/recordings
     healthcheck:
       <<: *healthcheck-defaults
       test:
@@ -67,6 +73,8 @@ services:
       - start_rviz:=false
       - dashboard_host:=0.0.0.0
       - visualizer_host:=0.0.0.0
+      - quest_ip:=${TRISKEL_QUEST_IP:-auto}
+      - recording_root:=/recordings
     devices:
       - "${TRISKEL_SERIAL_PORT:-/dev/ttyACM0}:/dev/triskel:rw"
     healthcheck:
@@ -77,3 +85,6 @@ services:
           curl --fail --silent http://127.0.0.1:8765/api/status |
           jq -e '.status.ready == true and .status.runtime == "real" and .status.visualization.ready == true' >/dev/null
     profiles: ["hardware"]
+
+volumes:
+  quest-adb:
