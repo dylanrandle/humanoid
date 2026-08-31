@@ -68,9 +68,9 @@
       <xacro:position_joint name="arm_2" motor_id="2" lower="-1.6122" upper="1.6122" />
       <xacro:position_joint name="arm_3" motor_id="3" lower="-1.7610" upper="1.7610" />
       <xacro:position_joint name="arm_4" motor_id="4" lower="-1.7533" upper="1.7533" />
-      <xacro:position_joint name="arm_5" motor_id="5" lower="-3.1907" upper="2.6998" />
-      <xacro:position_joint name="arm_6" motor_id="6" lower="-1.3775" upper="1.7641" />
-      <xacro:position_joint name="arm_7" motor_id="7" lower="-3.0710" upper="2.7796" />
+      <xacro:position_joint name="arm_5" motor_id="5" lower="-2.6998" upper="3.1907" />
+      <xacro:position_joint name="arm_6" motor_id="6" lower="-1.7641" upper="1.3775" />
+      <xacro:position_joint name="arm_7" motor_id="7" lower="-2.7796" upper="3.0710" />
       <xacro:position_joint
         name="gripper_1"
         motor_id="8"

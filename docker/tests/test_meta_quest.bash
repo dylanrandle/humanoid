@@ -24,7 +24,7 @@ test_meta_quest_teleop() {
         ' >"${quest_tool_file}" &
     local quest_tool_echo_pid=$!
     ros2 topic pub --rate 20 --times 80 /triskel/teleop/meta_quest/joy sensor_msgs/msg/Joy \
-        '{axes: [0.25, 0.5, 0.0, 0.2], buttons: [0, 1, 0, 0, 1, 0]}' >/dev/null &
+        '{axes: [0.25, 0.5, 0.0, 0.2], buttons: [1, 0, 0, 0, 1, 0]}' >/dev/null &
     local quest_joy_pid=$!
     ros2 topic pub --rate 10 --times 40 /triskel/teleop/meta_quest/right_controller_pose \
         geometry_msgs/msg/PoseStamped \
@@ -69,7 +69,7 @@ test_meta_quest_teleop() {
     done
     if [[ "${quest_gripper_moved}" != true ]]; then
         printf 'Meta Quest gripper status:\n%s\n' "${quest_status}" >&2
-        fail "Meta Quest B-button input did not move the gripper."
+        fail "Meta Quest A-button input did not close the gripper."
     fi
 
     sleep 0.5

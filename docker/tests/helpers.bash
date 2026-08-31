@@ -54,9 +54,9 @@ wait_for_home() {
     local expected_gripper="$1"
     wait_for_status 20 "Dashboard did not reach the Home state." '
         .status.mode == "idle"
-        and ((.status.joints.arm_2 + 0.75) | fabs) < 0.04
-        and ((.status.joints.arm_3 - 0.5) | fabs) < 0.04
-        and ((.status.joints.arm_6 - 1.0) | fabs) < 0.04
+        and ((.status.joints.arm_2 - 0.75) | fabs) < 0.04
+        and ((.status.joints.arm_3 + 0.5) | fabs) < 0.04
+        and ((.status.joints.arm_6 + 1.0) | fabs) < 0.04
         and ((.status.joints.gripper_1 - $gripper) | fabs) < 0.04
     ' --argjson gripper "${expected_gripper}"
 }
@@ -64,10 +64,10 @@ wait_for_home() {
 wait_for_rest() {
     wait_for_status 20 "Dashboard did not reach the Rest state." '
         .status.mode == "idle"
-        and ((.status.joints.arm_2 + 1.6) | fabs) < 0.04
-        and ((.status.joints.arm_3 + 0.1) | fabs) < 0.04
-        and ((.status.joints.arm_4 - 1.65) | fabs) < 0.04
-        and ((.status.joints.arm_6 - 0.21) | fabs) < 0.04
+        and ((.status.joints.arm_2 - 1.6) | fabs) < 0.04
+        and ((.status.joints.arm_3 - 0.1) | fabs) < 0.04
+        and ((.status.joints.arm_4 + 1.65) | fabs) < 0.04
+        and ((.status.joints.arm_6 + 0.21) | fabs) < 0.04
         and ((.status.joints.gripper_1 + 2.2) | fabs) < 0.04
     '
 }

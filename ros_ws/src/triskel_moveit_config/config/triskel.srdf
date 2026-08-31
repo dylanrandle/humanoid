@@ -15,27 +15,27 @@
 
   <group_state name="home" group="arm">
     <joint name="arm_1" value="0" />
-    <joint name="arm_2" value="-0.75" />
-    <joint name="arm_3" value="0.5" />
+    <joint name="arm_2" value="0.75" />
+    <joint name="arm_3" value="-0.5" />
     <joint name="arm_4" value="0" />
     <joint name="arm_5" value="0" />
-    <joint name="arm_6" value="1" />
+    <joint name="arm_6" value="-1" />
     <joint name="arm_7" value="0" />
   </group_state>
   <group_state name="rest" group="arm">
     <joint name="arm_1" value="0" />
-    <joint name="arm_2" value="-1.6" />
-    <joint name="arm_3" value="-0.1" />
-    <joint name="arm_4" value="1.65" />
+    <joint name="arm_2" value="1.6" />
+    <joint name="arm_3" value="0.1" />
+    <joint name="arm_4" value="-1.65" />
     <joint name="arm_5" value="0" />
-    <joint name="arm_6" value="0.21" />
+    <joint name="arm_6" value="-0.21" />
     <joint name="arm_7" value="0" />
   </group_state>
   <group_state name="open" group="gripper">
-    <joint name="gripper_1" value="-2.2" />
+    <joint name="gripper_1" value="0" />
   </group_state>
   <group_state name="closed" group="gripper">
-    <joint name="gripper_1" value="0" />
+    <joint name="gripper_1" value="-2.2" />
   </group_state>
 
   <end_effector

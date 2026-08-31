@@ -38,12 +38,23 @@ PACKAGE_URI_PATTERN = re.compile(r"^package://([^/]+)/(.+)$")
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 MAX_COMMAND_TIMEOUT_SECONDS = 0.25
 MAX_SMOKE_RUNNER_LINES = 80
+VECTOR_DIMENSIONS = 3
 WHEEL_RADIUS = 0.05
 BASE_GROUND_OFFSET = 0.0321
 WHEEL_IDS = [f"wheel_{index}" for index in range(1, 4)]
 JOINT_IDS = [f"arm_{index}" for index in range(1, 8)]
 GRIPPER_ID = "gripper_1"
-GRIPPER_OPEN_POSITION = -2.2
+GRIPPER_OPEN_POSITION = 0.0
+GRIPPER_CLOSED_POSITION = -2.2
+EXPECTED_ARM_AXES = {
+    "arm_1": (0.0, 0.008727, -0.999962),
+    "arm_2": (0.999962, 0.000076, -0.008726),
+    "arm_3": (0.999848, 0.000152, -0.017452),
+    "arm_4": (0.99981, -0.008574, -0.017527),
+    "arm_5": (0.008573, 0.999963, -0.000151),
+    "arm_6": (0.999697, -0.0173, -0.017525),
+    "arm_7": (0.017144, 0.999812, -0.009029),
+}
 CALIBRATED_HOME_CONDITION = 41.0
 DEFAULT_QUEST_POSE_TOPIC = "/triskel/teleop/meta_quest/right_controller_pose"
 DEFAULT_QUEST_JOY_TOPIC = "/triskel/teleop/meta_quest/joy"
@@ -163,10 +174,23 @@ def test_ros_control_interfaces_match_triskel_hardware_and_urdf_limits():
     assert gripper_limit is not None
     assert gripper_2_mimic is not None
     assert gripper_3_mimic is not None
-    assert math.isclose(float(gripper_limit.attrib["lower"]), -2.2)
-    assert math.isclose(float(gripper_limit.attrib["upper"]), 0.0)
+    assert math.isclose(float(gripper_limit.attrib["lower"]), GRIPPER_CLOSED_POSITION)
+    assert math.isclose(float(gripper_limit.attrib["upper"]), GRIPPER_OPEN_POSITION)
     assert gripper_2_mimic.attrib["multiplier"] == "0.0115"
     assert gripper_3_mimic.attrib["multiplier"] == "-0.0115"
+
+
+def test_arm_axes_follow_sts_feedback_coordinates():
+    urdf_joints = _urdf_joints()
+    for joint_name, expected_axis in EXPECTED_ARM_AXES.items():
+        axis = urdf_joints[joint_name].find("axis")
+        assert axis is not None
+        values = tuple(float(value) for value in axis.attrib["xyz"].split())
+        assert len(values) == VECTOR_DIMENSIONS
+        assert all(
+            math.isclose(actual, expected, abs_tol=1e-9)
+            for actual, expected in zip(values, expected_axis, strict=True)
+        )
 
 
 def test_controller_configuration_claims_each_command_interface_once():
@@ -229,24 +253,24 @@ def test_moveit_groups_and_controller_actions_match_control_configuration():
     }
     assert [states["home"][joint] for joint in JOINT_IDS] == [
         0.0,
-        -0.75,
-        0.5,
+        0.75,
+        -0.5,
         0.0,
         0.0,
-        1.0,
+        -1.0,
         0.0,
     ]
     assert [states["rest"][joint] for joint in JOINT_IDS] == [
         0.0,
-        -1.6,
-        -0.1,
-        1.65,
+        1.6,
+        0.1,
+        -1.65,
         0.0,
-        0.21,
+        -0.21,
         0.0,
     ]
     assert states["open"][GRIPPER_ID] == GRIPPER_OPEN_POSITION
-    assert states["closed"][GRIPPER_ID] == 0.0
+    assert states["closed"][GRIPPER_ID] == GRIPPER_CLOSED_POSITION
 
     moveit_controllers = _load_yaml(MOVEIT_PACKAGE / "config" / "moveit_controllers.yaml")
     simple = moveit_controllers["moveit_simple_controller_manager"]
@@ -290,6 +314,10 @@ def test_operator_uses_standard_ros_control_and_recording_interfaces():
     assert "TOPIC_RATE_SPECS" in node
     assert "_require_hardware_acknowledgement(payload)" in node
     assert 'ROBOT = "triskel"' in node
+    assert 'states["home"][GRIPPER_JOINT] = gripper_states["open"]' in node
+    assert 'states["rest"][GRIPPER_JOINT] = gripper_states["closed"]' in node
+    assert 'self._named_states["open"][GRIPPER_JOINT]' in node
+    assert 'self._named_states["closed"][GRIPPER_JOINT]' in node
 
     dashboard = (OPERATOR_PACKAGE / "static" / "index.html").read_text()
     for capability in (

@@ -851,15 +851,14 @@ class TriskelOperator(Node):
     def _publish_gripper_direction(self, direction: float) -> None:
         if not direction or self._gripper_command is None:
             return
-        open_position = self._named_states["rest"][GRIPPER_JOINT]
-        closed_position = self._named_states["home"][GRIPPER_JOINT]
-        lower, upper = sorted((open_position, closed_position))
-        self._gripper_command = min(
-            upper,
-            max(
-                lower,
-                self._gripper_command - direction * self._gripper_speed * CONTROL_PERIOD_SECONDS,
-            ),
+        open_position = self._named_states["open"][GRIPPER_JOINT]
+        closed_position = self._named_states["closed"][GRIPPER_JOINT]
+        target = open_position if direction > 0.0 else closed_position
+        maximum_step = self._gripper_speed * CONTROL_PERIOD_SECONDS
+        error = target - self._gripper_command
+        self._gripper_command += max(
+            -maximum_step,
+            min(maximum_step, error),
         )
         self._publish_trajectory(
             self._gripper_publisher,
@@ -1066,8 +1065,10 @@ class TriskelOperator(Node):
             raise RuntimeError("Triskel SRDF must define arm home and rest states.")
         if set(gripper_states) != {"open", "closed"}:
             raise RuntimeError("Triskel SRDF must define open and closed gripper states.")
-        states["home"][GRIPPER_JOINT] = gripper_states["closed"]
-        states["rest"][GRIPPER_JOINT] = gripper_states["open"]
+        states["open"] = {GRIPPER_JOINT: gripper_states["open"]}
+        states["closed"] = {GRIPPER_JOINT: gripper_states["closed"]}
+        states["home"][GRIPPER_JOINT] = gripper_states["open"]
+        states["rest"][GRIPPER_JOINT] = gripper_states["closed"]
         return states
 
     @staticmethod
