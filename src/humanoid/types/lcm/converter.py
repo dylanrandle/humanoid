@@ -43,6 +43,8 @@ class LCMConverter:
         lcm_sample.pid = sample.pid
         lcm_sample.target_rate_hz = sample.target_rate_hz
         lcm_sample.measured_rate_hz = sample.measured_rate_hz
+        lcm_sample.cpu_percent = sample.cpu_percent
+        lcm_sample.memory_rss_mb = sample.memory_rss_mb
         return lcm_sample
 
     @staticmethod
@@ -54,6 +56,8 @@ class LCMConverter:
             pid=lcm_sample.pid,
             target_rate_hz=lcm_sample.target_rate_hz,
             measured_rate_hz=lcm_sample.measured_rate_hz,
+            cpu_percent=lcm_sample.cpu_percent,
+            memory_rss_mb=lcm_sample.memory_rss_mb,
         )
 
     @staticmethod

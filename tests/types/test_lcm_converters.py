@@ -13,6 +13,8 @@ def test_node_rate_sample_encode_decode():
         pid=123,
         target_rate_hz=500.0,
         measured_rate_hz=492.5,
+        cpu_percent=37.2,
+        memory_rss_mb=128.5,
     )
 
     lcm_sample = LCMConverter.node_rate_sample_to_lcm(sample)

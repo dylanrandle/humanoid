@@ -9,11 +9,11 @@ import struct
 
 class node_rate_sample_t(object):
 
-    __slots__ = ["timestamp", "node_name", "pid", "target_rate_hz", "measured_rate_hz"]
+    __slots__ = ["timestamp", "node_name", "pid", "target_rate_hz", "measured_rate_hz", "cpu_percent", "memory_rss_mb"]
 
-    __typenames__ = ["int64_t", "string", "int64_t", "double", "double"]
+    __typenames__ = ["int64_t", "string", "int64_t", "double", "double", "double", "double"]
 
-    __dimensions__ = [None, None, None, None, None]
+    __dimensions__ = [None, None, None, None, None, None, None]
 
     def __init__(self):
         self.timestamp = 0
@@ -25,6 +25,10 @@ class node_rate_sample_t(object):
         self.target_rate_hz = 0.0
         """ LCM Type: double """
         self.measured_rate_hz = 0.0
+        """ LCM Type: double """
+        self.cpu_percent = 0.0
+        """ LCM Type: double """
+        self.memory_rss_mb = 0.0
         """ LCM Type: double """
 
     def encode(self):
@@ -39,7 +43,7 @@ class node_rate_sample_t(object):
         buf.write(struct.pack('>I', len(__node_name_encoded)+1))
         buf.write(__node_name_encoded)
         buf.write(b"\0")
-        buf.write(struct.pack(">qdd", self.pid, self.target_rate_hz, self.measured_rate_hz))
+        buf.write(struct.pack(">qdddd", self.pid, self.target_rate_hz, self.measured_rate_hz, self.cpu_percent, self.memory_rss_mb))
 
     @staticmethod
     def decode(data: bytes):
@@ -57,13 +61,13 @@ class node_rate_sample_t(object):
         self.timestamp = struct.unpack(">q", buf.read(8))[0]
         __node_name_len = struct.unpack('>I', buf.read(4))[0]
         self.node_name = buf.read(__node_name_len)[:-1].decode('utf-8', 'replace')
-        self.pid, self.target_rate_hz, self.measured_rate_hz = struct.unpack(">qdd", buf.read(24))
+        self.pid, self.target_rate_hz, self.measured_rate_hz, self.cpu_percent, self.memory_rss_mb = struct.unpack(">qdddd", buf.read(40))
         return self
 
     @staticmethod
     def _get_hash_recursive(parents):
         if node_rate_sample_t in parents: return 0
-        tmphash = (0xd7e814de746b53f3) & 0xffffffffffffffff
+        tmphash = (0xaea7fbbf56b4ca45) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None

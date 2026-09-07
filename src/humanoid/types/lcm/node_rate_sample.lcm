@@ -6,4 +6,6 @@ struct node_rate_sample_t {
     int64_t pid;
     double target_rate_hz;
     double measured_rate_hz;
+    double cpu_percent;
+    double memory_rss_mb;
 }

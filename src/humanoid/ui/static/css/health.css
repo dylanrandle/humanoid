@@ -58,6 +58,11 @@
   font-size: 0.64rem;
 }
 
+.node-rate-copy .node-resource-detail {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .node-rate-state {
   padding: 4px 7px;
   border-radius: 999px;

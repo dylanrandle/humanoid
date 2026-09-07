@@ -82,6 +82,8 @@ test("node target and measured rates render healthy and unhealthy states", () =>
       pid: 101,
       target_rate_hz: 500,
       measured_rate_hz: 492.5,
+      cpu_percent: 18.4,
+      memory_rss_mb: 92.7,
       healthy: true,
       age_seconds: 0.1,
     },
@@ -90,6 +92,8 @@ test("node target and measured rates render healthy and unhealthy states", () =>
       pid: 102,
       target_rate_hz: 30,
       measured_rate_hz: 22,
+      cpu_percent: 73.1,
+      memory_rss_mb: 114.2,
       healthy: false,
       age_seconds: 0.2,
     },
@@ -105,6 +109,10 @@ test("node target and measured rates render healthy and unhealthy states", () =>
   assert.equal(
     ui.nodeRateList.children[0].children[1].children[1].textContent,
     "492.5 Hz measured · 500.0 Hz target",
+  );
+  assert.equal(
+    ui.nodeRateList.children[0].children[1].children[2].textContent,
+    "CPU 18.4% · Memory 92.7 MB",
   );
 });
 

@@ -141,6 +141,8 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 measured_rate_hz=497.2,
                 healthy=True,
                 age_seconds=0.2,
+                cpu_percent=21.4,
+                memory_rss_mb=86.3,
             )
         ],
         logging=LoggingStatus(
@@ -203,6 +205,8 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 "measured_rate_hz": 497.2,
                 "healthy": True,
                 "age_seconds": 0.2,
+                "cpu_percent": 21.4,
+                "memory_rss_mb": 86.3,
             }
         ],
         "logging": {

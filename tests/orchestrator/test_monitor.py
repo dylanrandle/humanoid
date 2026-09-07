@@ -16,6 +16,8 @@ from humanoid.types.orchestrator import Mode, OrchestratorMode
 
 TEST_TARGET_RATE_HZ = 100.0
 TEST_HEALTHY_RATE_HZ = 95.0
+TEST_CPU_PERCENT = 18.25
+TEST_MEMORY_RSS_MB = 127.75
 
 
 class NodeRateSubscriberStub:
@@ -62,6 +64,8 @@ def test_node_rate_monitor_compares_active_processes_to_target():
                 pid=101,
                 target_rate_hz=TEST_TARGET_RATE_HZ,
                 measured_rate_hz=TEST_HEALTHY_RATE_HZ,
+                cpu_percent=TEST_CPU_PERCENT,
+                memory_rss_mb=TEST_MEMORY_RSS_MB,
             ),
             NodeRateSample(
                 timestamp=1.0,
@@ -84,6 +88,8 @@ def test_node_rate_monitor_compares_active_processes_to_target():
 
     assert [status.healthy for status in statuses] == [True, False, False]
     assert statuses[0].measured_rate_hz == TEST_HEALTHY_RATE_HZ
+    assert statuses[0].cpu_percent == round(TEST_CPU_PERCENT, 1)
+    assert statuses[0].memory_rss_mb == round(TEST_MEMORY_RSS_MB, 1)
     assert statuses[1].target_rate_hz == TEST_TARGET_RATE_HZ
     assert statuses[2].target_rate_hz is None
 

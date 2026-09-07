@@ -6,7 +6,7 @@ import pytest
 
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
-from humanoid.nodes.rate import NodeRateReporter
+from humanoid.nodes.rate import NodeRateReporter, read_process_memory_rss_mb
 from humanoid.types.node import NodeRateSample
 
 
@@ -14,12 +14,16 @@ def test_reports_target_then_measured_rate_over_a_window():
     publisher = MagicMock(spec=Publisher)
     clock = MagicMock(side_effect=[10.0, 10.5, 11.0])
     wall_clock = MagicMock(side_effect=[100.0, 101.0])
+    process_clock = MagicMock(side_effect=[5.0, 5.25])
+    memory_reader = MagicMock(side_effect=[64.0, 66.0])
     reporter = NodeRateReporter(
         "ExampleNode",
         2.0,
         publisher=publisher,
         clock=clock,
         wall_clock=wall_clock,
+        process_clock=process_clock,
+        memory_reader=memory_reader,
         pid=123,
     )
 
@@ -36,6 +40,8 @@ def test_reports_target_then_measured_rate_over_a_window():
                 pid=123,
                 target_rate_hz=2.0,
                 measured_rate_hz=0.0,
+                cpu_percent=0.0,
+                memory_rss_mb=64.0,
             ),
             topic=Topic.NODE_RATE,
         ),
@@ -46,10 +52,16 @@ def test_reports_target_then_measured_rate_over_a_window():
                 pid=123,
                 target_rate_hz=2.0,
                 measured_rate_hz=2.0,
+                cpu_percent=25.0,
+                memory_rss_mb=66.0,
             ),
             topic=Topic.NODE_RATE,
         ),
     ]
+
+
+def test_reads_positive_process_resident_memory():
+    assert read_process_memory_rss_mb() > 0.0
 
 
 @pytest.mark.parametrize(

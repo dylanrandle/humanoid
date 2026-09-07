@@ -83,6 +83,8 @@ class NodeRateMonitor:
                 measured_rate_hz=None,
                 healthy=False,
                 age_seconds=None,
+                cpu_percent=None,
+                memory_rss_mb=None,
             )
 
         sample, received_at = observed
@@ -101,4 +103,6 @@ class NodeRateMonitor:
             measured_rate_hz=(round(measured_rate_hz, 1) if measured_rate_hz is not None else None),
             healthy=healthy,
             age_seconds=round(age, 1),
+            cpu_percent=(round(sample.cpu_percent, 1) if measured_rate_hz is not None else None),
+            memory_rss_mb=round(sample.memory_rss_mb, 1),
         )

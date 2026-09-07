@@ -27,18 +27,20 @@ class ProcessContext(Protocol):
 
 @dataclass(frozen=True)
 class NodeRateSample:
-    """Loop-rate measurement published by a running node process."""
+    """Loop-rate and resource measurement published by a running node process."""
 
     timestamp: float
     node_name: str
     pid: int
     target_rate_hz: float
     measured_rate_hz: float
+    cpu_percent: float = 0.0
+    memory_rss_mb: float = 0.0
 
 
 @dataclass(frozen=True)
 class NodeRateStatus:
-    """Freshness-qualified node-rate health shown in the operator console."""
+    """Freshness-qualified node health shown in the operator console."""
 
     node_name: str
     pid: int
@@ -46,6 +48,8 @@ class NodeRateStatus:
     measured_rate_hz: float | None
     healthy: bool
     age_seconds: float | None
+    cpu_percent: float | None = None
+    memory_rss_mb: float | None = None
 
 
 @dataclass(frozen=True)

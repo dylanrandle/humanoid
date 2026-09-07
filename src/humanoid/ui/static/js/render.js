@@ -93,7 +93,11 @@ function renderNodeRates(nodeRates, elements) {
     name.textContent = formatNodeName(rate.node_name);
     const detail = elements.nodeRateList.ownerDocument.createElement("small");
     detail.textContent = rateDetail(rate);
-    copy.replaceChildren(name, detail);
+    const resources =
+      elements.nodeRateList.ownerDocument.createElement("small");
+    resources.className = "node-resource-detail";
+    resources.textContent = resourceDetail(rate);
+    copy.replaceChildren(name, detail, resources);
 
     const state = elements.nodeRateList.ownerDocument.createElement("span");
     state.className = "node-rate-state";
@@ -105,7 +109,8 @@ function renderNodeRates(nodeRates, elements) {
   if (rows.length === 0) {
     const empty = elements.nodeRateList.ownerDocument.createElement("p");
     empty.className = "node-rate-empty";
-    empty.textContent = "Start a process to view its loop rate.";
+    empty.textContent =
+      "Start a process to view its health and resource usage.";
     elements.nodeRateList.replaceChildren(empty);
     elements.nodeRateSummary.textContent = "No active nodes";
     elements.nodeRateSummary.classList.remove("healthy", "unhealthy");
@@ -130,6 +135,19 @@ function rateDetail(rate) {
 
 function formatRate(rate) {
   return `${rate.toFixed(1)} Hz`;
+}
+
+function resourceDetail(rate) {
+  const resources = [];
+  if (Number.isFinite(rate.cpu_percent)) {
+    resources.push(`CPU ${rate.cpu_percent.toFixed(1)}%`);
+  }
+  if (Number.isFinite(rate.memory_rss_mb)) {
+    resources.push(`Memory ${rate.memory_rss_mb.toFixed(1)} MB`);
+  }
+  return resources.length > 0
+    ? resources.join(" · ")
+    : "Resource usage unavailable";
 }
 
 function formatNodeName(name) {
