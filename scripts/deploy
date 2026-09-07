@@ -51,8 +51,28 @@ if [[ $# -gt 1 ]]; then
     usage >&2
     exit 2
 fi
-if [[ ! "$INSTALL_DIR" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
-    echo "HUMANOID_ROBOT_DIR must be an absolute path containing only safe path characters." >&2
+validate_install_dir() {
+    local install_dir="$1"
+    local component
+    local -a components
+
+    if [[ ! "$install_dir" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
+        return 1
+    fi
+    if [[ "$install_dir" == "/" || "$install_dir" == *"//"* || "$install_dir" == */ ]]; then
+        return 1
+    fi
+
+    IFS="/" read -r -a components <<< "${install_dir#/}"
+    for component in "${components[@]}"; do
+        if [[ -z "$component" || "$component" == "." || "$component" == ".." ]]; then
+            return 1
+        fi
+    done
+}
+
+if ! validate_install_dir "$INSTALL_DIR"; then
+    echo "HUMANOID_ROBOT_DIR must be a normalized absolute path without empty, '.' or '..' components." >&2
     exit 2
 fi
 
@@ -90,6 +110,12 @@ if [[ "$DRY_RUN" == true ]]; then
     exit 0
 fi
 
+REMOTE_INSTALL_DIR="$(ssh "$REMOTE_HOST" realpath -m -- "$INSTALL_DIR")"
+if [[ "$REMOTE_INSTALL_DIR" != "$INSTALL_DIR" ]]; then
+    echo "Robot resolved $INSTALL_DIR to $REMOTE_INSTALL_DIR; refusing to deploy through aliases or symlinks." >&2
+    exit 1
+fi
+
 echo "Creating temporary upload directory on $REMOTE_HOST"
 REMOTE_STAGING_DIR="$(ssh "$REMOTE_HOST" mktemp -d /tmp/humanoid-deploy.XXXXXX)"
 if [[ "$REMOTE_STAGING_DIR" != /tmp/humanoid-deploy.* ]]; then
@@ -102,7 +128,16 @@ REMOTE_BUNDLE="$REMOTE_STAGING_DIR/$(basename "$BUNDLE_PATH")"
 echo "Uploading deployment bundle to $REMOTE_HOST"
 scp "$BUNDLE_PATH" "$REMOTE_HOST:$REMOTE_BUNDLE"
 
-if ! ssh "$REMOTE_HOST" test -w "$INSTALL_DIR"; then
+if ssh "$REMOTE_HOST" test -e "$INSTALL_DIR"; then
+    if ! ssh "$REMOTE_HOST" test -d "$INSTALL_DIR"; then
+        echo "$INSTALL_DIR exists on $REMOTE_HOST but is not a directory." >&2
+        exit 1
+    fi
+    if ! ssh "$REMOTE_HOST" test -w "$INSTALL_DIR"; then
+        echo "$INSTALL_DIR exists on $REMOTE_HOST but is not writable by the deployment user." >&2
+        exit 1
+    fi
+else
     echo "Preparing $INSTALL_DIR on $REMOTE_HOST"
     ssh -t "$REMOTE_HOST" \
         "sudo install -d -m 0755 -o \$(id -u) -g \$(id -g) '$INSTALL_DIR'"
