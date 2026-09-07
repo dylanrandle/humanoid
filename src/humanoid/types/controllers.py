@@ -1,11 +1,20 @@
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import NDArray
+
+
+@dataclass
+class ControlResult:
+    """Full-model position and velocity output from one controller."""
+
+    q: NDArray[np.float64]
+    v: NDArray[np.float64]
 
 
 @dataclass
 class OperationalSpaceConfig:
-    """Configuration parameters for the operational space controller.
+    """Configuration parameters for arm operational-space control.
 
     Args:
         tool_position_cost: Weight on the tool-frame position tracking task
@@ -13,12 +22,6 @@ class OperationalSpaceConfig:
             more aggressively at the expense of other tasks.
         tool_orientation_cost: Weight on the tool-frame orientation tracking
             task in the IK QP.
-        base_position_cost: Weight on the base-frame position tracking task
-            (when a mobile base is configured on the robot).
-        base_orientation_cost: Weight on the base-frame orientation tracking
-            task (when a mobile base is configured on the robot).
-        wheel_cost: Weight on each wheel's rolling/omniwheel constraint task
-            that enforces no-slip motion between the wheel frame and floor.
         dt: Controller integration timestep in seconds; also sets the rate
             at which this controller is expected to be ticked.
         joint_centering_cost: Scalar weight on the posture (joint-centering)
@@ -35,17 +38,14 @@ class OperationalSpaceConfig:
             Defaults to 0.02.
         joint_centering_mask: Per-joint multiplier on
             ``joint_centering_cost``. A scalar applies the same weight to
-            all joints; an array selectively centers some joints (e.g. arm)
-            while leaving others (e.g. base) free.
+            all arm joints; an array can selectively center individual joints.
+            Non-arm coordinates are always excluded by the controller.
         damping_mask: Per-joint multiplier on ``damping_cost``, with the
             same scalar/array semantics as ``joint_centering_mask``.
     """
 
     tool_position_cost: float = 1.0
     tool_orientation_cost: float = 1.0
-    base_position_cost: float = 1.0
-    base_orientation_cost: float = 1.0
-    wheel_cost: float = 10.0
     dt: float = 0.005
     joint_centering_cost: float = 1e-3
     damping_cost: float = 1e-1
@@ -54,3 +54,16 @@ class OperationalSpaceConfig:
     min_collision_distance: float = 0.02
     joint_centering_mask: np.ndarray | float = 1.0
     damping_mask: np.ndarray | float = 1.0
+
+
+@dataclass
+class OmniwheelBaseConfig:
+    """Configuration parameters for analytic omniwheel pose control.
+
+    The dimensionless gains scale the pose error corrected on each controller
+    tick. A gain of one requests deadbeat correction before velocity limiting.
+    """
+
+    position_gain: float = 1.0
+    orientation_gain: float = 1.0
+    dt: float = 0.005

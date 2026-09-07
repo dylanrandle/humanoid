@@ -12,7 +12,7 @@ from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
 from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
-from humanoid.types.controllers import OperationalSpaceConfig
+from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     CartesianVelocityLimits,
@@ -134,13 +134,11 @@ HOMING_PRESETS = {
 OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
     dt=CONTROLLER_DT,
     avoid_collisions=True,
-    wheel_cost=100.0,
     min_collision_distance=5e-3,
     joint_centering_cost=5e-3,
-    joint_centering_mask=np.array([0.0] * len(WHEEL_IDS) + [1.0] * (len(JOINT_IDS) + 1)),
     damping_cost=0.1,
-    damping_mask=np.array([0.0] * len(WHEEL_IDS) + [1.0] * (len(JOINT_IDS) + 1)),
 )
+OMNIWHEEL_BASE_CONFIG = OmniwheelBaseConfig(dt=CONTROLLER_DT)
 
 TRISKEL_CONFIG = RobotConfig(
     name=RobotName.TRISKEL,
@@ -153,4 +151,5 @@ TRISKEL_CONFIG = RobotConfig(
     state_estimation=STATE_ESTIMATION_CONFIG,
     gripper_joint_indices=[11],
     operational_space_config=OPERATIONAL_SPACE_CONFIG,
+    omniwheel_base_config=OMNIWHEEL_BASE_CONFIG,
 )

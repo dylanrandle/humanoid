@@ -393,6 +393,51 @@ class Robot:
         """
         return self.model.joints[joint_idx + 1].idx_v
 
+    def get_joint_position_indices(self, joint_indices: list[int]) -> list[int]:
+        """Return all configuration coordinates owned by the given joints."""
+        indices: list[int] = []
+        for joint_idx in joint_indices:
+            joint = self.model.joints[joint_idx + 1]
+            indices.extend(range(joint.idx_q, joint.idx_q + joint.nq))
+        return indices
+
+    def get_joint_velocity_indices(self, joint_indices: list[int]) -> list[int]:
+        """Return all tangent coordinates owned by the given joints."""
+        indices: list[int] = []
+        for joint_idx in joint_indices:
+            joint = self.model.joints[joint_idx + 1]
+            indices.extend(range(joint.idx_v, joint.idx_v + joint.nv))
+        return indices
+
+    def get_arm_joint_indices(self) -> list[int]:
+        """Return the joints on the kinematic chain from the base to the tool.
+
+        The configured tool frame is upstream of the gripper actuator on the
+        supported robots, so deriving the chain from the model keeps arm
+        ownership independent of wheel and gripper naming conventions.
+        """
+        frame_id = self.get_frame_id(self.config.tool.frame)
+        joint_id = int(self.model.frames[frame_id].parentJoint)
+        root_joint_id = 1 if self.config.base is not None else None
+        joint_indices: list[int] = []
+        while joint_id > 0:
+            if joint_id != root_joint_id:
+                joint_indices.append(joint_id - 1)
+            joint_id = int(self.model.parents[joint_id])
+        joint_indices.reverse()
+        return joint_indices
+
+    def get_wheel_joint_indices(self) -> list[int]:
+        """Return the model joints that own the configured wheel frames."""
+        joint_indices: list[int] = []
+        for wheel in self.config.wheels or []:
+            frame_id = self.get_frame_id(wheel.frame)
+            joint_id = int(self.model.frames[frame_id].parentJoint)
+            if joint_id == 0:
+                raise ValueError(f"Wheel frame {wheel.frame!r} is not attached to a joint.")
+            joint_indices.append(joint_id - 1)
+        return joint_indices
+
     def get_tool_pose(self, q: np.ndarray) -> pin.SE3:
         """Get the pose of the configured tool frame.
 

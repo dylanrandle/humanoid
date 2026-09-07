@@ -1,33 +1,30 @@
-"""Operational space controller using Pink for 6-DOF task space control.
+"""Arm operational-space controller using Pink for 6-DOF task-space control.
 
 This controller computes joint commands to achieve target task space poses using
-the Pink inverse kinematics library.
+the Pink inverse kinematics library. Mobile-base, wheel, and gripper coordinates
+are hard-locked and owned by separate controllers.
 """
 
-from dataclasses import dataclass
 from enum import StrEnum
 
 import numpy as np
 import pink
 import pinocchio as pin
-from numpy.typing import NDArray
 from pink.barriers import SelfCollisionBarrier
-from pink.limits import FloatingBaseVelocityLimit
 from pink.tasks import (
     DampingTask,
     FrameTask,
-    OmniwheelTask,
     PostureTask,
     RelativeFrameTask,
-    RollingTask,
 )
 from pink.utils import process_collision_pairs
 
+from humanoid.controllers.base import Controller
+from humanoid.controllers.constraints import lock_uncontrolled_velocities
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
-from humanoid.types.controllers import OperationalSpaceConfig
+from humanoid.types.controllers import ControlResult, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
-from humanoid.types.robot import WheelType
 
 logger = get_logger(__name__)
 
@@ -36,21 +33,12 @@ class TaskName(StrEnum):
     """Enum for task names used in the operational space controller."""
 
     TOOL = "tool"
-    BASE = "base"
     JOINT_CENTERING = "joint_centering"
     DAMPING = "damping"
 
 
-@dataclass
-class ControlResult:
-    """Result of a single control step."""
-
-    q: NDArray[np.float64]  # joint configuration (nq,)
-    v: NDArray[np.float64]  # joint velocity (nv,)
-
-
-class OperationalSpaceController:
-    """Operational space controller for 6-DOF task space control using Pink."""
+class OperationalSpaceController(Controller[pin.SE3]):
+    """Control only the arm joints for a 6-DOF tool-space target."""
 
     def __init__(
         self,
@@ -65,8 +53,7 @@ class OperationalSpaceController:
         """
         self.config = config or OperationalSpaceConfig()
         self.robot = robot
-
-        robot.model.floating_base_velocity_limit = None
+        self._data = robot.model.createData()
 
         # Defer configuration initialization until first state update
         self.configuration: pink.Configuration | None = None
@@ -74,9 +61,9 @@ class OperationalSpaceController:
         # Create tasks dictionary
         self.tasks = {}
 
-        # Track the tool in world for fixed robots and relative to the physical
-        # base for mobile robots. The relative task prevents base tracking lag
-        # from appearing as an end-effector error.
+        # Track the tool in world for fixed robots and relative to the physical base
+        # for mobile robots. Relative tracking removes the planar root coordinates
+        # from the task while preserving the same tool-command convention.
         robot.assert_frame_exists(robot.config.tool.frame)
         base_config = robot.config.base
         if base_config is None:
@@ -94,35 +81,46 @@ class OperationalSpaceController:
                 orientation_cost=self.config.tool_orientation_cost,
             )
 
-            velocity_limits = base_config.velocity_limits
-            robot.model.floating_base_velocity_limit = FloatingBaseVelocityLimit(
-                robot.model,
-                base_config.frame,
-                max_linear_velocity=velocity_limits.linear,
-                max_angular_velocity=velocity_limits.angular,
-            )
+        self.controlled_joint_indices = robot.get_arm_joint_indices()
+        self.controlled_q_indices = np.asarray(
+            robot.get_joint_position_indices(self.controlled_joint_indices), dtype=int
+        )
+        self.controlled_v_indices = np.asarray(
+            robot.get_joint_velocity_indices(self.controlled_joint_indices), dtype=int
+        )
+        self._constraints = lock_uncontrolled_velocities(robot.model.nv, self.controlled_v_indices)
 
-            self.tasks[TaskName.BASE] = FrameTask(
-                base_config.frame,
-                position_cost=self.config.base_position_cost,
-                orientation_cost=self.config.base_orientation_cost,
-            )
+        # Pink posture and damping tasks omit floating-root coordinates but include
+        # every other model joint. Mask wheel and gripper joints automatically so
+        # operational-space configuration only tunes arm behavior.
+        root_v_slice = robot.get_root_v_slice()
+        root_nv = 0 if root_v_slice is None else root_v_slice.stop - root_v_slice.start
+        arm_mask = np.zeros(robot.model.nv - root_nv)
+        arm_task_indices = self.controlled_v_indices - root_nv
+        arm_mask[arm_task_indices] = 1.0
 
-            # Add wheels if defined
-            for wheel in robot.config.wheels or []:
-                robot.assert_frame_exists(wheel.frame)
-                robot.assert_frame_exists(wheel.floor_frame)
-                task_cls = OmniwheelTask if wheel.type is WheelType.OMNI else RollingTask
-                self.tasks[wheel.frame] = task_cls(
-                    wheel.frame,
-                    floor_frame=wheel.floor_frame,
-                    wheel_radius=wheel.radius,
-                    cost=self.config.wheel_cost,
-                )
+        def arm_cost_mask(mask: np.ndarray | float, label: str) -> np.ndarray:
+            values = np.asarray(mask, dtype=float)
+            if values.ndim == 0:
+                return arm_mask * values
+            if values.shape == self.controlled_v_indices.shape:
+                result = np.zeros_like(arm_mask)
+                result[arm_task_indices] = values
+                return result
+            if values.shape == arm_mask.shape:
+                return arm_mask * values
+            raise ValueError(
+                f"{label} must be a scalar, one value per arm velocity "
+                f"({len(self.controlled_v_indices)}), or one value per non-root "
+                f"velocity ({len(arm_mask)}); received {values.shape}."
+            )
 
         # Create posture task for null space control (joint centering)
         self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
-            cost=self.config.joint_centering_cost * self.config.joint_centering_mask  # ty:ignore[invalid-argument-type]
+            cost=(
+                self.config.joint_centering_cost
+                * arm_cost_mask(self.config.joint_centering_mask, "joint_centering_mask")
+            )  # ty:ignore[invalid-argument-type]
         )
         self.tasks[TaskName.JOINT_CENTERING].set_target(
             robot.config.homing_presets[HomingPreset.HOME]
@@ -130,7 +128,9 @@ class OperationalSpaceController:
 
         # Create damping task for velocity minimization
         self.tasks[TaskName.DAMPING] = DampingTask(
-            cost=self.config.damping_cost * self.config.damping_mask  # ty:ignore[invalid-argument-type]
+            cost=(
+                self.config.damping_cost * arm_cost_mask(self.config.damping_mask, "damping_mask")
+            )  # ty:ignore[invalid-argument-type]
         )
 
         # Initialize barriers
@@ -155,7 +155,7 @@ class OperationalSpaceController:
         else:
             logger.info("Collision avoidance disabled")
 
-    def update_state(self, q: np.ndarray):
+    def update_state(self, q: np.ndarray) -> None:
         """Update the robot configuration state.
 
         Args:
@@ -168,7 +168,7 @@ class OperationalSpaceController:
             # Initialize configuration on first state update
             self.configuration = pink.Configuration(
                 self.robot.model,
-                self.robot.data,
+                self._data,
                 q,
                 collision_model=collision_model,
                 collision_data=collision_data,
@@ -179,11 +179,9 @@ class OperationalSpaceController:
 
     def compute_control(
         self,
-        tool_target_pose: pin.SE3,
-        base_target_pose: pin.SE3 | None = None,
-        gripper_positions: NDArray[np.float64] | None = None,
+        target: pin.SE3,
     ) -> ControlResult:
-        """Compute joint configuration to achieve target task space pose.
+        """Compute arm motion to achieve a target tool pose.
 
         Uses Pink's differential inverse kinematics solver with:
         1. Primary task: Achieve target pose in task space (with optional masking via costs)
@@ -191,13 +189,10 @@ class OperationalSpaceController:
         3. Tertiary task: Minimize joint velocities (damping task)
 
         Args:
-            tool_target_pose: Target 6-DOF pose (SE3) for the end-effector.
-            base_target_pose: Optional target 6-DOF pose (SE3) for the base frame.
-                Only used if the robot has a mobile base configured.
-            gripper_positions: Optional gripper joint positions to override in the result
+            target: Target 6-DOF pose (SE3) for the end-effector.
 
         Returns:
-            ControlResult with q (nq,) and v (nv,); q has gripper positions overridden if provided
+            Full-model result in which only arm coordinates can change.
 
         Raises:
             RuntimeError: If configuration has not been initialized via update_state()
@@ -209,33 +204,23 @@ class OperationalSpaceController:
             )
 
         # Set the target for the end-effector task
-        self.tasks[TaskName.TOOL].set_target(tool_target_pose)
-
-        # Set the target for the base task if provided and configured
-        if TaskName.BASE in self.tasks and base_target_pose is not None:
-            self.tasks[TaskName.BASE].set_target(base_target_pose)
+        self.tasks[TaskName.TOOL].set_target(target)
 
         # Solve inverse kinematics using Pink
         velocity = np.zeros(self.robot.model.nv)
         try:
-            velocity = pink.solve_ik(
+            solved_velocity = pink.solve_ik(
                 self.configuration,
                 self.tasks.values(),
                 self.config.dt,
                 solver=self.config.solver,
                 barriers=self.barriers,
+                constraints=self._constraints,
             )
+            velocity[self.controlled_v_indices] = solved_velocity[self.controlled_v_indices]
             self.configuration.integrate_inplace(velocity, self.config.dt)
         except Exception as e:
             # TODO: try to get unstuck if we are at limits
             logger.error(f"Encountered exception: {e}")
 
-        # Get the computed joint configuration
-        q = self.configuration.q.copy()
-
-        # Override gripper joint positions if provided
-        # TODO: consider other ways of doing this
-        if gripper_positions is not None:
-            self.robot.set_gripper_positions(q, gripper_positions)
-
-        return ControlResult(q=q, v=velocity)
+        return ControlResult(q=self.configuration.q.copy(), v=velocity)

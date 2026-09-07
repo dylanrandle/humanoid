@@ -3,7 +3,6 @@ from dataclasses import replace
 import numpy as np
 import pinocchio as pin
 import pytest
-from pink.limits import FloatingBaseVelocityLimit
 from pink.tasks import FrameTask, RelativeFrameTask
 
 from humanoid.config import ROBOT_CONFIGS
@@ -55,27 +54,25 @@ class TestConstruction:
         assert TaskName.TOOL in panda_osc.tasks
         assert TaskName.JOINT_CENTERING in panda_osc.tasks
         assert TaskName.DAMPING in panda_osc.tasks
-        assert TaskName.BASE not in panda_osc.tasks
+        assert set(panda_osc.tasks) == {
+            TaskName.TOOL,
+            TaskName.JOINT_CENTERING,
+            TaskName.DAMPING,
+        }
 
-    def test_tasks_for_mobile_robot_include_base(self, mobile_osc):
-        """A mobile robot tracks its tool relative to its base."""
+    def test_tasks_for_mobile_robot_are_arm_only(self, mobile_osc):
+        """A mobile robot tracks its tool relative to, but does not drive, its base."""
         assert isinstance(mobile_osc.tasks[TaskName.TOOL], RelativeFrameTask)
-        assert TaskName.BASE in mobile_osc.tasks
-
-    def test_mobile_robot_configures_floating_base_velocity_limit(self, mobile_osc):
-        limit = mobile_osc.robot.model.floating_base_velocity_limit
-        base_config = mobile_osc.robot.config.base
-
-        assert isinstance(limit, FloatingBaseVelocityLimit)
-        assert base_config is not None
-        np.testing.assert_allclose(
-            limit.linear_max,
-            base_config.velocity_limits.linear,
-        )
-        np.testing.assert_allclose(
-            limit.angular_max,
-            base_config.velocity_limits.angular,
-        )
+        assert set(mobile_osc.tasks) == {
+            TaskName.TOOL,
+            TaskName.JOINT_CENTERING,
+            TaskName.DAMPING,
+        }
+        controlled_names = [
+            mobile_osc.robot.joint_idx_to_name(index)
+            for index in mobile_osc.controlled_joint_indices
+        ]
+        assert controlled_names == [f"arm_{index}" for index in range(1, 8)]
 
     def test_invalid_tool_frame_raises(self, panda_robot):
         bad_tool_config = replace(panda_robot.config.tool, frame="not_a_real_frame")
@@ -150,26 +147,32 @@ class TestComputeControl:
         assert not np.allclose(result.q, q_before)
         np.testing.assert_allclose(result.q, panda_osc.configuration.q)
 
-    def test_mobile_base_velocity_respects_configured_limits(self, mobile_robot):
+    def test_mobile_base_wheels_and_gripper_do_not_move(self, mobile_robot):
         osc = OperationalSpaceController(robot=mobile_robot)
-        q = mobile_robot.config.homing_presets[HomingPreset.HOME]
+        q = mobile_robot.config.homing_presets[HomingPreset.HOME].copy()
         osc.update_state(q)
         tool_target = mobile_robot.get_tool_command_pose(q)
-        base_target = mobile_robot.get_base_pose(q)
-        assert base_target is not None
-        base_target.translation[0] += 1.0
+        tool_target.translation[0] += 0.05
 
-        result = osc.compute_control(tool_target, base_target_pose=base_target)
+        result = osc.compute_control(tool_target)
 
+        root_q_slice = mobile_robot.get_root_q_slice()
         root_v_slice = mobile_robot.get_root_v_slice()
-        base_config = mobile_robot.config.base
+        wheel_joint_indices = mobile_robot.get_wheel_joint_indices()
+        wheel_q_indices = mobile_robot.get_joint_position_indices(wheel_joint_indices)
+        wheel_v_indices = mobile_robot.get_joint_velocity_indices(wheel_joint_indices)
+        gripper_q_indices = mobile_robot.get_gripper_position_indices()
+        gripper_v_indices = mobile_robot.get_joint_velocity_indices(
+            mobile_robot.config.gripper_joint_indices or []
+        )
+        assert root_q_slice is not None
         assert root_v_slice is not None
-        assert base_config is not None
-        limits = base_config.velocity_limits
-        root_velocity = result.v[root_v_slice]
-        assert abs(root_velocity[0]) <= limits.linear + 1e-9
-        assert abs(root_velocity[1]) <= limits.linear + 1e-9
-        assert abs(root_velocity[2]) <= limits.angular + 1e-9
+        np.testing.assert_allclose(result.q[root_q_slice], q[root_q_slice])
+        np.testing.assert_allclose(result.q[wheel_q_indices], q[wheel_q_indices])
+        np.testing.assert_allclose(result.q[gripper_q_indices], q[gripper_q_indices])
+        np.testing.assert_array_equal(result.v[root_v_slice], 0.0)
+        np.testing.assert_array_equal(result.v[wheel_v_indices], 0.0)
+        np.testing.assert_array_equal(result.v[gripper_v_indices], 0.0)
 
     def test_tool_task_target_is_updated(self, panda_osc, panda_robot):
         panda_osc.update_state(panda_robot.config.homing_presets[HomingPreset.HOME])
@@ -213,67 +216,12 @@ class TestComputeControl:
 
         np.testing.assert_allclose(jacobian[:, root_v_slice], 0.0, atol=1e-9)
 
-    def test_gripper_positions_override_q(self, panda_osc, panda_robot):
-        """When gripper_positions are provided, they replace those indices in q."""
+    def test_fixed_robot_gripper_does_not_move(self, panda_osc, panda_robot):
         panda_osc.update_state(panda_robot.config.homing_presets[HomingPreset.HOME])
+        q_before = panda_osc.configuration.q.copy()
         target = pin.SE3(np.eye(3), np.array([0.4, 0.0, 0.4]))
-        gripper = np.array([0.0123])  # panda has gripper_joint_indices=[7]
+        result = panda_osc.compute_control(target)
 
-        result = panda_osc.compute_control(target, gripper_positions=gripper)
-
-        gripper_idx = panda_robot.config.gripper_joint_indices[0]
-        assert result.q[gripper_idx] == pytest.approx(gripper[0])
-
-    def test_gripper_positions_ignored_when_no_indices(self, panda_robot):
-        """When gripper_joint_indices is None, gripper_positions are silently ignored."""
-        config = replace(panda_robot.config, gripper_joint_indices=None)
-        robot = Robot.__new__(Robot)
-        robot.__dict__.update(panda_robot.__dict__)
-        robot._config = config
-
-        osc = OperationalSpaceController(robot=robot)
-        osc.update_state(config.homing_presets[HomingPreset.HOME])
-        target = pin.SE3(np.eye(3), np.array([0.4, 0.0, 0.4]))
-
-        gripper_pos = 99.0
-
-        # Should not raise and should not modify any joints from gripper data.
-        result = osc.compute_control(target, gripper_positions=np.array([gripper_pos]))
-        assert not np.any(result.q == gripper_pos)
-
-    def test_gripper_override_uses_position_index_not_joint_index(self, mobile_osc, mobile_robot):
-        """Regression: gripper override must write via position index, not joint index.
-
-        On the mobile robot the planar base joint shifts the q layout, so the
-        gripper's joint index (11) differs from its position index in q (17).
-        Indexing q with the raw joint index writes to the wrong slot — this
-        test fails if that regresses.
-        """
-        joint_idx = mobile_robot.config.gripper_joint_indices[0]
-        position_idx = mobile_robot.joint_idx_to_position_idx(joint_idx)
-        assert joint_idx != position_idx, (
-            "Test setup expects joint_idx != position_idx for the mobile robot's "
-            "gripper joint; otherwise this test cannot detect the bug."
-        )
-
-        mobile_osc.update_state(mobile_robot.config.homing_presets[HomingPreset.HOME])
-        target = pin.SE3(np.eye(3), np.array([0.4, 0.0, 0.4]))
-        gripper_value = mobile_robot.config.homing_presets[HomingPreset.HOME][position_idx] + 0.5
-
-        result = mobile_osc.compute_control(target, gripper_positions=np.array([gripper_value]))
-
-        assert result.q[position_idx] == pytest.approx(gripper_value)
-        assert result.q[joint_idx] != pytest.approx(gripper_value)
-
-    def test_base_target_pose_sets_base_task(self, mobile_osc, mobile_robot):
-        """For mobile robots, base_target_pose updates the BASE task target."""
-        mobile_osc.update_state(mobile_robot.config.homing_presets[HomingPreset.HOME])
-        base_target = pin.SE3(np.eye(3), np.array([1.0, 0.5, 0.0]))
-        tool_target = pin.SE3(np.eye(3), np.array([0.4, 0.0, 0.4]))
-
-        mobile_osc.compute_control(tool_target, base_target_pose=base_target)
-
-        actual_base_target = mobile_osc.tasks[TaskName.BASE].transform_target_to_world
-        np.testing.assert_allclose(
-            actual_base_target.translation, base_target.translation, atol=1e-9
-        )
+        gripper_indices = panda_robot.get_gripper_position_indices()
+        np.testing.assert_allclose(result.q[gripper_indices], q_before[gripper_indices])
+        np.testing.assert_array_equal(result.v[gripper_indices], 0.0)

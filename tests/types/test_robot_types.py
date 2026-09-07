@@ -7,6 +7,7 @@ import pytest
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.constants import DEFAULT_HUMANOID_ROBOT, ROBOT_ENVIRONMENT_VARIABLE
+from humanoid.types.controllers import OmniwheelBaseConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     CartesianVelocityLimits,
@@ -140,12 +141,14 @@ def test_homing_presets_require_finite_values():
 
 
 def test_mobile_robot_combines_base_frame_and_velocity_limits():
-    base = ROBOT_CONFIGS[RobotName.TRISKEL].base
+    config = ROBOT_CONFIGS[RobotName.TRISKEL]
+    base = config.base
 
     assert base is not None
     assert base.frame == "root_joint"
     assert base.velocity_limits.linear == pytest.approx(0.2)
     assert base.velocity_limits.angular == pytest.approx(1.0)
+    assert isinstance(config.omniwheel_base_config, OmniwheelBaseConfig)
 
 
 def test_robot_combines_tool_frame_limits_and_homing_presets():

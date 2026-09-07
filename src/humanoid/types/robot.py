@@ -8,7 +8,7 @@ import pinocchio as pin
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.state_estimation.config import RobotStateEstimationConfig
 from humanoid.types.actuator import ActuatorControlMode
-from humanoid.types.controllers import OperationalSpaceConfig
+from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 
 
@@ -136,6 +136,7 @@ class RobotConfig:
     hardware: RobotHardwareConfig | None = None
     state_estimation: RobotStateEstimationConfig | None = None
     operational_space_config: OperationalSpaceConfig | None = None
+    omniwheel_base_config: OmniwheelBaseConfig | None = None
 
     def __post_init__(self) -> None:
         """Own invariants spanning logical controls and physical bindings."""
@@ -154,6 +155,13 @@ class RobotConfig:
             raise ValueError("Robots with a mobile base require root-state estimation config.")
         if self.base is None and root_config is not None:
             raise ValueError("Fixed-base robots cannot configure root-state estimation.")
+        if self.omniwheel_base_config is not None:
+            if self.base is None or not self.wheels:
+                raise ValueError(
+                    "Omniwheel base control requires a mobile base and configured wheels."
+                )
+            if any(wheel.type is not WheelType.OMNI for wheel in self.wheels):
+                raise ValueError("Omniwheel base control requires omniwheel configurations.")
         if self.hardware is None or self.hardware.actuators is None:
             return
         if self.hardware.actuators.joints.keys() != self.actuator_control_modes.keys():

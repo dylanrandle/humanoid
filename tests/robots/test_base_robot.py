@@ -111,6 +111,19 @@ class TestProperties:
         expected = [panda_robot.model.names[i] for i in range(1, panda_robot.model.njoints)]
         assert panda_robot.joint_names == expected
 
+    def test_arm_joints_follow_tool_chain_and_exclude_gripper(self, mobile_robot):
+        names = [
+            mobile_robot.joint_idx_to_name(index) for index in mobile_robot.get_arm_joint_indices()
+        ]
+        assert names == [f"arm_{index}" for index in range(1, 8)]
+
+    def test_wheel_joints_are_derived_from_wheel_frames(self, mobile_robot):
+        names = [
+            mobile_robot.joint_idx_to_name(index)
+            for index in mobile_robot.get_wheel_joint_indices()
+        ]
+        assert names == ["wheel_1", "wheel_2", "wheel_3"]
+
 
 class TestGetFrameId:
     def test_known_frame(self, panda_robot):

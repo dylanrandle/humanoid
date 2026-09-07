@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 import pinocchio as pin
 import pytest
@@ -59,3 +61,39 @@ def test_estimate_does_not_mutate_measured_velocity_vector():
     kinematics.estimate_root_velocity(q, v)
 
     np.testing.assert_array_equal(v, original)
+
+
+@pytest.mark.parametrize(
+    ("root_velocity", "expected_wheel_velocities"),
+    [
+        pytest.param([0.2, 0.0, 0.0], [4.0, -2.0, -2.0], id="forward"),
+        pytest.param(
+            [0.0, 0.2, 0.0],
+            [0.0, 2 * np.sqrt(3), -2 * np.sqrt(3)],
+            id="lateral",
+        ),
+        pytest.param([0.0, 0.0, 0.859290669], [2.0, 2.0, 2.0], id="yaw"),
+    ],
+)
+def test_computes_wheel_rates_for_planar_body_velocity(
+    root_velocity: list[float],
+    expected_wheel_velocities: list[float],
+):
+    robot = Robot(TRISKEL_CONFIG)
+    kinematics = WheelKinematics(robot)
+    q = pin.neutral(robot.model)
+
+    wheel_velocity = kinematics.compute_wheel_velocities(q, np.asarray(root_velocity))
+
+    np.testing.assert_allclose(wheel_velocity, expected_wheel_velocities, atol=3e-6)
+
+
+def test_rejects_wheel_geometry_that_cannot_control_planar_root():
+    wheels = TRISKEL_CONFIG.wheels
+    assert wheels is not None
+    config = replace(TRISKEL_CONFIG, wheels=wheels[:2])
+    robot = Robot(config)
+    kinematics = WheelKinematics(robot)
+
+    with pytest.raises(RuntimeError, match="cannot control planar root velocity"):
+        kinematics.compute_wheel_velocities(pin.neutral(robot.model), np.zeros(3))

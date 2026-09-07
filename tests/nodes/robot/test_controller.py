@@ -4,6 +4,7 @@ import numpy as np
 import pinocchio as pin
 import pytest
 
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.constants import Topic
 from humanoid.controllers.operational_space import ControlResult
 from humanoid.nodes.robot.controller import RobotControllerNode
@@ -46,20 +47,61 @@ def _make_controller(robot_config: RobotConfig | None = None) -> RobotController
         patch("humanoid.nodes.robot.controller.Publisher"),
         patch("humanoid.nodes.robot.controller.Robot") as mock_robot_cls,
         patch("humanoid.nodes.robot.controller.OperationalSpaceController") as mock_osc_cls,
+        patch("humanoid.nodes.robot.controller.OmniwheelBaseController") as mock_base_cls,
+        patch("humanoid.nodes.robot.controller.GripperController") as mock_gripper_cls,
     ):
+        is_mobile = robot_config.base is not None
+        nq = robot_config.homing_presets[HomingPreset.HOME].shape[0]
+        nv = 14 if is_mobile else nq
         mock_robot = MagicMock()
+        mock_robot.model.nq = nq
+        mock_robot.model.nv = nv
         # Geometry helpers used by _reset_commands_from_state.
-        mock_robot.get_gripper_position_indices.return_value = []
+        gripper_q_indices = [nq - 1] if robot_config.gripper_joint_indices else []
+        mock_robot.get_gripper_position_indices.return_value = gripper_q_indices
         mock_robot.get_tool_command_pose.return_value = pin.SE3.Identity()
-        mock_robot.get_base_pose.return_value = None
+        mock_robot.get_base_pose.return_value = pin.SE3.Identity() if is_mobile else None
         mock_robot_cls.return_value = mock_robot
 
         mock_osc = MagicMock()
         mock_osc.configuration = None
+        if is_mobile:
+            mock_osc.controlled_q_indices = np.arange(10, 17)
+            mock_osc.controlled_v_indices = np.arange(6, 13)
+        else:
+            mock_osc.controlled_q_indices = np.arange(nq)
+            mock_osc.controlled_v_indices = np.arange(nv)
         mock_osc.compute_control.return_value = ControlResult(
-            q=np.arange(7, dtype=float), v=np.arange(7, dtype=float) * 0.1
+            q=np.arange(nq, dtype=float), v=np.arange(nv, dtype=float) * 0.1
         )
         mock_osc_cls.return_value = mock_osc
+
+        mock_base = MagicMock()
+        mock_base.configuration = None
+        mock_base.controlled_q_indices = np.arange(10)
+        mock_base.controlled_v_indices = np.arange(6)
+        mock_base.compute_control.return_value = ControlResult(
+            q=np.arange(nq, dtype=float) + 100.0,
+            v=np.arange(nv, dtype=float) + 100.0,
+        )
+        mock_base_cls.return_value = mock_base
+
+        mock_gripper = MagicMock()
+        mock_gripper.controlled_q_indices = np.asarray(gripper_q_indices)
+        mock_gripper.controlled_v_indices = np.array([nv - 1], dtype=int)
+        gripper_state = {"q": np.zeros(nq)}
+
+        def update_gripper_state(q):
+            gripper_state["q"] = q.copy()
+
+        def compute_gripper_control(positions):
+            q = gripper_state["q"].copy()
+            q[gripper_q_indices] = positions
+            return ControlResult(q=q, v=np.zeros(nv))
+
+        mock_gripper.update_state.side_effect = update_gripper_state
+        mock_gripper.compute_control.side_effect = compute_gripper_control
+        mock_gripper_cls.return_value = mock_gripper
 
         return RobotControllerNode(robot_config=robot_config)
 
@@ -83,12 +125,14 @@ def _make_base_cmd():
     )
 
 
-def _make_state():
+def _make_state(nq=7, nv=None):
+    if nv is None:
+        nv = nq
     return RobotState(
         timestamp=0.0,
-        joint_positions=np.arange(7, dtype=float),
-        joint_velocities=np.zeros(7),
-        actuator_temperatures=np.zeros(7),
+        joint_positions=np.arange(nq, dtype=float),
+        joint_velocities=np.zeros(nv),
+        actuator_temperatures=np.zeros(nq),
     )
 
 
@@ -105,6 +149,13 @@ def controller():
 @pytest.fixture
 def active_controller():
     c = _make_controller()
+    _activate(c)
+    return c
+
+
+@pytest.fixture
+def active_mobile_controller():
+    c = _make_controller(TRISKEL_CONFIG)
     _activate(c)
     return c
 
@@ -241,19 +292,25 @@ class TestActiveMode:
         assert active_controller.controller.update_state.call_count == expected_update_calls
 
     def test_state_does_not_update_after_tool_command(self, active_controller):
-        """Once a tool command has been received, RobotState no longer re-inits."""
+        """Once commanded, feedback does not replace the open-loop arm state."""
         active_controller.controller.configuration = MagicMock()  # already initialized
         active_controller.current_tool_command = _make_tool_cmd()
+        state = _make_state()
+        state.joint_positions += 100.0
 
         def receive(topic, timeout=0):
             if topic == Topic.ROBOT_STATE:
-                return _make_state()
+                return state
             return None
 
         active_controller.subscriber.receive = Mock(side_effect=receive)
         active_controller.step()
 
-        active_controller.controller.update_state.assert_not_called()
+        active_controller.controller.update_state.assert_called_once()
+        np.testing.assert_allclose(
+            active_controller.controller.update_state.call_args.args[0],
+            np.arange(7, dtype=float),
+        )
 
     def test_tool_command_publishes_joint_command_on_osc_topic(self, active_controller):
         """A tool command triggers compute_control and publishes to OSC_JOINT_COMMAND."""
@@ -271,8 +328,7 @@ class TestActiveMode:
         call_kwargs = active_controller.controller.compute_control.call_args
         # First positional arg is the tool pose.
         assert call_kwargs.args[0] is tool_cmd.pose
-        assert call_kwargs.kwargs["base_target_pose"] is None
-        assert call_kwargs.kwargs["gripper_positions"] is None
+        assert not call_kwargs.kwargs
 
         active_controller.publisher.publish.assert_called_once()
         published = active_controller.publisher.publish.call_args
@@ -321,8 +377,25 @@ class TestActiveMode:
         assert active_controller.controller.compute_control.call_count == expected_call_count
         assert active_controller.publisher.publish.call_count == expected_call_count
 
-    def test_base_command_passed_to_compute_control(self, active_controller):
-        """When both tool and base commands have been received, OSC gets both poses."""
+    def test_base_command_alone_drives_mobile_base(self, active_mobile_controller):
+        base_cmd = _make_base_cmd()
+
+        def receive(topic, timeout=0):
+            if topic == Topic.ROBOT_BASE_COMMAND:
+                return base_cmd
+            return None
+
+        active_mobile_controller.subscriber.receive = Mock(side_effect=receive)
+        active_mobile_controller.step()
+
+        active_mobile_controller.base_controller.compute_control.assert_called_once_with(
+            base_cmd.pose
+        )
+        active_mobile_controller.arm_controller.compute_control.assert_not_called()
+        published = active_mobile_controller.publisher.publish.call_args.args[0]
+        np.testing.assert_allclose(published.joint_velocities[:6], np.arange(6) + 100.0)
+
+    def test_arm_and_base_commands_use_separate_controllers(self, active_mobile_controller):
         tool_cmd = _make_tool_cmd()
         base_cmd = _make_base_cmd()
 
@@ -333,30 +406,43 @@ class TestActiveMode:
                 return base_cmd
             return None
 
-        active_controller.subscriber.receive = Mock(side_effect=receive)
-        active_controller.step()
+        active_mobile_controller.subscriber.receive = Mock(side_effect=receive)
+        active_mobile_controller.step()
 
-        call = active_controller.controller.compute_control.call_args
-        assert call.args[0] is tool_cmd.pose
-        assert call.kwargs["base_target_pose"] is base_cmd.pose
+        active_mobile_controller.arm_controller.compute_control.assert_called_once_with(
+            tool_cmd.pose
+        )
+        active_mobile_controller.base_controller.compute_control.assert_called_once_with(
+            base_cmd.pose
+        )
 
-    def test_gripper_positions_passed_through(self, active_controller):
-        """Gripper positions on the tool command are forwarded to compute_control."""
-        gripper = np.array([0.01, 0.02])
+    def test_gripper_positions_use_separate_controller(self, active_mobile_controller):
+        gripper = np.array([0.01])
         tool_cmd = _make_tool_cmd(gripper=gripper)
+        arm_result = active_mobile_controller.arm_controller.compute_control.return_value
+        osc_gripper_positions = []
+
+        def compute_arm_control(tool_pose):
+            state = active_mobile_controller.arm_controller.update_state.call_args.args[0]
+            osc_gripper_positions.append(state[-1])
+            return arm_result
+
+        active_mobile_controller.arm_controller.compute_control.side_effect = compute_arm_control
 
         def receive(topic, timeout=0):
             if topic == Topic.ROBOT_TOOL_COMMAND:
                 return tool_cmd
             return None
 
-        active_controller.subscriber.receive = Mock(side_effect=receive)
-        active_controller.step()
+        active_mobile_controller.subscriber.receive = Mock(side_effect=receive)
+        active_mobile_controller.step()
 
-        np.testing.assert_allclose(
-            active_controller.controller.compute_control.call_args.kwargs["gripper_positions"],
-            gripper,
-        )
+        active_mobile_controller.gripper_controller.compute_control.assert_called_once_with(gripper)
+        assert osc_gripper_positions == [pytest.approx(gripper[0])]
+        arm_call = active_mobile_controller.arm_controller.compute_control.call_args
+        assert arm_call.args == (tool_cmd.pose,)
+        published = active_mobile_controller.publisher.publish.call_args.args[0]
+        assert published.joint_positions[-1] == pytest.approx(gripper[0])
 
 
 def test_close_closes_subscriber(controller):
