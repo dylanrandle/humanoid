@@ -1,6 +1,7 @@
 """Flask server for the local humanoid operator console."""
 
 import argparse
+import os
 import signal
 import threading
 import webbrowser
@@ -12,6 +13,8 @@ from flask import Flask, Response, jsonify, request
 from werkzeug.exceptions import BadRequest, HTTPException
 from werkzeug.serving import make_server
 
+from humanoid.config.teleop import get_oculus_teleop_policy_config
+from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE
 from humanoid.logger import get_logger, setup_logging
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.types.orchestrator import OrchestratorError
@@ -211,9 +214,30 @@ def main() -> None:
     parser.add_argument(
         "--no-open", action="store_true", help="Do not open a browser automatically"
     )
+    parser.add_argument(
+        "--oculus-ip",
+        metavar="IP",
+        help=(
+            "Quest IPv4 address for wireless ADB "
+            f"(also configurable with {OCULUS_IP_ENVIRONMENT_VARIABLE})"
+        ),
+    )
     args = parser.parse_args()
 
+    if args.oculus_ip is not None:
+        os.environ[OCULUS_IP_ENVIRONMENT_VARIABLE] = args.oculus_ip
+    try:
+        oculus_config = get_oculus_teleop_policy_config()
+    except ValueError as exc:
+        parser.error(str(exc))
+
     setup_logging()
+    if oculus_config.ip_address is not None:
+        logger.info(
+            "Oculus wireless ADB configured for %s:%d",
+            oculus_config.ip_address,
+            oculus_config.port,
+        )
     orchestrator_service = OrchestratorService()
     app = create_app(orchestrator_service)
     try:

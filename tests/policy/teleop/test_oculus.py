@@ -5,6 +5,7 @@ mutable stub so we can drive the policy through synthetic controller poses,
 button states, and joystick deflections.
 """
 
+import time
 import typing
 from dataclasses import replace
 from unittest.mock import MagicMock
@@ -23,9 +24,11 @@ from humanoid.policy.teleop.oculus import (
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.robot import RobotState
+from humanoid.types.teleop import OculusInputSnapshot
 
 ONE_CALL = 1
 TWO_CALLS = 2
+CUSTOM_ADB_PORT = 5556
 
 
 class StubOculusReader:
@@ -36,7 +39,11 @@ class StubOculusReader:
     operator input.
     """
 
-    def __init__(self):
+    def __init__(self, ip_address: str | None = None, port: int = 5555):
+        self.ip_address = ip_address
+        self.port = port
+        self.input_fresh = True
+        self.received_monotonic: float | None = None
         self.transforms: dict = {"r": np.eye(4)}
         self.buttons: dict = {
             "A": False,
@@ -49,8 +56,13 @@ class StubOculusReader:
             "rightJS": (0.0, 0.0),
         }
 
-    def get_transformations_and_buttons(self):
-        return self.transforms, self.buttons
+    def get_snapshot(self):
+        received_monotonic = time.monotonic() if self.input_fresh else self.received_monotonic
+        return OculusInputSnapshot(
+            transforms=self.transforms,
+            buttons=self.buttons,
+            received_monotonic=received_monotonic,
+        )
 
 
 class StubOrchestratorClient(OrchestratorClient):
@@ -134,6 +146,32 @@ class TestConstruction:
             ),
         )
 
+    def test_passes_wireless_connection_to_reader(self):
+        config = OculusTeleopPolicyConfig(
+            ip_address="192.168.1.42",
+            port=CUSTOM_ADB_PORT,
+            verbose=False,
+        )
+
+        policy, reader = _make_policy(config=config)
+
+        assert policy.config.ip_address == "192.168.1.42"
+        assert reader.ip_address == "192.168.1.42"
+        assert reader.port == CUSTOM_ADB_PORT
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"ip_address": "not-an-ip"}, "valid IPv4"),
+            ({"port": 0}, "port"),
+            ({"input_timeout": 0.0}, "input timeout"),
+            ({"startup_timeout": float("inf")}, "startup timeout"),
+        ],
+    )
+    def test_rejects_invalid_connection_config(self, kwargs, message):
+        with pytest.raises(ValueError, match=message):
+            OculusTeleopPolicyConfig(**kwargs)
+
     def test_mobile_base_limits_come_from_robot_config(self):
         robot_config = ROBOT_CONFIGS["triskel"]
 
@@ -162,6 +200,47 @@ class TestConstruction:
 
 
 class TestInputDropout:
+    def test_stale_frame_holds_and_clears_motion_state(self, mobile_policy_and_reader):
+        policy, reader = mobile_policy_and_reader
+        reader.buttons["RG"] = True
+        reader.buttons["leftJS"] = (1.0, 0.0)
+        observation = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        policy(observation)
+        assert policy.reference_controller_pose is not None
+
+        reader.input_fresh = False
+        reader.received_monotonic = time.monotonic() - policy.config.input_timeout - 0.1
+        action = policy(observation)
+
+        assert policy.input_stale is True
+        assert policy.reference_controller_pose is None
+        _assert_se3_equal(
+            action.tool_pose,
+            policy.robot.get_tool_command_pose(observation.robot_state.joint_positions),
+        )
+        _assert_se3_equal(
+            action.base_pose,
+            policy.robot.get_base_pose(observation.robot_state.joint_positions),
+        )
+
+    def test_fresh_input_after_stale_frame_reanchors(self, mobile_policy_and_reader):
+        policy, reader = mobile_policy_and_reader
+        reader.input_fresh = False
+        reader.received_monotonic = time.monotonic() - policy.config.input_timeout - 0.1
+        observation = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        policy(observation)
+
+        reader.input_fresh = True
+        reader.buttons["RG"] = True
+        action = policy(observation)
+
+        assert policy.input_stale is False
+        assert policy.reference_controller_pose is not None
+        _assert_se3_equal(
+            action.tool_pose,
+            policy.robot.get_tool_command_pose(observation.robot_state.joint_positions),
+        )
+
     def test_recovery_reanchors_all_motion_state(self, mobile_policy_and_reader):
         policy, reader = mobile_policy_and_reader
         reader.buttons["RG"] = True

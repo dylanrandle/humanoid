@@ -4,18 +4,18 @@ import time
 
 import numpy as np
 import pinocchio as pin
-from oculus_reader import OculusReader
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop.base import BaseTeleopPolicy
+from humanoid.policy.teleop.oculus_reader import OculusReader
 from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig
-from humanoid.types.teleop import OculusTeleopPolicyConfig
+from humanoid.types.teleop import OculusInputSnapshot, OculusTeleopPolicyConfig
 
 logger = get_logger(__name__)
 
@@ -100,12 +100,11 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             Y_BUTTON_KEY,
         ]
 
-        # Oculus reader
-        self.reader = OculusReader()
-
-        while not all(self.reader.get_transformations_and_buttons()):
-            logger.info("Waiting for Oculus data...")
-            time.sleep(0.1)
+        # Oculus reader. An explicit address selects wireless ADB; None keeps
+        # the upstream library's USB-device discovery behavior.
+        self.reader = OculusReader(ip_address=config.ip_address, port=config.port)
+        self.input_stale = False
+        self._wait_for_initial_input()
 
         # Reference poses (set on first engaged call; cleared whenever the dead-man releases)
         self.reference_controller_pose: np.ndarray | None = None
@@ -120,6 +119,37 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         if self.verbose:
             self.log_configuration()
 
+    def _wait_for_initial_input(self) -> None:
+        deadline = time.monotonic() + self.config.startup_timeout
+        last_log = 0.0
+        while True:
+            now = time.monotonic()
+            snapshot = self.reader.get_snapshot()
+            if self._snapshot_is_fresh(snapshot, now):
+                return
+            if now >= deadline:
+                connection = (
+                    f"wireless ADB at {self.config.ip_address}:{self.config.port}"
+                    if self.config.ip_address is not None
+                    else "USB ADB"
+                )
+                raise RuntimeError(
+                    f"Timed out waiting for Oculus controller data over {connection}. "
+                    "Wake the headset and controllers, then verify the ADB connection."
+                )
+            if now - last_log >= 1.0:
+                logger.info("Waiting for Oculus data...")
+                last_log = now
+            time.sleep(0.1)
+
+    def _snapshot_is_fresh(self, snapshot: OculusInputSnapshot, now: float) -> bool:
+        received_at = snapshot.received_monotonic
+        return bool(
+            received_at is not None
+            and now - received_at <= self.config.input_timeout
+            and self._has_valid_controller_data(snapshot.transforms, snapshot.buttons)
+        )
+
     def log_configuration(self):
         logger.info(f"OculusTeleopPolicy initialized for {self.robot_config.name}")
         logger.info(f"End effector frame: {self.robot_config.tool.frame}")
@@ -127,6 +157,15 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
         logger.info(f"Translation scale: {self.tool_translation_scale:.2f}")
         logger.info(f"Rotation scale: {self.tool_rotation_scale:.2f}")
+        if self.config.ip_address is None:
+            logger.info("Oculus connection: USB ADB")
+        else:
+            logger.info(
+                "Oculus connection: wireless ADB at %s:%d",
+                self.config.ip_address,
+                self.config.port,
+            )
+        logger.info(f"Oculus input timeout: {self.config.input_timeout:.2f} s")
         logger.info(
             "Oculus->tool-command axis mapping:\n%s",
             self.oculus_to_tool_command_rotation,
@@ -332,12 +371,21 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             Action containing the target tool pose and gripper positions
         """
         # Get current controller data
-        transforms, buttons = self.reader.get_transformations_and_buttons()
+        snapshot = self.reader.get_snapshot()
+        transforms = snapshot.transforms
+        buttons = snapshot.buttons
 
-        # Check if we have valid data (OculusReader may return empty dicts on startup)
-        if not self._has_valid_controller_data(transforms, buttons):
+        # Invalid or old controller data is always disengaged. This prevents a
+        # dropped ADB stream from replaying the last grip/joystick state.
+        if not self._snapshot_is_fresh(snapshot, time.monotonic()):
+            if not self.input_stale:
+                logger.warning("Oculus input is stale; holding the current robot pose")
+            self.input_stale = True
             self.reset()
             return self._hold_current_pose_action(observation)
+        if self.input_stale:
+            logger.info("Oculus input recovered; controller references will re-anchor")
+            self.input_stale = False
 
         # Handle X button homing (edge-triggered)
         if self._is_rising_edge(bool(buttons.get(X_BUTTON_KEY, False)), X_BUTTON_KEY):

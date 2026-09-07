@@ -68,6 +68,75 @@ same LCM interface to the rest of the stack. Hardware actions require explicit o
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
 
+### Running on Triskel
+
+Sync the current working tree, including uncommitted changes, to the robot:
+
+```bash
+./scripts/sync-code
+```
+
+The default destination is `triskel:~/humanoid`. Set
+`HUMANOID_ROBOT_HOST` or `HUMANOID_ROBOT_DIR` to override it, and pass `--dry-run`
+to preview the transfer. The command mirrors source files with rsync while preserving
+remote Git metadata, environments, dependencies, caches, and logs. Other remote source
+files that are absent locally are deleted after a successful transfer.
+
+On the robot, install dependencies if needed and start the console without trying to
+open a remote browser:
+
+```bash
+cd ~/humanoid
+uv sync
+uv run start --no-open
+```
+
+In another local terminal, forward the loopback-only dashboard and MeshCat ports:
+
+```bash
+./scripts/forward-ports
+```
+
+Then open [the dashboard](http://127.0.0.1:8765) and
+[the visualizer](http://127.0.0.1:7000/static/). The tunnel defaults to dashboard port
+`8765` and MeshCat port `7000`; its `--help` output lists environment variables for
+overriding local or remote ports. MeshCat may select a higher remote port when `7000`
+is already occupied, in which case set `HUMANOID_VISUALIZER_PORT` to the URL's port.
+
+#### Wireless Oculus on Triskel
+
+Enable Developer Mode and USB debugging on the Quest, connect it once over USB to a
+computer with `adb`, and accept the headset's debugging prompt. Switch the headset's ADB
+daemon to the standard wireless port and find its Wi-Fi address:
+
+```bash
+adb devices -l
+adb tcpip 5555
+adb shell ip route
+```
+
+Use the IPv4 address shown after `src`. The Quest and Triskel must be reachable on the same
+network. Verify the connection from Triskel; put on the headset and accept its authorization
+prompt if one appears:
+
+```bash
+ssh triskel 'adb connect 192.168.1.42:5555 && adb devices -l'
+```
+
+Replace the example address, then start the remote console with wireless Oculus enabled:
+
+```bash
+ssh triskel
+cd ~/humanoid
+uv run start --no-open --oculus-ip 192.168.1.42
+```
+
+`HUMANOID_OCULUS_IP=192.168.1.42 uv run start --no-open` is equivalent. With neither option
+set, Oculus teleoperation retains USB discovery. The reader installs or starts its bundled
+headset app automatically. It fails startup if no controller frames arrive within 15 seconds,
+and input older than 300 ms is treated as disengaged so a dropped wireless stream holds the
+current robot pose. Wireless ADB may need to be enabled again after the headset reboots.
+
 ## Project Structure
 
 ```

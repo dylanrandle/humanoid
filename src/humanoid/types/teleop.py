@@ -1,6 +1,10 @@
 from dataclasses import dataclass, field
+from ipaddress import AddressValueError, IPv4Address
 
 import numpy as np
+
+MIN_NETWORK_PORT = 1
+MAX_NETWORK_PORT = 65_535
 
 
 @dataclass
@@ -60,6 +64,13 @@ class OculusTeleopPolicyConfig:
             the full gripper joint range. The per-tick step is
             ``(gripper_max - gripper_min) * dt / gripper_close_time``;
             commanded position is clamped to the joint limits.
+        ip_address: Quest IPv4 address for wireless ADB. ``None`` preserves
+            the upstream reader's USB-device behavior.
+        port: Quest wireless ADB port.
+        input_timeout: Maximum age in seconds of the most recently received
+            controller frame. Older input is treated as disengaged.
+        startup_timeout: Maximum time in seconds to wait for the first valid
+            controller frame before failing with a setup error.
         verbose: Whether to log pose updates.
     """
 
@@ -79,4 +90,30 @@ class OculusTeleopPolicyConfig:
     base_yaw_scale: float = -1.0
     base_deadzone: float = 0.1
     gripper_close_time: float = 1.0
+    ip_address: str | None = None
+    port: int = 5555
+    input_timeout: float = 0.3
+    startup_timeout: float = 15.0
     verbose: bool = True
+
+    def __post_init__(self) -> None:
+        if self.ip_address is not None:
+            try:
+                self.ip_address = str(IPv4Address(self.ip_address.strip()))
+            except AddressValueError as exc:
+                raise ValueError("Oculus IP address must be a valid IPv4 address.") from exc
+        if not MIN_NETWORK_PORT <= self.port <= MAX_NETWORK_PORT:
+            raise ValueError("Oculus ADB port must be between 1 and 65535.")
+        if not np.isfinite(self.input_timeout) or self.input_timeout <= 0.0:
+            raise ValueError("Oculus input timeout must be positive and finite.")
+        if not np.isfinite(self.startup_timeout) or self.startup_timeout <= 0.0:
+            raise ValueError("Oculus startup timeout must be positive and finite.")
+
+
+@dataclass(frozen=True)
+class OculusInputSnapshot:
+    """One atomically sampled controller frame and its receipt time."""
+
+    transforms: dict[str, np.ndarray]
+    buttons: dict[str, object]
+    received_monotonic: float | None
