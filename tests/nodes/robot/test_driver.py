@@ -5,7 +5,7 @@ import pytest
 
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
-from humanoid.nodes.robot.driver import RobotDriverNode
+from humanoid.nodes.robot.driver import DEFAULT_RATE_HZ, RobotDriverNode
 from humanoid.state_estimation.root.base import (
     RootState,
     RootStateEstimator,
@@ -23,6 +23,8 @@ from humanoid.types.robot import (
     RobotName,
     RobotToolConfig,
 )
+
+EXPECTED_DRIVER_RATE_HZ = 50.0
 
 
 class StubActuatorSystem(ActuatorSystem):
@@ -126,6 +128,11 @@ def robot_driver():
     )
     driver.joint_upper_limits = np.array([2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973])
     return driver
+
+
+def test_default_driver_targets_fifty_hz(robot_driver):
+    assert DEFAULT_RATE_HZ == EXPECTED_DRIVER_RATE_HZ
+    assert robot_driver.rate_hz == EXPECTED_DRIVER_RATE_HZ
 
 
 def _written_positions(driver: RobotDriverNode) -> dict[str, float]:

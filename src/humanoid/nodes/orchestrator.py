@@ -28,8 +28,8 @@ from humanoid.types.orchestrator import (
 
 logger = get_logger(__name__)
 
-# NOTE: rate needs to be high enough to not bottleneck upstream producers.
-DEFAULT_RATE_HZ = 500.0
+# Keep command-routing latency low without spending a full core polling empty queues.
+DEFAULT_RATE_HZ = 100.0
 
 # For each mode, the per-source -> final topic forwards that should be active.
 MODE_FORWARDS: dict[Mode, dict[Topic, Topic]] = {

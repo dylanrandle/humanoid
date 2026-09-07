@@ -20,7 +20,7 @@ from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 100.0
+DEFAULT_RATE_HZ = 30.0
 
 
 class HomingNode(Node):

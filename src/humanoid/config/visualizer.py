@@ -2,4 +2,4 @@
 
 from humanoid.types.visualizer import VisualizerConfig
 
-VISUALIZER_CONFIG = VisualizerConfig()
+VISUALIZER_CONFIG = VisualizerConfig(dt=0.1)

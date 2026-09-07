@@ -52,3 +52,17 @@ class ActuatorDriver(ABC):
     @abstractmethod
     def read_all_velocities(self) -> dict[int, float]:
         """Read velocities in rad/s, keyed by actuator ID."""
+
+    def read_all_feedback(
+        self,
+    ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+        """Read position, velocity, and temperature feedback.
+
+        Drivers can override this method when their transport supports reading
+        multiple feedback fields in one transaction.
+        """
+        return (
+            self.read_all_positions(),
+            self.read_all_velocities(),
+            self.read_all_temperatures(),
+        )

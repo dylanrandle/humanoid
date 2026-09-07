@@ -27,7 +27,7 @@ from humanoid.types.robot import RobotConfig, RobotState
 
 logger = get_logger(__name__)
 
-DEFAULT_RATE_HZ = 500.0
+DEFAULT_RATE_HZ = 50.0
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 0.25
 
 

@@ -108,9 +108,7 @@ class CompositeActuatorSystem(ActuatorSystem):
     def read_states(self) -> dict[str, ActuatorState]:
         states: dict[str, ActuatorState] = {}
         for controller, driver in self.drivers.items():
-            positions = driver.read_all_positions()
-            velocities = driver.read_all_velocities()
-            temperatures = driver.read_all_temperatures()
+            positions, velocities, temperatures = driver.read_all_feedback()
             actuator_ids = positions.keys() | velocities.keys() | temperatures.keys()
             for actuator_id in actuator_ids:
                 joint_name = self._joint_by_address.get((controller, actuator_id))

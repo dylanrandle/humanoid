@@ -4,6 +4,7 @@ import math
 from collections import defaultdict
 from typing import Any, cast
 
+import scservo_sdk as scs
 from vassar_feetech_servo_sdk import ServoController
 
 from humanoid.hardware.actuators.driver import ActuatorDriver
@@ -23,6 +24,8 @@ POS_MIN = 0
 POS_MAX = 4095
 POS_MID = (POS_MAX + POS_MIN) / 2
 ADDR_TEMPERATURE = 63
+ADDR_PRESENT_POSITION = 56
+ADDR_PRESENT_SPEED = 58
 ADDR_GOAL_POSITION = 42
 ADDR_GOAL_SPEED = 46
 ADDR_OPERATING_MODE = 33
@@ -36,6 +39,10 @@ SPEED_UNIT_RAD_S = 0.732 * 2 * math.pi / 60
 DEFAULT_POSITION_SPEED = 32767
 HLS_FULL_TORQUE = 1000
 UTILITY_CONTROLLER = "utility"
+POSITION_DATA_LENGTH = 2
+SPEED_DATA_LENGTH = 2
+TEMPERATURE_DATA_LENGTH = 1
+PRESENT_FEEDBACK_DATA_LENGTH = 8
 
 
 class FeetechActuatorDriver(ServoController, ActuatorDriver):
@@ -337,9 +344,13 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         return temperature
 
     def read_all_temperatures(self) -> dict[int, float]:
-        return {
-            actuator_id: self.read_temperature(actuator_id) for actuator_id in self.actuator_ids
-        }
+        raw_temperatures = self._sync_read(
+            ADDR_TEMPERATURE,
+            TEMPERATURE_DATA_LENGTH,
+            ((ADDR_TEMPERATURE, TEMPERATURE_DATA_LENGTH),),
+            label="temperature",
+        )
+        return {actuator_id: float(values[0]) for actuator_id, values in raw_temperatures.items()}
 
     def write_velocity(self, velocities: dict[int, float]) -> None:
         assert self.packet_handler, "Not connected"
@@ -366,8 +377,109 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         return velocity
 
     def read_all_velocities(self) -> dict[int, float]:
+        raw_velocities = self._sync_read(
+            ADDR_PRESENT_SPEED,
+            SPEED_DATA_LENGTH,
+            ((ADDR_PRESENT_SPEED, SPEED_DATA_LENGTH),),
+            label="velocity",
+        )
         return {
-            actuator_id: velocity
-            for actuator_id in self.actuator_ids
-            if (velocity := self.read_velocity(actuator_id)) is not None
+            actuator_id: self._velocity_from_raw(values[0], actuator_id)
+            for actuator_id, values in raw_velocities.items()
         }
+
+    def read_all_feedback(
+        self,
+    ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+        """Read every actuator's present-state register block in one transaction."""
+        raw_feedback = self._sync_read(
+            ADDR_PRESENT_POSITION,
+            PRESENT_FEEDBACK_DATA_LENGTH,
+            (
+                (ADDR_PRESENT_POSITION, POSITION_DATA_LENGTH),
+                (ADDR_PRESENT_SPEED, SPEED_DATA_LENGTH),
+                (ADDR_TEMPERATURE, TEMPERATURE_DATA_LENGTH),
+            ),
+            label="feedback",
+        )
+        positions = {
+            actuator_id: self.position_to_angle(values[0], actuator_id)
+            for actuator_id, values in raw_feedback.items()
+        }
+        velocities = {
+            actuator_id: self._velocity_from_raw(values[1], actuator_id)
+            for actuator_id, values in raw_feedback.items()
+        }
+        temperatures = {
+            actuator_id: float(values[2]) for actuator_id, values in raw_feedback.items()
+        }
+        return positions, velocities, temperatures
+
+    def _velocity_from_raw(self, raw_velocity: int, actuator_id: int) -> float:
+        assert self.packet_handler, "Not connected"
+        signed_velocity = self.packet_handler.scs_tohost(raw_velocity, 15)
+        velocity = signed_velocity * SPEED_UNIT_RAD_S
+        return -velocity if self.actuator_configs[actuator_id].inverted else velocity
+
+    def _sync_read(
+        self,
+        start_address: int,
+        data_length: int,
+        fields: tuple[tuple[int, int], ...],
+        *,
+        label: str,
+    ) -> dict[int, tuple[int, ...]]:
+        """Read one register range for all configured actuators."""
+        assert self.packet_handler, "Not connected"
+        group_sync_read = scs.GroupSyncRead(
+            self.packet_handler,
+            start_address,
+            data_length,
+        )
+        actuator_ids = []
+        try:
+            for actuator_id in self.actuator_ids:
+                if group_sync_read.addParam(actuator_id):
+                    actuator_ids.append(actuator_id)
+                else:
+                    logger.warning(
+                        "Failed to add actuator %s to Feetech %s sync read",
+                        actuator_id,
+                        label,
+                    )
+
+            result = group_sync_read.txRxPacket()
+            if result != scs.COMM_SUCCESS:
+                detail = self.packet_handler.getTxRxResult(result)
+                raise RuntimeError(f"Feetech {label} sync read failed: {detail}")
+
+            values: dict[int, tuple[int, ...]] = {}
+            for actuator_id in actuator_ids:
+                available, error = group_sync_read.isAvailable(
+                    actuator_id,
+                    start_address,
+                    data_length,
+                )
+                if error != 0:
+                    detail = self.packet_handler.getRxPacketError(error)
+                    logger.warning(
+                        "Feetech %s sync read reported an error for actuator %s: %s",
+                        label,
+                        actuator_id,
+                        detail,
+                    )
+                    continue
+                if not available:
+                    logger.warning(
+                        "Feetech %s sync read returned no data for actuator %s",
+                        label,
+                        actuator_id,
+                    )
+                    continue
+                values[actuator_id] = tuple(
+                    group_sync_read.getData(actuator_id, address, length)
+                    for address, length in fields
+                )
+            return values
+        finally:
+            group_sync_read.clearParam()

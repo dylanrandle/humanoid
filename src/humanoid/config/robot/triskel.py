@@ -25,6 +25,8 @@ from humanoid.types.robot import (
 )
 
 MAIN_CONTROLLER = "main"
+CONTROLLER_RATE_HZ = 100.0
+CONTROLLER_DT = 1 / CONTROLLER_RATE_HZ
 WHEEL_IDS = [f"wheel_{index}" for index in range(1, 4)]
 JOINT_IDS = [f"arm_{index}" for index in range(1, 8)]
 GRIPPER_ID = "gripper_1"
@@ -130,6 +132,7 @@ HOMING_PRESETS = {
     HomingPreset.REST: REST_POSITION,
 }
 OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
+    dt=CONTROLLER_DT,
     avoid_collisions=True,
     wheel_cost=100.0,
     min_collision_distance=5e-3,

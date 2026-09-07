@@ -4,7 +4,7 @@ import numpy as np
 import pinocchio as pin
 import pytest
 
-from humanoid.config import ROBOT_CONFIGS
+from humanoid.config import ROBOT_CONFIGS, VISUALIZER_CONFIG
 from humanoid.constants import Topic
 from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.homing import HomingPreset
@@ -53,6 +53,10 @@ def _set_messages(subscriber: MagicMock, messages: dict[Topic, object]) -> None:
 def _assert_se3_equal(actual: pin.SE3, expected: pin.SE3) -> None:
     np.testing.assert_allclose(actual.rotation, expected.rotation, atol=1e-12)
     np.testing.assert_allclose(actual.translation, expected.translation, atol=1e-12)
+
+
+def test_default_visualizer_targets_ten_hz():
+    assert 1 / VISUALIZER_CONFIG.dt == pytest.approx(10.0)
 
 
 def test_fixed_base_tool_command_is_already_in_world_frame():

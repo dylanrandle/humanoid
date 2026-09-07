@@ -14,8 +14,15 @@ from humanoid.hardware.actuators.feetech.driver import (
     ADDR_GOAL_POSITION,
     ADDR_GOAL_SPEED,
     ADDR_OPERATING_MODE,
+    ADDR_PRESENT_POSITION,
+    ADDR_PRESENT_SPEED,
+    ADDR_TEMPERATURE,
     ADDR_TORQUE_ENABLE,
+    POSITION_DATA_LENGTH,
+    PRESENT_FEEDBACK_DATA_LENGTH,
+    SPEED_DATA_LENGTH,
     SPEED_UNIT_RAD_S,
+    TEMPERATURE_DATA_LENGTH,
     FeetechActuatorDriver,
 )
 from humanoid.types.actuator import ActuatorControlMode
@@ -175,6 +182,122 @@ def test_velocity_reads_use_sdk_signed_value(raw_velocity, inverted, expected_un
     driver.packet_handler.ReadSpeed.return_value = (raw_velocity, 0, 0)
 
     assert driver.read_velocity(1) == pytest.approx(expected_units * SPEED_UNIT_RAD_S)
+
+
+def test_feedback_uses_one_group_read_for_all_actuators_and_fields():
+    driver = _driver([_actuator(1), _actuator(2, inverted=True)])
+    driver.packet_handler = Mock()
+    driver.packet_handler.scs_tohost.side_effect = lambda value, bit: (
+        -(value & ~(1 << bit)) if value & (1 << bit) else value
+    )
+    raw_feedback = {
+        (1, ADDR_PRESENT_POSITION, POSITION_DATA_LENGTH): MID_POSITION,
+        (1, ADDR_PRESENT_SPEED, SPEED_DATA_LENGTH): 2,
+        (1, ADDR_TEMPERATURE, TEMPERATURE_DATA_LENGTH): 31,
+        (2, ADDR_PRESENT_POSITION, POSITION_DATA_LENGTH): 1024,
+        (2, ADDR_PRESENT_SPEED, SPEED_DATA_LENGTH): 0x8002,
+        (2, ADDR_TEMPERATURE, TEMPERATURE_DATA_LENGTH): 32,
+    }
+    group_read = Mock()
+    group_read.addParam.return_value = True
+    group_read.txRxPacket.return_value = 0
+    group_read.isAvailable.return_value = (True, 0)
+    group_read.getData.side_effect = lambda actuator_id, address, length: raw_feedback[
+        (actuator_id, address, length)
+    ]
+
+    with patch(
+        "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
+        return_value=group_read,
+    ) as group_read_type:
+        positions, velocities, temperatures = driver.read_all_feedback()
+
+    group_read_type.assert_called_once_with(
+        driver.packet_handler,
+        ADDR_PRESENT_POSITION,
+        PRESENT_FEEDBACK_DATA_LENGTH,
+    )
+    assert group_read.addParam.call_args_list == [call(1), call(2)]
+    assert group_read.txRxPacket.call_count == 1
+    assert group_read.isAvailable.call_args_list == [
+        call(1, ADDR_PRESENT_POSITION, PRESENT_FEEDBACK_DATA_LENGTH),
+        call(2, ADDR_PRESENT_POSITION, PRESENT_FEEDBACK_DATA_LENGTH),
+    ]
+    assert positions == {
+        1: pytest.approx(driver.position_to_angle(MID_POSITION, 1)),
+        2: pytest.approx(driver.position_to_angle(1024, 2)),
+    }
+    assert velocities == {
+        1: pytest.approx(2 * SPEED_UNIT_RAD_S),
+        2: pytest.approx(2 * SPEED_UNIT_RAD_S),
+    }
+    assert temperatures == {1: 31.0, 2: 32.0}
+    group_read.clearParam.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("method_name", "address", "data_length", "raw_value", "expected_value"),
+    [
+        (
+            "read_all_velocities",
+            ADDR_PRESENT_SPEED,
+            SPEED_DATA_LENGTH,
+            2,
+            2 * SPEED_UNIT_RAD_S,
+        ),
+        (
+            "read_all_temperatures",
+            ADDR_TEMPERATURE,
+            TEMPERATURE_DATA_LENGTH,
+            31,
+            31.0,
+        ),
+    ],
+)
+def test_individual_feedback_fields_use_group_reads(
+    method_name,
+    address,
+    data_length,
+    raw_value,
+    expected_value,
+):
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.scs_tohost.return_value = raw_value
+    group_read = Mock()
+    group_read.addParam.return_value = True
+    group_read.txRxPacket.return_value = 0
+    group_read.isAvailable.return_value = (True, 0)
+    group_read.getData.return_value = raw_value
+
+    with patch(
+        "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
+        return_value=group_read,
+    ) as group_read_type:
+        values = getattr(driver, method_name)()
+
+    group_read_type.assert_called_once_with(driver.packet_handler, address, data_length)
+    assert values == {1: pytest.approx(expected_value)}
+
+
+def test_feedback_group_read_raises_communication_failure_and_clears_parameters():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.getTxRxResult.return_value = "receive failed"
+    group_read = Mock()
+    group_read.addParam.return_value = True
+    group_read.txRxPacket.return_value = -2
+
+    with (
+        patch(
+            "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
+            return_value=group_read,
+        ),
+        pytest.raises(RuntimeError, match="feedback sync read failed: receive failed"),
+    ):
+        driver.read_all_feedback()
+
+    group_read.clearParam.assert_called_once_with()
 
 
 @pytest.mark.parametrize(

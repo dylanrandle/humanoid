@@ -11,13 +11,15 @@ from unittest.mock import Mock, patch
 import pytest
 
 from humanoid.constants import Topic
-from humanoid.nodes.orchestrator import OrchestratorNode
+from humanoid.nodes.orchestrator import DEFAULT_RATE_HZ, OrchestratorNode
 from humanoid.types.orchestrator import (
     EventKind,
     Mode,
     OrchestratorEvent,
     OrchestratorMode,
 )
+
+EXPECTED_ORCHESTRATOR_RATE_HZ = 100.0
 
 
 def _make_node(mode: Mode = Mode.IDLE) -> OrchestratorNode:
@@ -49,6 +51,11 @@ def _event(kind: EventKind) -> OrchestratorEvent:
 @pytest.fixture
 def node() -> OrchestratorNode:
     return _make_node()
+
+
+def test_default_rate_is_one_hundred_hz(node):
+    assert DEFAULT_RATE_HZ == EXPECTED_ORCHESTRATOR_RATE_HZ
+    assert node.rate_hz == DEFAULT_RATE_HZ
 
 
 class TestTransitions:
