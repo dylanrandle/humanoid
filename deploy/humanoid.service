@@ -1,0 +1,19 @@
+[Unit]
+Description=Humanoid operator console
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=@HUMANOID_USER@
+WorkingDirectory=@HUMANOID_INSTALL_DIR@
+Environment=HUMANOID_DATA_DIR=@HUMANOID_INSTALL_DIR@
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@HUMANOID_INSTALL_DIR@/.venv/bin/start --no-open
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

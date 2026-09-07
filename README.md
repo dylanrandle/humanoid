@@ -68,74 +68,70 @@ same LCM interface to the rest of the stack. Hardware actions require explicit o
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
 
-### Running on Triskel
+### Deploying to Triskel
 
-Sync the current working tree, including uncommitted changes, to the robot:
-
-```bash
-./scripts/sync-code
-```
-
-The default destination is `triskel:~/humanoid`. Set
-`HUMANOID_ROBOT_HOST` or `HUMANOID_ROBOT_DIR` to override it, and pass `--dry-run`
-to preview the transfer. The command mirrors source files with rsync while preserving
-remote Git metadata, environments, dependencies, caches, and logs. Other remote source
-files that are absent locally are deleted after a successful transfer.
-
-On the robot, install dependencies if needed and start the console without trying to
-open a remote browser:
+Package the current local code and deploy it to `/opt/humanoid`:
 
 ```bash
-cd ~/humanoid
-uv sync
-uv run start --no-open
+./scripts/deploy
 ```
 
-In another local terminal, forward the loopback-only dashboard and MeshCat ports:
+This installs locked dependencies, enables `humanoid.service`, and restarts the web console.
+The robot needs no source checkout. The stack remains stopped until started from the UI.
+Deployment may prompt for `sudo`; use `--dry-run` to build without deploying. Override the
+defaults with `HUMANOID_ROBOT_HOST` and `HUMANOID_ROBOT_DIR`.
+
+Forward the dashboard and MeshCat ports from another local terminal:
 
 ```bash
 ./scripts/forward-ports
 ```
 
-Then open [the dashboard](http://127.0.0.1:8765) and
-[the visualizer](http://127.0.0.1:7000/static/). The tunnel defaults to dashboard port
-`8765` and MeshCat port `7000`; its `--help` output lists environment variables for
-overriding local or remote ports. MeshCat may select a higher remote port when `7000`
-is already occupied, in which case set `HUMANOID_VISUALIZER_PORT` to the URL's port.
+Open the [dashboard](http://127.0.0.1:8765) or
+[visualizer](http://127.0.0.1:7000/static/). Run `./scripts/forward-ports --help` for port
+overrides. Recordings are preserved in `/opt/humanoid/logs`.
 
-#### Wireless Oculus on Triskel
-
-Enable Developer Mode and USB debugging on the Quest, connect it once over USB to a
-computer with `adb`, and accept the headset's debugging prompt. Switch the headset's ADB
-daemon to the standard wireless port and find its Wi-Fi address:
+SSH into Triskel to manage the service:
 
 ```bash
-adb devices -l
+ssh triskel
+systemctl status humanoid.service
+sudo systemctl restart humanoid.service
+journalctl -u humanoid.service -f
+```
+
+#### Wireless Oculus
+
+Enable Developer Mode and USB debugging, connect the Quest over USB once, and run:
+
+```bash
 adb tcpip 5555
 adb shell ip route
 ```
 
-Use the IPv4 address shown after `src`. The Quest and Triskel must be reachable on the same
-network. Verify the connection from Triskel; put on the headset and accept its authorization
-prompt if one appears:
-
-```bash
-ssh triskel 'adb connect 192.168.1.42:5555 && adb devices -l'
-```
-
-Replace the example address, then start the remote console with wireless Oculus enabled:
+Use the address shown after `src`, then SSH into Triskel and connect to it (replace the
+example IP):
 
 ```bash
 ssh triskel
-cd ~/humanoid
-uv run start --no-open --oculus-ip 192.168.1.42
+adb connect 192.168.1.42:5555
+adb devices -l
+sudo systemctl edit humanoid.service
 ```
 
-`HUMANOID_OCULUS_IP=192.168.1.42 uv run start --no-open` is equivalent. With neither option
-set, Oculus teleoperation retains USB discovery. The reader installs or starts its bundled
-headset app automatically. It fails startup if no controller frames arrive within 15 seconds,
-and input older than 300 ms is treated as disengaged so a dropped wireless stream holds the
-current robot pose. Wireless ADB may need to be enabled again after the headset reboots.
+Add this override, then restart the service:
+
+```ini
+[Service]
+Environment=HUMANOID_OCULUS_IP=192.168.1.42
+```
+
+```bash
+sudo systemctl restart humanoid.service
+```
+
+Without the override, Oculus uses USB discovery. Wireless ADB may need re-enabling after a
+headset reboot; stale input automatically disengages control.
 
 ## Project Structure
 

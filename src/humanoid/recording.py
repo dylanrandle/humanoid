@@ -13,11 +13,11 @@ import numpy as np
 from humanoid.logger import get_logger
 from humanoid.types.replay import JsonValue, RecordingBundle, RecordingSummary
 from humanoid.types.robot import RobotConfig, RobotName
-from humanoid.utils.paths import find_repo_root
+from humanoid.utils.paths import find_data_root
 
 logger = get_logger(__name__)
 
-DEFAULT_RECORDING_ROOT = find_repo_root(__file__) / "logs"
+DEFAULT_RECORDING_ROOT = find_data_root(__file__) / "logs"
 RECORDING_DIRECTORY_PREFIX = "recording_"
 RECORDING_LOG_FILENAME = "recording.lcm"
 RECORDING_MANIFEST_FILENAME = "robot.json"

@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REMOTE_HOST="${HUMANOID_ROBOT_HOST:-triskel}"
+INSTALL_DIR="${HUMANOID_ROBOT_DIR:-/opt/humanoid}"
+BUILD_DIR="$(mktemp -d /tmp/humanoid-build.XXXXXX)"
+REMOTE_STAGING_DIR=""
+
+cleanup() {
+    rm -rf -- "${BUILD_DIR:?}"
+    if [[ -n "$REMOTE_STAGING_DIR" ]]; then
+        ssh "$REMOTE_HOST" rm -rf -- "$REMOTE_STAGING_DIR" >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup EXIT
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [--dry-run]
+
+Build a locked Humanoid deployment bundle locally and install it on the robot.
+
+Environment overrides:
+  HUMANOID_ROBOT_HOST  SSH host (default: triskel)
+  HUMANOID_ROBOT_DIR   Remote install directory (default: /opt/humanoid)
+
+The remote user needs passwordless sudo or an interactive terminal to create the
+install directory and update the systemd service.
+EOF
+}
+
+DRY_RUN=false
+case "${1:-}" in
+    "")
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        ;;
+    --help|-h)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
+if [[ $# -gt 1 ]]; then
+    usage >&2
+    exit 2
+fi
+if [[ ! "$INSTALL_DIR" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
+    echo "HUMANOID_ROBOT_DIR must be an absolute path containing only safe path characters." >&2
+    exit 2
+fi
+
+cd "$PROJECT_ROOT"
+
+echo "Building Humanoid wheel and locked runtime requirements"
+uv build --wheel --out-dir "$BUILD_DIR"
+uv export \
+    --frozen \
+    --no-dev \
+    --no-emit-project \
+    --no-header \
+    --no-annotate \
+    --output-file "$BUILD_DIR/requirements.txt" \
+    >/dev/null
+
+shopt -s nullglob
+WHEELS=("$BUILD_DIR"/humanoid-*.whl)
+shopt -u nullglob
+if [[ ${#WHEELS[@]} -ne 1 || ! -f "${WHEELS[0]}" ]]; then
+    echo "Expected one Humanoid wheel, found ${#WHEELS[@]}." >&2
+    exit 1
+fi
+WHEEL_NAME="$(basename "${WHEELS[0]}")"
+BUNDLE_PATH="$BUILD_DIR/humanoid-deploy.tar.gz"
+install -m 0644 "$PROJECT_ROOT/deploy/humanoid.service" \
+    "$BUILD_DIR/humanoid.service.template"
+tar -C "$BUILD_DIR" -czf "$BUNDLE_PATH" \
+    "$WHEEL_NAME" requirements.txt humanoid.service.template
+
+if [[ "$DRY_RUN" == true ]]; then
+    echo "Would upload the deployment bundle to $REMOTE_HOST"
+    echo "Would install Humanoid into $INSTALL_DIR"
+    echo "Would install, enable, and restart humanoid.service"
+    exit 0
+fi
+
+echo "Creating temporary upload directory on $REMOTE_HOST"
+REMOTE_STAGING_DIR="$(ssh "$REMOTE_HOST" mktemp -d /tmp/humanoid-deploy.XXXXXX)"
+if [[ "$REMOTE_STAGING_DIR" != /tmp/humanoid-deploy.* ]]; then
+    echo "Robot returned an unexpected temporary directory: $REMOTE_STAGING_DIR" >&2
+    REMOTE_STAGING_DIR=""
+    exit 1
+fi
+REMOTE_BUNDLE="$REMOTE_STAGING_DIR/$(basename "$BUNDLE_PATH")"
+
+echo "Uploading deployment bundle to $REMOTE_HOST"
+scp "$BUNDLE_PATH" "$REMOTE_HOST:$REMOTE_BUNDLE"
+
+if ! ssh "$REMOTE_HOST" test -w "$INSTALL_DIR"; then
+    echo "Preparing $INSTALL_DIR on $REMOTE_HOST"
+    ssh -t "$REMOTE_HOST" \
+        "sudo install -d -m 0755 -o \$(id -u) -g \$(id -g) '$INSTALL_DIR'"
+fi
+
+echo "Installing Humanoid into $REMOTE_HOST:$INSTALL_DIR"
+ssh "$REMOTE_HOST" bash -s -- "$INSTALL_DIR" "$REMOTE_BUNDLE" "$WHEEL_NAME" <<'REMOTE_SCRIPT'
+set -euo pipefail
+
+INSTALL_DIR="$1"
+BUNDLE_PATH="$2"
+WHEEL_NAME="$3"
+STAGING_DIR="$(dirname "$BUNDLE_PATH")"
+SERVICE_USER="$(id -un)"
+
+if [[ ! "$SERVICE_USER" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    echo "Cannot create a systemd unit for unexpected user name: $SERVICE_USER" >&2
+    exit 1
+fi
+
+if command -v uv >/dev/null; then
+    UV_BIN="$(command -v uv)"
+elif [[ -x "$HOME/.local/bin/uv" ]]; then
+    UV_BIN="$HOME/.local/bin/uv"
+else
+    echo "uv is not available on the robot. Install uv and deploy again." >&2
+    exit 1
+fi
+
+tar -xzf "$BUNDLE_PATH" -C "$STAGING_DIR"
+install -d -m 0755 "$INSTALL_DIR/logs"
+
+"$UV_BIN" venv --python 3.13 --allow-existing "$INSTALL_DIR/.venv"
+"$UV_BIN" pip install \
+    --python "$INSTALL_DIR/.venv/bin/python" \
+    --exact \
+    --compile-bytecode \
+    --reinstall-package humanoid \
+    --requirements "$STAGING_DIR/requirements.txt" \
+    "$STAGING_DIR/$WHEEL_NAME"
+ln -sfn .venv/bin/start "$INSTALL_DIR/start"
+
+cp "$STAGING_DIR/humanoid.service.template" "$STAGING_DIR/humanoid.service"
+sed -i \
+    -e "s|@HUMANOID_USER@|$SERVICE_USER|g" \
+    -e "s|@HUMANOID_INSTALL_DIR@|$INSTALL_DIR|g" \
+    "$STAGING_DIR/humanoid.service"
+
+"$INSTALL_DIR/.venv/bin/python" -c "import humanoid"
+echo "Installed Humanoid package"
+REMOTE_SCRIPT
+
+echo "Installing and restarting humanoid.service on $REMOTE_HOST"
+ssh -t "$REMOTE_HOST" \
+    "sudo install -m 0644 '$REMOTE_STAGING_DIR/humanoid.service' /etc/systemd/system/humanoid.service && sudo systemctl daemon-reload && sudo systemctl enable humanoid.service && sudo systemctl restart humanoid.service && sleep 1 && sudo systemctl --no-pager --full status humanoid.service"
+
+echo "Deployment complete; humanoid.service is enabled and running"
