@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<robot name="elrobot_mobile">
+<robot name="triskel">
     <material name="silver">
         <color rgba="0.700 0.700 0.700 1.000" />
     </material>
@@ -15,14 +15,14 @@
         <visual>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/lower_plate.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/lower_plate.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/lower_plate.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/lower_plate.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -35,14 +35,14 @@
         <visual>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/upper_plate.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/upper_plate.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/upper_plate.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/upper_plate.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -56,14 +56,14 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -77,14 +77,14 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -98,14 +98,14 @@
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -118,14 +118,14 @@
         <visual>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel_mount.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel_mount.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -138,14 +138,14 @@
         <visual>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel_mount.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel_mount.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -158,14 +158,14 @@
         <visual>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel_mount.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/wheel_mount.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -198,14 +198,14 @@
         <visual>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/servo.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/servo.obj" scale="1 1 1" />
             </geometry>
             <material name="black" />
         </visual>
         <collision>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/servo.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/servo.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -219,14 +219,14 @@
         <visual>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/servo.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/servo.obj" scale="1 1 1" />
             </geometry>
             <material name="black" />
         </visual>
         <collision>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/servo.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/servo.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -240,14 +240,14 @@
         <visual>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/servo.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/servo.obj" scale="1 1 1" />
             </geometry>
             <material name="black" />
         </visual>
         <collision>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="package://elrobot_mobile/meshes/servo.obj" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/servo.obj" scale="1 1 1" />
             </geometry>
         </collision>
     </link>
@@ -261,14 +261,14 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/base.stl" scale="0.001 0.001 0.001" />
+                <mesh filename="package://triskel/meshes/base.stl" scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/base.stl" scale="0.001 0.001 0.001" />
+                <mesh filename="package://triskel/meshes/base.stl" scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
     </link>
@@ -282,7 +282,7 @@
         <visual>
             <origin xyz="-0.0 -0.007585 -0.0315" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_1.stl"
+                <mesh filename="package://triskel/meshes/servo_1.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -290,7 +290,7 @@
         <collision>
             <origin xyz="-0.0 -0.007585 -0.0315" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_1.stl"
+                <mesh filename="package://triskel/meshes/servo_1.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -305,14 +305,14 @@
         <visual>
             <origin xyz="-0.0 -0.042489 -0.049005" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_1.stl" scale="0.001 0.001 0.001" />
+                <mesh filename="package://triskel/meshes/arm_1.stl" scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="-0.0 -0.042489 -0.049005" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_1.stl" scale="0.001 0.001 0.001" />
+                <mesh filename="package://triskel/meshes/arm_1.stl" scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
     </link>
@@ -326,7 +326,7 @@
         <visual>
             <origin xyz="-0.000625 -0.042431 -0.055705" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_2.stl"
+                <mesh filename="package://triskel/meshes/servo_2.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -334,7 +334,7 @@
         <collision>
             <origin xyz="-0.000625 -0.042431 -0.055705" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_2.stl"
+                <mesh filename="package://triskel/meshes/servo_2.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -349,14 +349,14 @@
         <visual>
             <origin xyz="0.019668 -0.042123 -0.090938" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_2.stl" scale="0.001 0.001 0.001" />
+                <mesh filename="package://triskel/meshes/arm_2.stl" scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0.019668 -0.042123 -0.090938" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_2.stl" scale="0.001 0.001 0.001" />
+                <mesh filename="package://triskel/meshes/arm_2.stl" scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
     </link>
@@ -370,7 +370,7 @@
         <visual>
             <origin xyz="-0.000195 -0.041636 -0.146765" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_3.stl"
+                <mesh filename="package://triskel/meshes/servo_3.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -378,7 +378,7 @@
         <collision>
             <origin xyz="-0.000195 -0.041636 -0.146765" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_3.stl"
+                <mesh filename="package://triskel/meshes/servo_3.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -393,7 +393,7 @@
         <visual>
             <origin xyz="0.01979 -0.041327 -0.182173" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_3.stl"
+                <mesh filename="package://triskel/meshes/arm_3.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -401,7 +401,7 @@
         <collision>
             <origin xyz="0.01979 -0.041327 -0.182173" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_3.stl"
+                <mesh filename="package://triskel/meshes/arm_3.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -416,7 +416,7 @@
         <visual>
             <origin xyz="-0.001473 -0.04326 -0.218576" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_4.stl"
+                <mesh filename="package://triskel/meshes/servo_4.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -424,7 +424,7 @@
         <collision>
             <origin xyz="-0.001473 -0.04326 -0.218576" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_4.stl"
+                <mesh filename="package://triskel/meshes/servo_4.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -438,7 +438,7 @@
         <visual>
             <origin xyz="0.018817 -0.078489 -0.219238" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_4.stl"
+                <mesh filename="package://triskel/meshes/arm_4.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -446,7 +446,7 @@
         <collision>
             <origin xyz="0.018817 -0.078489 -0.219238" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_4.stl"
+                <mesh filename="package://triskel/meshes/arm_4.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -461,7 +461,7 @@
         <visual>
             <origin xyz="-0.001574 -0.144152 -0.209203" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_5.stl"
+                <mesh filename="package://triskel/meshes/servo_5.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -469,7 +469,7 @@
         <collision>
             <origin xyz="-0.001574 -0.144152 -0.209203" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_5.stl"
+                <mesh filename="package://triskel/meshes/servo_5.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -484,7 +484,7 @@
         <visual>
             <origin xyz="-0.001897 -0.161352 -0.219254" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_5.stl"
+                <mesh filename="package://triskel/meshes/arm_5.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -492,7 +492,7 @@
         <collision>
             <origin xyz="-0.001897 -0.161352 -0.219254" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_5.stl"
+                <mesh filename="package://triskel/meshes/arm_5.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -507,7 +507,7 @@
         <visual>
             <origin xyz="-0.001962 -0.168852 -0.219253" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_6.stl"
+                <mesh filename="package://triskel/meshes/servo_6.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -515,7 +515,7 @@
         <collision>
             <origin xyz="-0.001962 -0.168852 -0.219253" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_6.stl"
+                <mesh filename="package://triskel/meshes/servo_6.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -529,7 +529,7 @@
         <visual>
             <origin xyz="0.018026 -0.204259 -0.219604" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_6.stl"
+                <mesh filename="package://triskel/meshes/arm_6.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -537,7 +537,7 @@
         <collision>
             <origin xyz="0.018026 -0.204259 -0.219604" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/arm_6.stl"
+                <mesh filename="package://triskel/meshes/arm_6.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -552,7 +552,7 @@
         <visual>
             <origin xyz="-0.002452 -0.242282 -0.208993" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_7.stl"
+                <mesh filename="package://triskel/meshes/servo_7.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -560,7 +560,7 @@
         <collision>
             <origin xyz="-0.002452 -0.242282 -0.208993" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_7.stl"
+                <mesh filename="package://triskel/meshes/servo_7.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -575,7 +575,7 @@
         <visual>
             <origin xyz="-0.002925 -0.259566 -0.218892" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/gripper_base.stl"
+                <mesh filename="package://triskel/meshes/gripper_base.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -583,7 +583,7 @@
         <collision>
             <origin xyz="-0.002925 -0.259566 -0.218892" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/gripper_base.stl"
+                <mesh filename="package://triskel/meshes/gripper_base.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -598,7 +598,7 @@
         <visual>
             <origin xyz="-0.003701 -0.304808 -0.218483" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_8.stl"
+                <mesh filename="package://triskel/meshes/servo_8.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="black" />
@@ -606,7 +606,7 @@
         <collision>
             <origin xyz="-0.003701 -0.304808 -0.218483" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/servo_8.stl"
+                <mesh filename="package://triskel/meshes/servo_8.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -621,7 +621,7 @@
         <visual>
             <origin xyz="-0.003701 -0.304808 -0.218483" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/gripper_gear.stl"
+                <mesh filename="package://triskel/meshes/gripper_gear.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -629,7 +629,7 @@
         <collision>
             <origin xyz="-0.003701 -0.304808 -0.218483" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/gripper_gear.stl"
+                <mesh filename="package://triskel/meshes/gripper_gear.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -643,7 +643,7 @@
         <visual>
             <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/finger_2.stl"
+                <mesh filename="package://triskel/meshes/finger_2.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -651,7 +651,7 @@
         <collision>
             <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/finger_2.stl"
+                <mesh filename="package://triskel/meshes/finger_2.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -665,7 +665,7 @@
         <visual>
             <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/finger_1.stl"
+                <mesh filename="package://triskel/meshes/finger_1.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
             <material name="silver" />
@@ -673,7 +673,7 @@
         <collision>
             <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://elrobot/meshes/finger_1.stl"
+                <mesh filename="package://triskel/meshes/finger_1.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>

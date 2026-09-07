@@ -187,9 +187,9 @@ def test_validate_rejects_missing_log(tmp_path):
 
 
 def test_validate_rejects_recording_for_different_robot(tmp_path):
-    recording = _recording(tmp_path, robot=RobotName.ELROBOT)
+    recording = _recording(tmp_path, robot=RobotName.TRISKEL)
 
-    with pytest.raises(ReplayManagerError, match="for elrobot, not panda"):
+    with pytest.raises(ReplayManagerError, match="for triskel, not panda"):
         ReplayManager.validate(recording, ROBOT_CONFIGS[RobotName.PANDA])
 
 

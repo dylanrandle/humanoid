@@ -15,8 +15,7 @@ from humanoid.types.homing import HomingPreset
 class RobotName(StrEnum):
     PANDA = "panda"
     SO101 = "so101"
-    ELROBOT = "elrobot"
-    ELROBOT_MOBILE = "elrobot_mobile"
+    TRISKEL = "triskel"
 
     @classmethod
     def from_environment(cls) -> "RobotName":

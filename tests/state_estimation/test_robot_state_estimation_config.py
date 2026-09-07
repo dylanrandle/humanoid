@@ -16,7 +16,7 @@ from humanoid.types.robot import (
 
 
 def test_only_mobile_robot_configures_root_state_estimation():
-    mobile_config = ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE]
+    mobile_config = ROBOT_CONFIGS[RobotName.TRISKEL]
     assert mobile_config.state_estimation is not None
     assert mobile_config.state_estimation.root is not None
     assert isinstance(
@@ -26,7 +26,7 @@ def test_only_mobile_robot_configures_root_state_estimation():
     assert all(
         config.state_estimation is None
         for name, config in ROBOT_CONFIGS.items()
-        if name is not RobotName.ELROBOT_MOBILE
+        if name is not RobotName.TRISKEL
     )
 
 
@@ -48,7 +48,7 @@ def test_mobile_robot_requires_root_state_estimation_config():
 
 
 def test_fixed_base_robot_rejects_root_state_estimation_config():
-    mobile_estimation = ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE].state_estimation
+    mobile_estimation = ROBOT_CONFIGS[RobotName.TRISKEL].state_estimation
     assert mobile_estimation is not None
 
     with pytest.raises(ValueError, match="Fixed-base robots cannot configure"):

@@ -2,7 +2,7 @@ import numpy as np
 import pinocchio as pin
 import pytest
 
-from humanoid.config.robot.elrobot_mobile import ELROBOT_MOBILE_CONFIG
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.robots.base import Robot
 from humanoid.state_estimation.root.base import RootState
 from humanoid.state_estimation.root.wheel_dead_reckoning import (
@@ -60,7 +60,7 @@ def test_composes_wheel_kinematics_and_dead_reckoning_for_planar_motion(
     expected_velocity: list[float],
     expected_position: list[float],
 ):
-    robot = Robot(ELROBOT_MOBILE_CONFIG)
+    robot = Robot(TRISKEL_CONFIG)
     clock = FakeClock()
     estimator = WheelDeadReckoningRootStateEstimator(
         robot,

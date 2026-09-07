@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from humanoid.config.robot.elrobot_mobile import ELROBOT_MOBILE_CONFIG
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.state_estimation.root.base import (
@@ -433,7 +433,7 @@ def test_mobile_driver_uses_root_state_estimator():
         patch("humanoid.nodes.robot.driver.Publisher"),
     ):
         driver = RobotDriverNode(
-            robot_config=ELROBOT_MOBILE_CONFIG,
+            robot_config=TRISKEL_CONFIG,
             actuator_system=actuator_system,
             root_state_estimator=root_state_estimator,
         )
@@ -482,7 +482,7 @@ def test_mobile_driver_uses_dead_reckoning():
         patch("humanoid.nodes.robot.driver.Publisher"),
     ):
         driver = RobotDriverNode(
-            robot_config=ELROBOT_MOBILE_CONFIG,
+            robot_config=TRISKEL_CONFIG,
             actuator_system=actuator_system,
         )
 
@@ -504,7 +504,7 @@ def test_mobile_driver_ignores_commanded_root_velocity():
         patch("humanoid.nodes.robot.driver.Publisher"),
     ):
         driver = RobotDriverNode(
-            robot_config=ELROBOT_MOBILE_CONFIG,
+            robot_config=TRISKEL_CONFIG,
             actuator_system=actuator_system,
             root_state_estimator=root_state_estimator,
         )
@@ -515,7 +515,7 @@ def test_mobile_driver_ignores_commanded_root_velocity():
     driver.subscriber.receive = Mock(  # ty: ignore[invalid-assignment]
         return_value=RobotJointCommand(
             timestamp=0.0,
-            joint_positions=ELROBOT_MOBILE_CONFIG.homing_presets[HomingPreset.HOME].copy(),
+            joint_positions=TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy(),
             joint_velocities=command_velocities,
         )
     )

@@ -43,8 +43,8 @@ def test_panda_has_no_physical_hardware_configuration():
     assert ROBOT_CONFIGS[RobotName.PANDA].hardware is None
 
 
-def test_elrobot_mobile_actuator_hardware_configuration():
-    config = ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE]
+def test_triskel_actuator_hardware_configuration():
+    config = ROBOT_CONFIGS[RobotName.TRISKEL]
     assert config.hardware is not None
     assert config.hardware.actuators is not None
     actuator_hardware = config.hardware.actuators

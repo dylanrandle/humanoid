@@ -143,7 +143,7 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
         processes,
     )
     monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, Runtime.SIM)
-    monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, RobotName.ELROBOT)
+    monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, RobotName.TRISKEL)
     _use_process_context(monkeypatch, context)
     manager = NodeManager(
         runtime=Runtime.REAL,
@@ -163,7 +163,7 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
     ]
     assert observed_configurations == [(Runtime.REAL, RobotName.PANDA)] * len(expected_nodes)
     assert os.getenv(RUNTIME_ENVIRONMENT_VARIABLE) == Runtime.SIM
-    assert os.getenv(ROBOT_ENVIRONMENT_VARIABLE) == RobotName.ELROBOT
+    assert os.getenv(ROBOT_ENVIRONMENT_VARIABLE) == RobotName.TRISKEL
     assert status.running is True
 
 
@@ -234,7 +234,7 @@ def test_environment_robot_rejects_unknown_values(monkeypatch, environment_value
         NodeManager()
 
 
-@pytest.mark.parametrize("robot", [RobotName.PANDA, RobotName.ELROBOT_MOBILE])
+@pytest.mark.parametrize("robot", [RobotName.PANDA, RobotName.TRISKEL])
 def test_environment_robot_uses_known_values(monkeypatch, robot):
     monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, robot)
     _use_process_context(monkeypatch)

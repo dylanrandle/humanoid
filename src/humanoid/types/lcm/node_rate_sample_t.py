@@ -77,3 +77,4 @@ class node_rate_sample_t(object):
     def get_hash(self):
         """Get the LCM hash of the struct"""
         return struct.unpack(">Q", node_rate_sample_t._get_packed_fingerprint())[0]
+

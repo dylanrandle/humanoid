@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.config.robot.elrobot_mobile import ELROBOT_MOBILE_CONFIG
 from humanoid.config.robot.so101 import SO101_CONFIG
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import RobotConfig, RobotJointCommand
@@ -61,7 +61,7 @@ def test_position_command_moves_a_fixed_base_robot():
 
 
 def test_mobile_root_follows_the_commanded_generalized_velocity():
-    engine = NativeMujocoEngine(ELROBOT_MOBILE_CONFIG)
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
     velocities = np.zeros(engine.robot.model.nv)
     root_v_slice = engine.robot.get_root_v_slice()
     assert root_v_slice is not None
@@ -70,7 +70,7 @@ def test_mobile_root_follows_the_commanded_generalized_velocity():
     engine.apply_joint_command(
         RobotJointCommand(
             timestamp=0.0,
-            joint_positions=ELROBOT_MOBILE_CONFIG.homing_presets[HomingPreset.HOME].copy(),
+            joint_positions=TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy(),
             joint_velocities=velocities,
         )
     )
@@ -89,7 +89,7 @@ def test_mobile_root_follows_the_commanded_generalized_velocity():
 
 
 def test_mobile_body_velocity_rotates_into_the_mujoco_world_frame():
-    engine = NativeMujocoEngine(ELROBOT_MOBILE_CONFIG)
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
     root = engine.binding.root
     root_q_slice = engine.robot.get_root_q_slice()
     root_v_slice = engine.robot.get_root_v_slice()
@@ -105,7 +105,7 @@ def test_mobile_body_velocity_rotates_into_the_mujoco_world_frame():
     engine.apply_joint_command(
         RobotJointCommand(
             timestamp=0.0,
-            joint_positions=ELROBOT_MOBILE_CONFIG.homing_presets[HomingPreset.HOME].copy(),
+            joint_positions=TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy(),
             joint_velocities=velocities,
         )
     )
@@ -119,7 +119,7 @@ def test_mobile_body_velocity_rotates_into_the_mujoco_world_frame():
 
 
 def test_mobile_world_velocity_rotates_back_into_the_pinocchio_body_frame():
-    engine = NativeMujocoEngine(ELROBOT_MOBILE_CONFIG)
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
     root = engine.binding.root
     root_v_slice = engine.robot.get_root_v_slice()
     assert root is not None

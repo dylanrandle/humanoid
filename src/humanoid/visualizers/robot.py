@@ -5,6 +5,7 @@ that integrates seamlessly with the Robot base class.
 """
 
 import copy
+import subprocess
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -19,6 +20,8 @@ from humanoid.types.homing import HomingPreset
 from humanoid.types.visualizer import VisualizerConfig
 
 logger = get_logger(__name__)
+
+MESHCAT_SERVER_STOP_TIMEOUT_SECONDS = 2.0
 
 
 class CommandVisualizer(ABC):
@@ -372,6 +375,33 @@ class RobotVisualizer:
             self._tool_command_viz.initialize()
 
         self._initialized = True
+
+    def close(self) -> None:
+        """Close the MeshCat client and stop the server started by this visualizer."""
+        viewer = self._viewer
+        self._viewer = None
+        self._joint_command_viz = None
+        self._tool_command_viz = None
+        self._initialized = False
+        if viewer is None:
+            return
+
+        meshcat_viewer = getattr(viewer, "viewer", None)
+        window = getattr(meshcat_viewer, "window", None)
+        if window is None:
+            return
+
+        server_process = getattr(window, "server_proc", None)
+        try:
+            window.zmq_socket.close(linger=0)
+        finally:
+            if server_process is not None and server_process.poll() is None:
+                server_process.terminate()
+                try:
+                    server_process.wait(timeout=MESHCAT_SERVER_STOP_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired:
+                    server_process.kill()
+                    server_process.wait()
 
     def display(self, q: np.ndarray) -> None:
         """Update the visualizer with a new robot configuration.

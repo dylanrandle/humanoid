@@ -26,7 +26,7 @@ def panda_robot() -> Robot:
 @pytest.fixture(scope="module")
 def mobile_robot() -> Robot:
     """Mobile manipulator with a base frame configured."""
-    return Robot(ROBOT_CONFIGS["elrobot_mobile"])
+    return Robot(ROBOT_CONFIGS["triskel"])
 
 
 @pytest.fixture

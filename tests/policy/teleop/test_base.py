@@ -42,7 +42,7 @@ def panda_config():
 
 @pytest.fixture(scope="module")
 def mobile_config():
-    return ROBOT_CONFIGS["elrobot_mobile"]
+    return ROBOT_CONFIGS["triskel"]
 
 
 @pytest.fixture

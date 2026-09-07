@@ -64,7 +64,7 @@ def _make_service(
 ) -> tuple[OrchestratorService, MagicMock, MagicMock, MagicMock]:
     manager = MagicMock(spec=NodeManager)
     manager.runtime = Runtime.SIM
-    manager.robot = RobotName.ELROBOT_MOBILE
+    manager.robot = RobotName.TRISKEL
     manager.status.return_value = _all_processes(
         stack=stack,
         keyboard=keyboard,
@@ -107,7 +107,7 @@ def _make_service(
     return service, manager, client, monitor
 
 
-def _recording(tmp_path, robot: RobotName = RobotName.ELROBOT_MOBILE) -> RecordingBundle:
+def _recording(tmp_path, robot: RobotName = RobotName.TRISKEL) -> RecordingBundle:
     recording = RecordingCatalog(tmp_path).create(ROBOT_CONFIGS[robot])
     recording.log_path.write_bytes(b"log")
     return recording
@@ -123,7 +123,7 @@ def _homing_request(preset: HomingPreset) -> OrchestratorRequest:
 def _safety_context(
     *,
     runtime: Runtime = Runtime.SIM,
-    robot: RobotName = RobotName.ELROBOT_MOBILE,
+    robot: RobotName = RobotName.TRISKEL,
     acknowledged: bool = False,
 ) -> SafetyContext:
     return SafetyContext(
@@ -453,7 +453,7 @@ def test_replay_starts_simulation_nodes_before_logplayer(tmp_path):
     ]
     replay_manager.validate.assert_called_once_with(
         recording,
-        ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE],
+        ROBOT_CONFIGS[RobotName.TRISKEL],
     )
     assert status.replay.running is True
 
@@ -514,7 +514,7 @@ def test_real_replay_starts_after_hardware_acknowledgement(tmp_path):
 
     replay_manager.validate.assert_called_once_with(
         recording,
-        ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE],
+        ROBOT_CONFIGS[RobotName.TRISKEL],
     )
     manager.start.assert_called_once_with(ProcessName.REPLAY)
 

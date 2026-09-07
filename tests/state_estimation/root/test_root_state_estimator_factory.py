@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from humanoid.config.robot.elrobot_mobile import ELROBOT_MOBILE_CONFIG
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.robots.base import Robot
 from humanoid.state_estimation.root.base import RootState
 from humanoid.state_estimation.root.config import RootStateEstimatorConfig
@@ -22,7 +22,7 @@ def _initial_state() -> RootState:
 def test_builds_configured_wheel_dead_reckoning_estimator():
     estimator = create_root_state_estimator(
         WheelDeadReckoningRootStateEstimatorConfig(),
-        Robot(ELROBOT_MOBILE_CONFIG),
+        Robot(TRISKEL_CONFIG),
         _initial_state(),
     )
 
@@ -33,6 +33,6 @@ def test_rejects_unsupported_estimator_config():
     with pytest.raises(TypeError, match="Unsupported root-state estimator"):
         create_root_state_estimator(
             RootStateEstimatorConfig(kind="unsupported"),
-            Robot(ELROBOT_MOBILE_CONFIG),
+            Robot(TRISKEL_CONFIG),
             _initial_state(),
         )

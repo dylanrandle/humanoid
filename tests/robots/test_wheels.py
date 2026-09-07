@@ -2,7 +2,7 @@ import numpy as np
 import pinocchio as pin
 import pytest
 
-from humanoid.config.robot.elrobot_mobile import ELROBOT_MOBILE_CONFIG
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.robots.base import Robot
 from humanoid.robots.wheels import WheelKinematics
 
@@ -39,7 +39,7 @@ def test_estimates_planar_body_velocity_from_measured_wheel_rates(
     wheel_velocities: dict[str, float],
     expected_root_velocity: list[float],
 ):
-    robot = Robot(ELROBOT_MOBILE_CONFIG)
+    robot = Robot(TRISKEL_CONFIG)
     kinematics = WheelKinematics(robot)
     q = pin.neutral(robot.model)
     v = _measured_velocity(robot, wheel_velocities)
@@ -50,7 +50,7 @@ def test_estimates_planar_body_velocity_from_measured_wheel_rates(
 
 
 def test_estimate_does_not_mutate_measured_velocity_vector():
-    robot = Robot(ELROBOT_MOBILE_CONFIG)
+    robot = Robot(TRISKEL_CONFIG)
     kinematics = WheelKinematics(robot)
     q = pin.neutral(robot.model)
     v = np.arange(robot.model.nv, dtype=float)

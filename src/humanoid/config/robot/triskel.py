@@ -1,4 +1,4 @@
-"""Mobile Elrobot configuration."""
+"""Triskel robot configuration."""
 
 import numpy as np
 
@@ -139,8 +139,8 @@ OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
     damping_mask=np.array([0.0] * len(WHEEL_IDS) + [1.0] * (len(JOINT_IDS) + 1)),
 )
 
-ELROBOT_MOBILE_CONFIG = RobotConfig(
-    name=RobotName.ELROBOT_MOBILE,
+TRISKEL_CONFIG = RobotConfig(
+    name=RobotName.TRISKEL,
     tool=TOOL_CONFIG,
     base=BASE_CONFIG,
     wheels=WHEEL_CONFIGS,

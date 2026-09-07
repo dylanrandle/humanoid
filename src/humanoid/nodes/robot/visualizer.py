@@ -105,7 +105,10 @@ class RobotVisualizerNode(Node):
             self.viz.display_base_command(base_command.pose)
 
     def on_close(self) -> None:
-        self.subscriber.close()
+        try:
+            self.subscriber.close()
+        finally:
+            self.viz.close()
 
 
 def main():

@@ -72,25 +72,24 @@ def test_get_rejects_manifest_that_does_not_match_directory(tmp_path):
         catalog.get(recording.id)
 
 
-def test_serialized_config_distinguishes_equal_sized_robots():
+def test_serialized_config_distinguishes_robot_configurations():
     panda = serialize_robot_config(ROBOT_CONFIGS[RobotName.PANDA])
-    elrobot = serialize_robot_config(ROBOT_CONFIGS[RobotName.ELROBOT])
+    triskel = serialize_robot_config(ROBOT_CONFIGS[RobotName.TRISKEL])
     panda_presets = panda["homing_presets"]
-    elrobot_presets = elrobot["homing_presets"]
+    triskel_presets = triskel["homing_presets"]
 
     assert isinstance(panda_presets, dict)
-    assert isinstance(elrobot_presets, dict)
+    assert isinstance(triskel_presets, dict)
     panda_home = panda_presets["home"]
-    elrobot_home = elrobot_presets["home"]
+    triskel_home = triskel_presets["home"]
 
     assert isinstance(panda_home, list)
-    assert isinstance(elrobot_home, list)
-    assert len(panda_home) == len(elrobot_home)
-    assert panda != elrobot
+    assert isinstance(triskel_home, list)
+    assert panda != triskel
 
 
 def test_serialized_config_includes_physical_actuator_details():
-    config = serialize_robot_config(ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE])
+    config = serialize_robot_config(ROBOT_CONFIGS[RobotName.TRISKEL])
     hardware = config["hardware"]
 
     assert isinstance(hardware, dict)

@@ -111,7 +111,7 @@ def panda_policy_and_reader():
 
 @pytest.fixture
 def mobile_policy_and_reader():
-    return _make_policy(robot_name="elrobot_mobile")
+    return _make_policy(robot_name="triskel")
 
 
 class TestConstruction:
@@ -135,7 +135,7 @@ class TestConstruction:
         )
 
     def test_mobile_base_limits_come_from_robot_config(self):
-        robot_config = ROBOT_CONFIGS["elrobot_mobile"]
+        robot_config = ROBOT_CONFIGS["triskel"]
 
         policy = OculusTeleopPolicy(
             robot_config=robot_config,
@@ -342,7 +342,7 @@ class TestControllerDeltaApplied:
 
         np.testing.assert_allclose(target.translation, command_delta, atol=1e-12)
 
-    @pytest.mark.parametrize("robot_name", ["panda", "elrobot_mobile"])
+    @pytest.mark.parametrize("robot_name", ["panda", "triskel"])
     def test_translation_uses_command_frame_with_rotated_references(self, robot_name):
         policy, _ = _make_policy(robot_name=robot_name)
         controller_reference = pin.SE3(

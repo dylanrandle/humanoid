@@ -140,7 +140,7 @@ def test_homing_presets_require_finite_values():
 
 
 def test_mobile_robot_combines_base_frame_and_velocity_limits():
-    base = ROBOT_CONFIGS[RobotName.ELROBOT_MOBILE].base
+    base = ROBOT_CONFIGS[RobotName.TRISKEL].base
 
     assert base is not None
     assert base.frame == "root_joint"

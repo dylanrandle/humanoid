@@ -1,10 +1,10 @@
 # Humanoid
 
-A Python framework for multi-robot control and teleoperation in simulation and on real hardware. Humanoid supports SO101, ElRobot, and Panda platforms.
+A Python framework for multi-robot control and teleoperation in simulation and on real hardware. Humanoid supports SO101, Triskel, and Panda platforms.
 
 ## Features
 
-- **Multi-robot support**: Compatible with SO101, ElRobot, and Panda robot platforms
+- **Multi-robot support**: Compatible with SO101, Triskel, and Panda robot platforms
 - **Actuator control**: Runtime-independent joint control with optional typed Feetech hardware
 - **MuJoCo digital twin**: Native rigid-body dynamics behind the same LCM interface as hardware
 - **Visualization**: Real-time robot visualization using MeshCat

@@ -7,7 +7,7 @@ feedback.
 Planar root position uses Pinocchio's `[x, y, cos(yaw), sin(yaw)]`
 representation. Velocity is the body-frame planar twist `[vx, vy, yaw_rate]`.
 
-Elrobot Mobile uses `WheelDeadReckoningRootStateEstimator` in both simulation
+Triskel uses `WheelDeadReckoningRootStateEstimator` in both simulation
 and on real hardware. It composes the robot-owned `WheelKinematics` mapping with
 the state-estimation-owned `DeadReckoningIntegrator`. Measured wheel positions
 and velocities produce a body-frame planar velocity, which dead reckoning

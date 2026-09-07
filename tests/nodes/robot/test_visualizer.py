@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pinocchio as pin
+import pytest
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.constants import Topic
@@ -81,8 +82,8 @@ def test_fixed_base_tool_command_is_already_in_world_frame():
 
 
 def test_mobile_tool_command_uses_measured_not_commanded_base_pose():
-    node, robot, visualizer, subscriber = _make_node("elrobot_mobile")
-    q = ROBOT_CONFIGS["elrobot_mobile"].homing_presets[HomingPreset.HOME].copy()
+    node, robot, visualizer, subscriber = _make_node("triskel")
+    q = ROBOT_CONFIGS["triskel"].homing_presets[HomingPreset.HOME].copy()
     measured_base_pose = pin.SE3(
         pin.utils.rotate("z", np.pi / 2),
         np.array([1.0, 2.0, 0.0]),
@@ -118,3 +119,13 @@ def test_mobile_tool_command_uses_measured_not_commanded_base_pose():
     displayed_base_pose = visualizer.display_base_command.call_args.args[0]
     _assert_se3_equal(displayed_base_pose, commanded_base_pose)
     np.testing.assert_array_equal(robot.get_base_pose.call_args.args[0], q)
+
+
+def test_close_stops_visualizer_when_subscriber_close_fails():
+    node, _, visualizer, subscriber = _make_node("panda")
+    subscriber.close.side_effect = RuntimeError("subscriber close failed")
+
+    with pytest.raises(RuntimeError, match="subscriber close failed"):
+        node.on_close()
+
+    visualizer.close.assert_called_once_with()

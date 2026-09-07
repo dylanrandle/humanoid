@@ -85,3 +85,4 @@ class logging_status_t(object):
     def get_hash(self):
         """Get the LCM hash of the struct"""
         return struct.unpack(">Q", logging_status_t._get_packed_fingerprint())[0]
+

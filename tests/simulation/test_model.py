@@ -4,7 +4,7 @@ import mujoco
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.config.robot.elrobot import ELROBOT_CONFIG
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.robots.base import Robot
 from humanoid.simulation.binding import resolve_mujoco_robot_binding
 from humanoid.simulation.engine import NativeMujocoEngine
@@ -59,9 +59,9 @@ def test_mujoco_controlled_joint_limits_match_pinocchio(robot_config: RobotConfi
         )
 
 
-def test_elrobot_gripper_actuation_enforces_mimic_multipliers_and_offsets():
-    engine = NativeMujocoEngine(ELROBOT_CONFIG)
-    target = ELROBOT_CONFIG.homing_presets[HomingPreset.HOME].copy()
+def test_triskel_gripper_actuation_enforces_mimic_multipliers_and_offsets():
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
+    target = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
     target[-1] = MIMIC_SOURCE_TARGET
 
     engine.apply_joint_command(RobotJointCommand(timestamp=0.0, joint_positions=target))

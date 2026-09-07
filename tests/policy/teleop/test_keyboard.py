@@ -62,7 +62,7 @@ def panda_policy(monkeypatch) -> KeyboardTeleopPolicy:
 def mobile_policy(monkeypatch) -> KeyboardTeleopPolicy:
     """Keyboard policy on the mobile robot (has a base frame)."""
     policy = KeyboardTeleopPolicy(
-        robot_config=ROBOT_CONFIGS["elrobot_mobile"],
+        robot_config=ROBOT_CONFIGS["triskel"],
         config=KeyboardTeleopPolicyConfig(verbose=False),
     )
     monkeypatch.setattr(policy, "start_listener", lambda: None)
@@ -76,7 +76,7 @@ class TestConstruction:
         assert isinstance(policy.config, KeyboardTeleopPolicyConfig)
 
     def test_steps_use_robot_velocity_limits(self):
-        robot_config = ROBOT_CONFIGS["elrobot_mobile"]
+        robot_config = ROBOT_CONFIGS["triskel"]
 
         policy = KeyboardTeleopPolicy(robot_config=robot_config, config=None)
 

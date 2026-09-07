@@ -18,7 +18,7 @@ from humanoid.types.robot import RobotName
 def test_ui_enums_preserve_the_json_api_contract():
     payload = {
         "runtime": Runtime.REAL,
-        "robot": RobotName.ELROBOT_MOBILE,
+        "robot": RobotName.TRISKEL,
         "processes": {ProcessName.STACK: {"running": True}},
         "mode": Mode.HOMING,
         "preset": HomingPreset.REST,
@@ -26,7 +26,7 @@ def test_ui_enums_preserve_the_json_api_contract():
 
     assert json.loads(json.dumps(payload)) == {
         "runtime": "real",
-        "robot": "elrobot_mobile",
+        "robot": "triskel",
         "processes": {"stack": {"running": True}},
         "mode": "homing",
         "preset": "rest",

@@ -46,7 +46,7 @@ def server_client() -> tuple[MagicMock, FlaskClient]:
 def _safety_payload(*, acknowledged: bool = False) -> dict[str, object]:
     return {
         PayloadKey.EXPECTED_RUNTIME.value: Runtime.SIM,
-        PayloadKey.EXPECTED_ROBOT.value: RobotName.ELROBOT_MOBILE,
+        PayloadKey.EXPECTED_ROBOT.value: RobotName.TRISKEL,
         PayloadKey.REAL_HARDWARE_ACKNOWLEDGED.value: acknowledged,
     }
 
@@ -54,7 +54,7 @@ def _safety_payload(*, acknowledged: bool = False) -> dict[str, object]:
 def _safety_context(*, acknowledged: bool = False) -> SafetyContext:
     return SafetyContext(
         expected_runtime=Runtime.SIM,
-        expected_robot=RobotName.ELROBOT_MOBILE,
+        expected_robot=RobotName.TRISKEL,
         real_hardware_acknowledged=acknowledged,
     )
 

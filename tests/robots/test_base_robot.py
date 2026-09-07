@@ -21,7 +21,7 @@ def panda_robot() -> Robot:
 @pytest.fixture(scope="module")
 def mobile_robot() -> Robot:
     """Mobile manipulator — planar root joint and continuous wheel joints."""
-    return Robot(ROBOT_CONFIGS["elrobot_mobile"])
+    return Robot(ROBOT_CONFIGS["triskel"])
 
 
 class TestConstruction:
@@ -31,7 +31,7 @@ class TestConstruction:
         assert panda_robot.model.njoints > 1
 
     def test_loads_mobile_robot_with_planar_root(self, mobile_robot):
-        """elrobot_mobile's base config adds a planar root joint with nq=4, nv=3."""
+        """triskel's base config adds a planar root joint with nq=4, nv=3."""
         expected_planar_nq = 4
         expected_planar_nv = 3
         root_joint = mobile_robot.model.joints[1]
@@ -236,7 +236,7 @@ class TestJointPositionsToQ:
             assert q[q_idx] == pytest.approx(neutral[q_idx])
 
     def test_continuous_joint_uses_cos_sin(self, mobile_robot):
-        """elrobot_mobile wheels are RevoluteUnbounded — stored as [cos, sin]."""
+        """triskel wheels are RevoluteUnbounded — stored as [cos, sin]."""
         angle = 0.7
         # joint_idx=1 corresponds to model.joints[2], which is wheel_1.
         wheel_joint_idx = 1
