@@ -13,25 +13,35 @@ test_keyboard_teleop() {
     api_post /api/mode '{"mode":"keyboard"}' \
         | jq -e '.status.mode == "keyboard"' >/dev/null
 
-    timeout 10 ros2 topic echo --once /cmd_vel >"${base_command_file}" &
+    timeout 20 ros2 topic echo --once /cmd_vel >"${base_command_file}" &
     local base_echo_pid=$!
-    timeout 10 ros2 topic echo --once /servo_node/delta_twist_cmds >"${tool_command_file}" &
-    local tool_echo_pid=$!
-    timeout 20 ros2 topic echo --once /servo_node/status >"${servo_status_file}" &
-    local servo_status_pid=$!
-    timeout 20 ros2 topic echo --once /arm_controller/joint_trajectory >"${servo_output_file}" &
-    local servo_output_pid=$!
 
     sleep 2
     for _ in {1..10}; do
-        api_post /api/teleop '{"commands":["base_forward","tool_up"]}' >/dev/null
+        api_post /api/teleop '{"commands":["base_forward"]}' >/dev/null
         sleep 0.1
     done
 
     wait "${base_echo_pid}" || fail "Dashboard did not publish a base teleop command."
-    wait "${tool_echo_pid}" || fail "Dashboard did not publish a tool teleop command."
     grep -Fq 'x: 0.1' "${base_command_file}"
+
+    timeout 20 ros2 topic echo --once /servo_node/delta_twist_cmds >"${tool_command_file}" &
+    local tool_echo_pid=$!
+
+    sleep 2
+    for _ in {1..10}; do
+        api_post /api/teleop '{"commands":["tool_up"]}' >/dev/null
+        sleep 0.1
+    done
+
+    wait "${tool_echo_pid}" || fail "Dashboard did not publish a tool teleop command."
     grep -Fq 'z: 0.05' "${tool_command_file}"
+
+    timeout 30 ros2 topic echo --once /servo_node/status >"${servo_status_file}" &
+    local servo_status_pid=$!
+    timeout 30 ros2 topic echo --once /arm_controller/joint_trajectory \
+        >"${servo_output_file}" &
+    local servo_output_pid=$!
 
     deadline=$((SECONDS + 10))
     while ((SECONDS < deadline)); do

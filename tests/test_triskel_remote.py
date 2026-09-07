@@ -65,6 +65,34 @@ def test_recordings_defaults_to_home_checkout(tmp_path: Path):
     assert "robot@triskel.local:~/humanoid/recordings/" in result.stdout
 
 
+def test_sync_pushes_checkout_and_protects_robot_state(tmp_path: Path):
+    result = _run_helper(
+        tmp_path,
+        "sync",
+        "--dry-run",
+        "--delete",
+        TRISKEL_SSH_TARGET="robot@triskel.local",
+        TRISKEL_REMOTE_ROOT="/srv/triskel",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Previewing sync to robot@triskel.local:/srv/triskel/." in result.stdout
+    assert f"{REPO_ROOT}/" in result.stdout
+    assert "robot@triskel.local:/srv/triskel/" in result.stdout
+    for option in (
+        "--checksum",
+        "--executability",
+        "--itemize-changes",
+        "--prune-empty-dirs",
+        "--recursive",
+        "--dry-run",
+        "--delete-delay",
+    ):
+        assert option in result.stdout
+    for protected_path in ("/.git/", "/recordings/", "/ros_ws/build/"):
+        assert f"--exclude={protected_path}" in result.stdout
+
+
 def test_remote_helpers_require_an_ssh_target(tmp_path: Path):
     result = _run_helper(tmp_path, "dashboard", TRISKEL_SSH_TARGET="")
 

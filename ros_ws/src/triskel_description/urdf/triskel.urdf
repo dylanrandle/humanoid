@@ -745,7 +745,7 @@
         <parent link="motor_5_link" />
         <child link="arm_5_link" />
         <axis xyz="0.008573 0.999963 -0.000151" />
-        <limit upper="3.1907" lower="-2.6998" effort="2.94" velocity="4.71" />
+        <limit upper="3.141592653589793" lower="-2.6998" effort="2.94" velocity="4.71" />
     </joint>
     <joint name="motor_6_mount" type="fixed">
         <origin xyz="6.5e-05 0.0075 -1e-06" rpy="0 0 0" />
@@ -783,15 +783,15 @@
         <axis xyz="0.017144 0.999812 -0.009029" />
         <limit upper="0" lower="-2.2" effort="2.94" velocity="4.71" />
     </joint>
-    <!-- The hardware range is -2.2 closed to 0 open; offsets put both fingers at
-         zero travel when closed while preserving their opposing open travel. -->
+    <!-- The hardware range is -2.2 closed to 0 open. The finger meshes are
+         modeled open at zero travel and move in opposing directions to close. -->
     <joint name="gripper_2" type="prismatic">
         <origin xyz="0.311734 -0.199648 0.032849" rpy="0 0 0" />
         <parent link="gripper_base_link" />
         <child link="finger_2_link" />
         <axis xyz="-0.999697 0.0173 0.017525" />
         <limit upper="0.0" lower="-0.0255" effort="2.94" velocity="4.71" />
-        <mimic joint="gripper_1" multiplier="-0.0115" offset="-0.0253" />
+        <mimic joint="gripper_1" multiplier="0.0115" offset="0" />
     </joint>
     <joint name="gripper_3" type="prismatic">
         <origin xyz="0.308573 -0.243367 -0.049391" rpy="0 0 0" />
@@ -799,6 +799,6 @@
         <child link="finger_1_link" />
         <axis xyz="-0.999697 0.0173 0.017525" />
         <limit upper="0.0255" lower="0.0" effort="2.94" velocity="4.71" />
-        <mimic joint="gripper_1" multiplier="0.0115" offset="0.0253" />
+        <mimic joint="gripper_1" multiplier="-0.0115" offset="0" />
     </joint>
 </robot>

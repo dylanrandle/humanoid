@@ -1,0 +1,24 @@
+diff --git a/src/sts_hardware_interface.cpp b/src/sts_hardware_interface.cpp
+index d34ac32..e0300fb 100644
+--- a/src/sts_hardware_interface.cpp
++++ b/src/sts_hardware_interface.cpp
+@@ -1294,10 +1294,15 @@ hardware_interface::return_type STSHardwareInterface::write(
+           // This joint is already at its target: set speed to 0 (no move)
+           servo_sync_speeds_[j] = 0;
+         } else {
+-          // Proportional scaling, but respect per-joint velocity_max
+-          double scaled = (servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_;
+-          double limited = std::min(scaled, velocity_max_[idx]);
+-          servo_sync_speeds_[j] = static_cast<u16>(std::clamp(static_cast<int>(std::round(limited)), 1, max_velocity_steps_[idx]));
++          // proportional_vel_max_ and the packet field are raw steps/s, while
++          // velocity_max_ is rad/s. Convert the joint limit before comparing.
++          const int raw_velocity_limit = std::max(
++            1, conversions::rad_s_to_raw_speed(
++              velocity_max_[idx], max_velocity_steps_[idx]));
++          const int scaled = static_cast<int>(std::round(
++            (servo_sync_deltas_[j] / max_delta_rad) * proportional_vel_max_));
++          servo_sync_speeds_[j] = static_cast<u16>(
++            std::clamp(scaled, 1, raw_velocity_limit));
+         }
+       }
+ 

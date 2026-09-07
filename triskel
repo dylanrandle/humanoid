@@ -20,6 +20,7 @@ Stack commands:
   stop
   status
   logs
+  shell [COMMAND...]  Enter the running stack container or run a ROS-aware command.
 
 Development commands:
   check     Run formatting, lint, type, and structural tests.
@@ -27,6 +28,8 @@ Development commands:
   smoke     Build and run the modular ROS simulation smoke suite.
 
 Remote Pi commands:
+  sync [--dry-run] [--delete] [SSH_TARGET]
+                            Push this checkout to the Pi with rsync.
   dashboard [SSH_TARGET]   Forward the dashboard and visualization until Ctrl-C.
   recordings [SSH_TARGET]  Pull the Pi's recordings into this repository.
   help
@@ -139,9 +142,9 @@ start_stack() {
 
     if ! compose "${compose_arguments[@]}"; then
         if [[ "${hardware}" == true ]]; then
-            compose --profile hardware logs --tail 120 "${service}" || true
+            compose --profile hardware logs --tail 500 "${service}" || true
         else
-            compose logs --tail 120 "${service}" || true
+            compose logs --tail 500 "${service}" || true
         fi
         fail "Triskel did not become ready."
     fi
@@ -181,13 +184,133 @@ follow_logs() {
     compose --profile hardware logs --follow --tail 200 ros2-sim ros2-hardware
 }
 
+enter_runtime_container() {
+    require_command docker
+
+    local sim_container
+    local hardware_container
+    local service
+    local compose_arguments=()
+    local exec_arguments=(exec)
+    local command=(bash)
+
+    sim_container="$(compose ps --status running --quiet ros2-sim)"
+    hardware_container="$(compose --profile hardware ps --status running --quiet ros2-hardware)"
+
+    if [[ -n "${sim_container}" && -n "${hardware_container}" ]]; then
+        fail "Both simulation and hardware containers are running; stop one before entering the stack."
+    elif [[ -n "${hardware_container}" ]]; then
+        service="ros2-hardware"
+        compose_arguments=(--profile hardware)
+    elif [[ -n "${sim_container}" ]]; then
+        service="ros2-sim"
+    else
+        fail "No Triskel runtime is running. Start one with ./triskel start or ./triskel start --hardware."
+    fi
+
+    if (($# > 0)); then
+        command=("$@")
+    fi
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        exec_arguments+=(-T)
+    fi
+
+    compose "${compose_arguments[@]}" "${exec_arguments[@]}" "${service}" \
+        /workspace/triskel/docker/ros_entrypoint.sh "${command[@]}"
+}
+
 resolve_ssh_target() {
     (($# <= 1)) || fail "Expected at most one SSH target, such as dylan@triskel.local."
     ssh_target="${1:-${TRISKEL_SSH_TARGET:-}}"
     [[ -n "${ssh_target}" ]] \
         || fail "Pass an SSH target or set TRISKEL_SSH_TARGET (for example, dylan@triskel.local)."
-    [[ "${ssh_target}" != -* && "${ssh_target}" != *[[:space:]]* ]] \
+    [[ "${ssh_target}" =~ ^([A-Za-z0-9._-]+@)?[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
         || fail "SSH target must be a host or user@host without whitespace."
+}
+
+validate_remote_root() {
+    [[ "$1" =~ ^(\~/|/)[A-Za-z0-9._/-]+$ ]] \
+        || fail "TRISKEL_REMOTE_ROOT must be a simple absolute or ~/ path."
+}
+
+sync_robot() {
+    local delete=false
+    local dry_run=false
+    local target=""
+    local ssh_target
+    local remote_root="${TRISKEL_REMOTE_ROOT:-~/humanoid}"
+    local rsync_arguments=(
+        --checksum
+        --executability
+        --human-readable
+        --itemize-changes
+        --links
+        --prune-empty-dirs
+        --recursive
+        --exclude=/.git/
+        --exclude=/.venv/
+        --exclude=/.vscode/
+        --exclude=/.pytest_cache/
+        --exclude=/.ruff_cache/
+        --exclude=/.coverage
+        --exclude=/build/
+        --exclude=/dist/
+        --exclude=/htmlcov/
+        --exclude=/recordings/
+        --exclude=/ros_ws/build/
+        --exclude=/ros_ws/install/
+        --exclude=/ros_ws/log/
+        --exclude=/wheels/
+        "--exclude=*.egg-info/"
+        "--exclude=*.py[oc]"
+        --exclude=.DS_Store
+        --exclude=__pycache__/
+    )
+
+    while (($# > 0)); do
+        case "$1" in
+            --dry-run)
+                dry_run=true
+                ;;
+            --delete)
+                delete=true
+                ;;
+            -h | --help)
+                printf 'Usage: ./triskel sync [--dry-run] [--delete] [SSH_TARGET]\n'
+                return
+                ;;
+            -*)
+                fail "Unknown sync option: $1"
+                ;;
+            *)
+                [[ -z "${target}" ]] || fail "Expected at most one SSH target."
+                target="$1"
+                ;;
+        esac
+        shift
+    done
+
+    if [[ -n "${target}" ]]; then
+        resolve_ssh_target "${target}"
+    else
+        resolve_ssh_target
+    fi
+    validate_remote_root "${remote_root}"
+    require_command rsync
+
+    if [[ "${delete}" == true ]]; then
+        rsync_arguments+=(--delete-delay)
+    fi
+    if [[ "${dry_run}" == true ]]; then
+        rsync_arguments+=(--dry-run)
+        printf 'Previewing sync to %s:%s/.\n' "${ssh_target}" "${remote_root%/}"
+    else
+        printf 'Syncing this checkout to %s:%s/.\n' "${ssh_target}" "${remote_root%/}"
+    fi
+
+    rsync "${rsync_arguments[@]}" -- \
+        "${repository_root}/" \
+        "${ssh_target}:${remote_root%/}/"
 }
 
 forward_dashboard() {
@@ -214,8 +337,7 @@ pull_recordings() {
     resolve_ssh_target "$@"
     require_command rsync
 
-    [[ "${remote_root}" =~ ^(\~/|/)[A-Za-z0-9._/-]+$ ]] \
-        || fail "TRISKEL_REMOTE_ROOT must be a simple absolute or ~/ path."
+    validate_remote_root "${remote_root}"
 
     mkdir -p "${repository_root}/recordings"
     printf 'Pulling %s:%s/recordings/ into %s/recordings/.\n' \
@@ -233,7 +355,8 @@ pull_recordings() {
 run_checks() {
     require_command uv
     printf '\n> bash -n\n'
-    bash -n triskel docker/ros_entrypoint.sh docker/test_ros2.sh docker/tests/*.bash
+    bash -n triskel docker/ros_entrypoint.sh docker/test_ros2.sh docker/tests/*.bash \
+        ros_ws/src/triskel_hardware/patches/*.bash
     printf '\n> ruff format --check\n'
     uv run ruff format --check
     printf '\n> ruff check\n'
@@ -268,6 +391,8 @@ case "${command_name}" in
     stop) stop_stack "$@" ;;
     status) show_status "$@" ;;
     logs) follow_logs "$@" ;;
+    shell) enter_runtime_container "$@" ;;
+    sync) sync_robot "$@" ;;
     dashboard) forward_dashboard "$@" ;;
     recordings) pull_recordings "$@" ;;
     check) run_checks "$@" ;;

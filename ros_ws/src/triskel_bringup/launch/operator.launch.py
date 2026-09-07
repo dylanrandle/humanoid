@@ -5,13 +5,20 @@ from pathlib import Path
 import yaml
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    RegisterEventHandler,
+    Shutdown,
+)
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
+from triskel_bringup.controller_spawning import controller_spawner_options
 
 
 def _servo_executable() -> str:
@@ -40,13 +47,15 @@ def generate_launch_description() -> LaunchDescription:
 
     bringup_share = Path(get_package_share_directory("triskel_bringup"))
     moveit_share = Path(get_package_share_directory("triskel_moveit_config"))
+    description_share = Path(get_package_share_directory("triskel_description"))
     robot_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(str(bringup_share / "launch" / "robot.launch.py")),
         launch_arguments={
             "use_mock_hardware": use_mock_hardware,
             "serial_port": serial_port,
             "baud_rate": baud_rate,
-            "start_rviz": start_rviz,
+            "start_rviz": "false",
+            "spawn_controllers": "false",
         }.items(),
     )
     move_group_launch = IncludeLaunchDescription(
@@ -121,6 +130,36 @@ def generate_launch_description() -> LaunchDescription:
         condition=IfCondition(start_visualizer),
         output="screen",
     )
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        arguments=["-d", str(description_share / "rviz" / "description.rviz")],
+        condition=IfCondition(start_rviz),
+        output="screen",
+    )
+    controller_spawner = Node(**controller_spawner_options())
+    operator_layer = [
+        move_group_launch,
+        servo_node,
+        visualizer_node,
+        operator_node,
+        meta_quest_bridge,
+        rviz_node,
+    ]
+
+    def start_operator_layer(event, _context):
+        if event.returncode != 0:
+            return [
+                Shutdown(reason=f"Controller startup failed with exit code {event.returncode}.")
+            ]
+        return operator_layer
+
+    start_after_controllers = RegisterEventHandler(
+        OnProcessExit(
+            target_action=controller_spawner,
+            on_exit=start_operator_layer,
+        )
+    )
 
     return LaunchDescription(
         [
@@ -136,11 +175,8 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("start_meta_quest_bridge", default_value="true"),
             DeclareLaunchArgument("quest_ip", default_value="auto"),
             DeclareLaunchArgument("recording_root", default_value="~/.ros/triskel/recordings"),
+            start_after_controllers,
             robot_launch,
-            move_group_launch,
-            servo_node,
-            visualizer_node,
-            operator_node,
-            meta_quest_bridge,
+            controller_spawner,
         ]
     )

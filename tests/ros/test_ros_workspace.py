@@ -46,6 +46,15 @@ JOINT_IDS = [f"arm_{index}" for index in range(1, 8)]
 GRIPPER_ID = "gripper_1"
 GRIPPER_OPEN_POSITION = 0.0
 GRIPPER_CLOSED_POSITION = -2.2
+STS_STATE_INTERFACES = [
+    "position",
+    "velocity",
+    "effort",
+    "voltage",
+    "temperature",
+    "current",
+    "is_moving",
+]
 EXPECTED_ARM_AXES = {
     "arm_1": (0.0, 0.008727, -0.999962),
     "arm_2": (0.999962, 0.000076, -0.008726),
@@ -167,6 +176,28 @@ def test_ros_control_interfaces_match_triskel_hardware_and_urdf_limits():
         if _local_name(element.tag) == "macro" and element.attrib.get("name") == "position_joint"
     )
     assert position_macro.attrib["params"] == "name motor_id lower upper"
+    command_interfaces = {
+        interface.attrib["name"]: interface
+        for interface in position_macro.findall(".//command_interface")
+    }
+    assert list(command_interfaces) == ["position"]
+    assert command_interfaces["position"].find("limits") is None
+    assert position_macro.find(".//limits[@enable='false']") is None
+    assert [
+        interface.attrib["name"] for interface in position_macro.findall(".//state_interface")
+    ] == STS_STATE_INTERFACES
+
+    hardware = root.find(".//hardware")
+    assert hardware is not None
+    assert hardware.findtext("param[@name='proportional_vel_max']") == "1000"
+    assert hardware.findtext("param[@name='proportional_vel_deadband']") == "0.0"
+    assert hardware.findtext("param[@name='reset_states_on_activate']") == "false"
+
+    hardware_source = HARDWARE_XACRO_PATH.read_text()
+    assert "mock_components/GenericSystem" not in hardware_source
+    assert '<param name="enable_mock_mode">${str(use_mock_hardware).lower()}</param>' in (
+        hardware_source
+    )
 
     gripper_limit = urdf_joints[GRIPPER_ID].find("limit")
     gripper_2_mimic = urdf_joints["gripper_2"].find("mimic")
@@ -176,16 +207,50 @@ def test_ros_control_interfaces_match_triskel_hardware_and_urdf_limits():
     assert gripper_3_mimic is not None
     assert math.isclose(float(gripper_limit.attrib["lower"]), GRIPPER_CLOSED_POSITION)
     assert math.isclose(float(gripper_limit.attrib["upper"]), GRIPPER_OPEN_POSITION)
+    gripper_2_multiplier = float(gripper_2_mimic.attrib["multiplier"])
+    gripper_3_multiplier = float(gripper_3_mimic.attrib["multiplier"])
     for mimic in (gripper_2_mimic, gripper_3_mimic):
-        multiplier = float(mimic.attrib["multiplier"])
         offset = float(mimic.attrib["offset"])
-        closed_position = multiplier * GRIPPER_CLOSED_POSITION + offset
-        assert math.isclose(closed_position, 0.0, abs_tol=1e-9)
+        open_position = float(mimic.attrib["multiplier"]) * GRIPPER_OPEN_POSITION + offset
+        assert math.isclose(open_position, 0.0, abs_tol=1e-9)
 
-    assert float(gripper_2_mimic.attrib["multiplier"]) < 0.0
-    assert float(gripper_2_mimic.attrib["offset"]) < 0.0
-    assert float(gripper_3_mimic.attrib["multiplier"]) > 0.0
-    assert float(gripper_3_mimic.attrib["offset"]) > 0.0
+    assert gripper_2_multiplier > 0.0
+    assert gripper_3_multiplier < 0.0
+    assert gripper_2_multiplier * GRIPPER_CLOSED_POSITION < 0.0
+    assert gripper_3_multiplier * GRIPPER_CLOSED_POSITION > 0.0
+
+
+def test_position_limits_and_named_poses_fit_sts_encoder_range():
+    root = ET.parse(HARDWARE_XACRO_PATH).getroot()
+    position_macro = next(
+        element
+        for element in root.iter()
+        if _local_name(element.tag) == "macro" and element.attrib.get("name") == "position_joint"
+    )
+    center = int(position_macro.findtext(".//param[@name='position_center_steps']", "0"))
+    steps_per_revolution = 4096
+    radians_per_step = math.tau / steps_per_revolution
+    encoder_lower = (center - (steps_per_revolution - 1)) * radians_per_step
+    encoder_upper = center * radians_per_step
+    limits = {
+        element.attrib["name"]: (float(element.attrib["lower"]), float(element.attrib["upper"]))
+        for element in root.iter()
+        if _local_name(element.tag) == "position_joint" and "motor_id" in element.attrib
+    }
+    for joint, (lower, upper) in limits.items():
+        assert encoder_lower <= lower < upper <= encoder_upper, joint
+
+    srdf = ET.parse(MOVEIT_PACKAGE / "config" / "triskel.srdf").getroot()
+    for state in srdf.findall("group_state"):
+        for joint in state.findall("joint"):
+            name = joint.attrib["name"]
+            position = float(joint.attrib["value"])
+            lower, upper = limits[name]
+            assert lower <= position <= upper, (state.attrib["name"], name)
+            raw = round(center - position / radians_per_step)
+            assert 0 <= raw < steps_per_revolution
+            feedback = (center - raw) * radians_per_step
+            assert abs(feedback - position) <= radians_per_step / 2
 
 
 def test_arm_axes_follow_sts_feedback_coordinates():
@@ -208,6 +273,10 @@ def test_controller_configuration_claims_each_command_interface_once():
     assert manager["omni_base_controller"]["type"] == (
         "omni_wheel_drive_controller/OmniWheelDriveController"
     )
+
+    state_broadcaster = controllers["joint_state_broadcaster"]["ros__parameters"]
+    assert state_broadcaster["joints"] == [*WHEEL_IDS, *JOINT_IDS, GRIPPER_ID]
+    assert state_broadcaster["interfaces"] == STS_STATE_INTERFACES
 
     base = controllers["omni_base_controller"]["ros__parameters"]
     assert base["wheel_names"] == ["wheel_2", "wheel_3", "wheel_1"]
@@ -238,6 +307,8 @@ def test_controller_configuration_claims_each_command_interface_once():
     assert gripper["joints"] == [GRIPPER_ID]
     assert arm["set_last_command_interface_value_as_state_on_activation"] is False
     assert gripper["set_last_command_interface_value_as_state_on_activation"] is False
+    assert arm["state_publish_rate"] > 0.0
+    assert gripper["state_publish_rate"] > 0.0
     assert arm["command_interfaces"] == ["position"]
     assert gripper["command_interfaces"] == ["position"]
 
@@ -498,6 +569,10 @@ def test_ros_launch_files_are_valid_python():
         compile(launch_file.read_text(), str(launch_file), "exec")
 
     operator_launch = (ROS_SRC / "triskel_bringup" / "launch" / "operator.launch.py").read_text()
+    robot_launch = (ROS_SRC / "triskel_bringup" / "launch" / "robot.launch.py").read_text()
+    spawner = (
+        ROS_SRC / "triskel_bringup" / "triskel_bringup" / "controller_spawning.py"
+    ).read_text()
     assert '("servo_node_main", "servo_node")' in operator_launch
     assert 'package="triskel_visualization"' in operator_launch
     assert 'executable="meta_quest_bridge"' in operator_launch
@@ -506,6 +581,20 @@ def test_ros_launch_files_are_valid_python():
         'DeclareLaunchArgument("start_meta_quest_bridge", default_value="true")' in operator_launch
     )
     assert 'DeclareLaunchArgument("quest_ip", default_value="auto")' in operator_launch
+    assert "OnProcessExit(" in operator_launch
+    assert "target_action=controller_spawner" in operator_launch
+    assert '"spawn_controllers": "false"' in operator_launch
+    assert 'DeclareLaunchArgument("spawn_controllers", default_value="true")' in robot_launch
+    assert '"--activate-as-group"' in spawner
+    for controller_name in (
+        "joint_state_broadcaster",
+        "omni_base_controller",
+        "arm_controller",
+        "gripper_controller",
+    ):
+        assert f'"{controller_name}"' in spawner
+    assert '"--controller-manager-timeout"' in spawner
+    assert '"--ros-args --remap ~/cmd_vel:=/cmd_vel"' in spawner
 
 
 def test_docker_smoke_suite_is_modular():
@@ -543,6 +632,8 @@ def test_docker_smoke_environment_is_mock_first_and_covers_runtime_contracts():
     assert "vcs import" in dockerfile
     assert "rosdep install" in dockerfile
     assert "colcon build" in dockerfile
+    assert "triskel_hardware/patches/apply.bash" in dockerfile
+    assert "triskel_hardware/patches/apply.bash" in (REPO_ROOT / "README.md").read_text()
     assert "triskel_visualization/requirements.txt" in dockerfile
     assert "PYTHONPATH=/opt/triskel-python" in dockerfile
 
@@ -623,6 +714,7 @@ def test_root_command_wraps_lifecycle_quality_and_smoke_workflows():
         "stop",
         "status",
         "logs",
+        "sync",
         "dashboard",
         "recordings",
         "check",

@@ -46,6 +46,44 @@ adapter to its Linux VM with Docker's
 [USB/IP workflow](https://docs.docker.com/desktop/features/usbip/), then override the device
 path only if necessary.
 
+## Home or Rest reaches the wrong pose
+
+Home and Rest are absolute joint angles from
+`ros_ws/src/triskel_moveit_config/config/triskel.srdf`; they do not calibrate motor zero.
+Mode 0 uses a position command. Its velocity value is an unsigned speed cap, with direction
+determined by the position target, so the arm and gripper controllers claim only `position`.
+`proportional_vel_max=1000` scales positive speed caps from joint position errors for
+coordinated arrival.
+
+The pinned STS driver mixed units in that proportional path: it compared a raw steps/s cap
+with each joint's rad/s limit, reducing 1000 steps/s to roughly 5. Docker and the documented
+native build apply `sts-proportional-velocity-units.patch` before compiling the dependency.
+`proportional_vel_deadband=0` keeps the configured cap active for every nonzero position error.
+
+`position_center_steps=2048` maps feedback as
+`q = (2048 - raw_position) * 2*pi/4096`. If a pose is consistently offset after commands are
+moving correctly, inspect the motor's mechanical zero and stored encoder offset. The
+`/one_key_calibration` service redefines the current physical position as the encoder
+midpoint; it does not move the arm to Home or Rest.
+
+Inspect the active stack from the robot checkout:
+
+```bash
+./triskel shell ros2 control list_controllers
+./triskel shell ros2 control list_hardware_interfaces
+./triskel shell ros2 topic echo --once /arm_controller/controller_state
+./triskel shell ros2 topic echo --once /gripper_controller/controller_state
+./triskel shell ros2 topic echo --once /dynamic_joint_states
+./triskel logs
+```
+
+The arm and gripper should claim only `position` commands. Compare controller reference,
+output, and feedback positions. If output is right but feedback does not follow, inspect bus
+errors, motor IDs, power, torque, and the stored speed cap.
+
+After changing package resources, rebuild the image; `--no-build` keeps the previous baked
+configuration.
+
 ## Meta Quest stays in Waiting
 
 The dashboard supports the device even when no headset is connected, but it reports the input

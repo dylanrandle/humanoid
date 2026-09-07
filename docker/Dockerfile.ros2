@@ -64,6 +64,11 @@ RUN if [[ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]]; then rosdep in
 
 COPY ros_ws/src/ "${TRISKEL_WS}/src/"
 
+# The pinned STS driver compares a raw steps/s value with a rad/s limit in its
+# proportional position-speed path. Apply the unit correction before building.
+RUN bash "${TRISKEL_WS}/src/triskel_hardware/patches/apply.bash" \
+        "${TRISKEL_WS}/src/sts_hardware_interface"
+
 RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
     && colcon build \
         --base-paths "${TRISKEL_WS}/src" \

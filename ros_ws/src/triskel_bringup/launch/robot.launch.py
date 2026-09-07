@@ -7,6 +7,7 @@ from launch.substitutions import Command, FindExecutable, LaunchConfiguration, P
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
+from triskel_bringup.controller_spawning import controller_spawner_options
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -15,6 +16,7 @@ def generate_launch_description() -> LaunchDescription:
     baud_rate = LaunchConfiguration("baud_rate")
     use_sim_time = LaunchConfiguration("use_sim_time")
     start_rviz = LaunchConfiguration("start_rviz")
+    spawn_controllers = LaunchConfiguration("spawn_controllers")
 
     bringup_share = FindPackageShare("triskel_bringup")
     control_share = FindPackageShare("triskel_control")
@@ -59,35 +61,26 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
     )
 
-    def controller_spawner(name: str, *extra_arguments: str) -> Node:
-        return Node(
-            package="controller_manager",
-            executable="spawner",
-            arguments=[name, "--controller-manager", "/controller_manager", *extra_arguments],
-            output="screen",
-        )
+    controller_spawner = Node(
+        **controller_spawner_options(),
+        condition=IfCondition(spawn_controllers),
+    )
 
     return LaunchDescription(
         [
             DeclareLaunchArgument(
                 "use_mock_hardware",
                 default_value="true",
-                description="Use ros2_control GenericSystem instead of the physical Feetech bus.",
+                description="Use the STS hardware interface's built-in simulation backend.",
             ),
             DeclareLaunchArgument("serial_port", default_value="/dev/ttyACM0"),
             DeclareLaunchArgument("baud_rate", default_value="1000000"),
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument("start_rviz", default_value="false"),
+            DeclareLaunchArgument("spawn_controllers", default_value="true"),
             robot_state_publisher,
             controller_manager,
-            controller_spawner("joint_state_broadcaster"),
-            controller_spawner(
-                "omni_base_controller",
-                "--controller-ros-args",
-                "--ros-args --remap ~/cmd_vel:=/cmd_vel",
-            ),
-            controller_spawner("arm_controller"),
-            controller_spawner("gripper_controller"),
+            controller_spawner,
             Node(
                 package="rviz2",
                 executable="rviz2",

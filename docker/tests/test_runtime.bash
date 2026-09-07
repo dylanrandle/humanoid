@@ -74,6 +74,7 @@ test_runtime_startup() {
 test_runtime_interfaces() {
     local joint_states
     local actions
+    local hardware_interfaces
     local topic_info
     local odometry
     local base_transform=""
@@ -85,6 +86,16 @@ test_runtime_interfaces() {
     for joint in wheel_1 wheel_2 wheel_3 arm_1 arm_2 arm_3 arm_4 arm_5 arm_6 arm_7 gripper_1; do
         assert_contains "${joint_states}" "${joint}" "joint-state entry"
     done
+
+    hardware_interfaces="$(ros2 control list_hardware_interfaces)"
+    for joint in arm_1 arm_2 arm_3 arm_4 arm_5 arm_6 arm_7 gripper_1; do
+        grep -Eq "${joint}/position[[:space:]]+\\[available\\][[:space:]]+\\[claimed\\]" \
+            <<<"${hardware_interfaces}" || fail "${joint} position command is not claimed."
+    done
+    if grep -Eq '(arm_[1-7]|gripper_1)/(velocity|acceleration)[[:space:]]+\[' \
+        <<<"${hardware_interfaces}"; then
+        fail "Position-mode joints must not export optional STS profile commands."
+    fi
 
     actions="$(ros2 action list)"
     assert_contains "${actions}" "/arm_controller/follow_joint_trajectory" "arm action"

@@ -34,6 +34,7 @@ Viser to become healthy, then prints the dashboard URL. The everyday lifecycle i
 ```bash
 ./triskel status
 ./triskel logs
+./triskel shell
 ./triskel stop
 ```
 
@@ -56,6 +57,15 @@ export TRISKEL_SSH_TARGET=dylan@triskel.local
 
 The command keeps the tunnel in the foreground until `Ctrl-C`. Open
 <http://127.0.0.1:8765> for the dashboard or <http://127.0.0.1:8080> for full-screen Viser.
+Preview and then sync the local checkout to the Pi, removing stale source files:
+
+```bash
+./triskel sync --dry-run --delete
+./triskel sync --delete
+```
+
+Omit `--delete` to leave robot-only source files in place. Both modes exclude remote Git
+metadata, recordings, virtual environments, caches, and ROS build outputs.
 Pull the Pi's recordings into this checkout without deleting existing local captures:
 
 ```bash
@@ -120,14 +130,20 @@ The equivalent raw Compose command is:
 docker compose -f docker/compose.ros2.yaml up --build ros2-sim
 ```
 
-For a sourced ROS shell:
+To enter a ROS-aware shell in the running simulation or hardware container:
 
 ```bash
-docker compose -f docker/compose.ros2.yaml run --rm ros2-shell
+./triskel shell
 ```
 
-The test and shell services do not receive a robot device. Physical hardware remains
-explicitly opt-in through the `hardware` profile or `./triskel start --hardware`.
+The same command can run a one-off command directly:
+
+```bash
+./triskel shell ros2 topic list
+```
+
+The helper detects the active runtime and does not start or select physical hardware.
+Physical hardware remains explicitly opt-in through `./triskel start --hardware`.
 
 ## Build on ROS 2 Jazzy
 
@@ -149,6 +165,7 @@ python3 -m pip install --user --break-system-packages \
   -r ros_ws/src/triskel_visualization/requirements.txt \
   -r ros_ws/src/triskel_operator/requirements.txt
 vcs import ros_ws/src < triskel.repos
+bash ros_ws/src/triskel_hardware/patches/apply.bash
 rosdep install --from-paths ros_ws/src --ignore-src --rosdistro jazzy -r -y
 cd ros_ws
 colcon build --symlink-install
@@ -177,7 +194,13 @@ modes. The mock runtime exercises the same ROS controllers and operator paths as
 hardware; it is deterministic controller simulation rather than contact-rich physics.
 
 The validated Home, Rest, Open, and Closed presets are defined once in the MoveIt SRDF. The
-operator reads those values directly for homing and gripper command limits.
+operator reads those values directly for homing and gripper command limits. Arm and gripper
+controllers stream position-only trajectories to STS mode 0; ROS enforces the URDF position
+and velocity limits. The optional STS velocity input means an unsigned servo speed cap, and
+its acceleration input uses protocol units, so neither receives trajectory derivatives.
+The encoder center is 2048: zero radians corresponds to raw step 2048, and positive ROS
+angles decrease the raw step. See [Home or Rest reaches the wrong pose](TROUBLESHOOTING.md#home-or-rest-reaches-the-wrong-pose)
+for feedback and calibration checks.
 
 ### Keyboard teleoperation
 
