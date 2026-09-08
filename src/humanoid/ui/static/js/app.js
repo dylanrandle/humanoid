@@ -1,4 +1,4 @@
-import { fetchStatus, post } from "./api.js";
+import { fetchApplicationLogs, fetchStatus, post } from "./api.js";
 import {
   API,
   BusyKey,
@@ -8,7 +8,12 @@ import {
 } from "./constants.js";
 import { els } from "./dom.js";
 import { errorMessage, performOperation } from "./operations.js";
-import { render, renderDisconnected } from "./render.js";
+import {
+  render,
+  renderApplicationLogs,
+  renderApplicationLogsDisconnected,
+  renderDisconnected,
+} from "./render.js";
 import {
   loggingRequest,
   processRequest,
@@ -22,12 +27,18 @@ const state = {
   snapshot: null,
   busy: new Set(),
   connected: null,
+  applicationLogs: [],
+  applicationLogCursor: null,
+  applicationLogsConnected: null,
   refreshPromise: null,
 };
 
 function refresh() {
   if (state.refreshPromise) return state.refreshPromise;
-  state.refreshPromise = loadStatus().finally(() => {
+  state.refreshPromise = Promise.all([
+    loadStatus(),
+    loadApplicationLogs(),
+  ]).finally(() => {
     state.refreshPromise = null;
   });
   return state.refreshPromise;
@@ -43,6 +54,25 @@ async function loadStatus() {
     renderDisconnected(message, els);
     if (state.connected !== false) showToast(message);
     state.connected = false;
+  }
+}
+
+async function loadApplicationLogs() {
+  try {
+    const snapshot = await fetchApplicationLogs(state.applicationLogCursor);
+    if (snapshot.reset) state.applicationLogs = [];
+    state.applicationLogs = [
+      ...state.applicationLogs,
+      ...snapshot.entries.map((entry) => entry.message),
+    ].slice(-snapshot.capacity);
+    state.applicationLogCursor = snapshot.cursor;
+    state.applicationLogsConnected = true;
+    renderApplicationLogs(state.applicationLogs, els);
+  } catch (error) {
+    renderApplicationLogsDisconnected(els);
+    if (state.applicationLogsConnected !== false)
+      showToast(errorMessage(error));
+    state.applicationLogsConnected = false;
   }
 }
 

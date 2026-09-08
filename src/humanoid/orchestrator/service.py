@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.application_logging import get_application_log_path
 from humanoid.logger import get_logger
 from humanoid.nodes.groups import process_display_name
 from humanoid.nodes.manager import NodeManager, NodeManagerError
@@ -24,12 +25,14 @@ from humanoid.orchestrator.constants import (
     STALE_CONFIGURATION_ERROR,
     TELEOP_PROCESSES,
 )
+from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.homing import HomingPreset
+from humanoid.types.logging import ApplicationLogSnapshot
 from humanoid.types.orchestrator import (
     Mode,
     OrchestratorError,
@@ -57,8 +60,18 @@ class OrchestratorService:
         logging_monitor: LoggingMonitor | None = None,
         node_rate_monitor: NodeRateMonitor | None = None,
         replay_manager: ReplayManager | None = None,
+        application_log_monitor: ApplicationLogMonitor | None = None,
     ):
-        self.node_manager = node_manager if node_manager is not None else NodeManager()
+        self.application_log_monitor = (
+            application_log_monitor
+            if application_log_monitor is not None
+            else ApplicationLogMonitor(get_application_log_path())
+        )
+        self.node_manager = (
+            node_manager
+            if node_manager is not None
+            else NodeManager(log_queue=self.application_log_monitor.queue)
+        )
         self.orchestrator_client = (
             orchestrator_client if orchestrator_client is not None else OrchestratorClient()
         )
@@ -105,6 +118,9 @@ class OrchestratorService:
                 replay=replay,
                 orchestrator=orchestrator,
             )
+
+    def application_logs(self, after: int | None = None) -> ApplicationLogSnapshot:
+        return self.application_log_monitor.snapshot(after)
 
     def set_runtime(self, runtime: Runtime, safety: SafetyContext) -> OrchestratorStatus:
         return self._set_configuration(
@@ -274,6 +290,7 @@ class OrchestratorService:
             self.logging_monitor.close()
             self.node_rate_monitor.close()
             self.replay_manager.close()
+            self.application_log_monitor.close()
 
     def _stop_stack(self) -> None:
         self.replay_manager.stop()

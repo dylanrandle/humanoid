@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/css/health.css" />
     <link rel="stylesheet" href="/css/controls.css" />
     <link rel="stylesheet" href="/css/data.css" />
+    <link rel="stylesheet" href="/css/logs.css" />
     <link rel="stylesheet" href="/css/responsive.css" />
   </head>
   <body>
@@ -402,6 +403,30 @@
               Start a process to view its health and resource usage.
             </p>
           </div>
+        </section>
+
+        <section
+          class="panel application-log-panel"
+          aria-labelledby="application-log-heading"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">06 · Diagnostics</p>
+              <h2 id="application-log-heading">Application logs</h2>
+            </div>
+            <span class="panel-note" id="application-log-status"
+              >Waiting for output</span
+            >
+          </div>
+
+          <pre
+            class="application-log-output"
+            id="application-log-output"
+            role="region"
+            aria-label="Recent application log output"
+            tabindex="0"
+          >
+Application output will appear here.</pre>
         </section>
       </main>
 

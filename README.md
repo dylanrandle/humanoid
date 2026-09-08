@@ -61,7 +61,7 @@ uv run start
 
 The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Use it to select the
 robot and runtime, manage the stack and teleoperation processes, choose a control mode,
-monitor node health, and record or replay LCM sessions.
+monitor node health and application logs, and record or replay LCM sessions.
 
 Simulation uses MuJoCo and real-hardware mode uses the hardware driver; both expose the
 same LCM interface to the rest of the stack. Hardware actions require explicit operator
@@ -89,7 +89,8 @@ Forward the dashboard and MeshCat ports from another local terminal:
 
 Open the [dashboard](http://127.0.0.1:8765) or
 [visualizer](http://127.0.0.1:7000/static/). Run `./scripts/forward-ports --help` for port
-overrides. Recordings are preserved in `/opt/humanoid/logs`.
+overrides. Recordings and the dashboard's `humanoid.log` application log are preserved in
+`/opt/humanoid/logs`.
 
 SSH into Triskel to manage the service:
 

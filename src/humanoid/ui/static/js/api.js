@@ -9,6 +9,18 @@ export async function fetchStatus() {
   return result;
 }
 
+export async function fetchApplicationLogs(after = null) {
+  const query = after === null ? "" : `?after=${encodeURIComponent(after)}`;
+  const response = await fetch(`${API.APPLICATION_LOGS}${query}`, {
+    cache: "no-store",
+  });
+  const result = await readJson(response);
+  if (!response.ok || result === null) {
+    throw new Error(result?.error || "Application logs are unavailable.");
+  }
+  return result;
+}
+
 export async function post(path, payload = {}) {
   const response = await fetch(path, {
     method: "POST",

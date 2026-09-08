@@ -7,7 +7,12 @@ from flask.testing import FlaskClient
 
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.types.homing import HomingPreset
-from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.logging import (
+    ApplicationLogEntry,
+    ApplicationLogSnapshot,
+    LoggingState,
+    LoggingStatus,
+)
 from humanoid.types.node import NodeRateStatus
 from humanoid.types.orchestrator import (
     Mode,
@@ -73,6 +78,9 @@ def test_serves_split_ui_assets(server_client):
     assert b'id="replay-recording"' in response.data
     assert b'id="replay-action"' in response.data
     assert b'id="node-rate-list"' in response.data
+    assert b'id="application-log-output"' in response.data
+    assert b'role="region"' in response.data
+    assert b'role="log"' not in response.data
     assert b"Home and Rest stay highlighted" not in response.data
     assert response.headers["Cache-Control"] == "no-cache"
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
@@ -96,6 +104,10 @@ def test_serves_split_ui_assets(server_client):
     assert response.status_code == HTTPStatus.OK
     assert b".node-rate-row.healthy" in response.data
 
+    response = client.get("/css/logs.css")
+    assert response.status_code == HTTPStatus.OK
+    assert b".application-log-output" in response.data
+
 
 def test_routes_status(server_client):
     service, client = server_client
@@ -107,6 +119,38 @@ def test_routes_status(server_client):
     assert response.headers["Cache-Control"] == "no-store"
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     service.status.assert_called_once_with()
+
+
+def test_routes_incremental_application_logs(server_client):
+    service, client = server_client
+    service.application_logs.return_value = ApplicationLogSnapshot(
+        cursor=4,
+        entries=[ApplicationLogEntry(cursor=4, message="[INFO] Stack started")],
+        reset=False,
+        capacity=200,
+    )
+
+    response = client.get(f"{ApiRoute.APPLICATION_LOGS}?after=3")
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.json == {
+        "cursor": 4,
+        "entries": [{"cursor": 4, "message": "[INFO] Stack started"}],
+        "reset": False,
+        "capacity": 200,
+    }
+    service.application_logs.assert_called_once_with(3)
+
+
+@pytest.mark.parametrize("cursor", ["-1", "invalid"])
+def test_rejects_invalid_application_log_cursor(server_client, cursor):
+    service, client = server_client
+
+    response = client.get(f"{ApiRoute.APPLICATION_LOGS}?after={cursor}")
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert response.json["ok"] is False
+    service.application_logs.assert_not_called()
 
 
 def test_serializes_orchestrator_status_dataclass(server_client):

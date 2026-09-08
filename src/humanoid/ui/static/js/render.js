@@ -75,6 +75,27 @@ export function render(snapshot, busy, elements) {
   );
 }
 
+export function renderApplicationLogs(logs, elements) {
+  const output = elements.applicationLogOutput;
+  const content = logs.length
+    ? logs.join("\n")
+    : "Application output will appear here.";
+  const nearBottom =
+    output.scrollHeight - output.scrollTop - output.clientHeight <= 24;
+
+  if (output.textContent !== content) {
+    output.textContent = content;
+    if (nearBottom) output.scrollTop = output.scrollHeight;
+  }
+  elements.applicationLogStatus.textContent = logs.length
+    ? `${logs.length} recent ${logs.length === 1 ? "entry" : "entries"}`
+    : "Waiting for output";
+}
+
+export function renderApplicationLogsDisconnected(elements) {
+  elements.applicationLogStatus.textContent = "Logs unavailable";
+}
+
 function renderNodeRates(nodeRates, elements) {
   const rows = nodeRates.map((rate) => {
     const row = elements.nodeRateList.ownerDocument.createElement("article");

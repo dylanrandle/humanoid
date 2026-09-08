@@ -61,6 +61,7 @@ def _teleop_processes() -> str:
 def _api_routes() -> str:
     return """export const API = Object.freeze({
   STATUS: ApiRoute.STATUS,
+  APPLICATION_LOGS: ApiRoute.APPLICATION_LOGS,
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
   logging(action) {

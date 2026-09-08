@@ -7,6 +7,7 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.orchestrator.client import OrchestratorClient
+from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
@@ -14,7 +15,12 @@ from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.homing import HomingPreset
-from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.logging import (
+    ApplicationLogEntry,
+    ApplicationLogSnapshot,
+    LoggingState,
+    LoggingStatus,
+)
 from humanoid.types.orchestrator import (
     Mode,
     ModeStatus,
@@ -93,6 +99,13 @@ def _make_service(
     )
     node_rate_monitor = MagicMock(spec=NodeRateMonitor)
     node_rate_monitor.snapshot.return_value = []
+    application_log_monitor = MagicMock(spec=ApplicationLogMonitor)
+    application_log_monitor.snapshot.return_value = ApplicationLogSnapshot(
+        cursor=0,
+        entries=[],
+        reset=False,
+        capacity=200,
+    )
     service = OrchestratorService(
         node_manager=manager,
         orchestrator_client=client,
@@ -100,6 +113,7 @@ def _make_service(
         logging_monitor=logging_monitor,
         node_rate_monitor=node_rate_monitor,
         replay_manager=replay_manager,
+        application_log_monitor=application_log_monitor,
     )
     recording_catalog = MagicMock(spec=RecordingCatalog)
     recording_catalog.list.return_value = []
@@ -395,6 +409,20 @@ def test_status_exposes_latest_logging_lifecycle():
     cast(MagicMock, service.logging_monitor).snapshot.return_value = expected
 
     assert service.status().logging == expected
+
+
+def test_application_logs_exposes_incremental_snapshot():
+    service, _, _, _ = _make_service()
+    expected = ApplicationLogSnapshot(
+        cursor=8,
+        entries=[ApplicationLogEntry(cursor=8, message="[WARNING] Input is stale")],
+        reset=False,
+        capacity=200,
+    )
+    cast(MagicMock, service.application_log_monitor).snapshot.return_value = expected
+
+    assert service.application_logs(after=7) == expected
+    cast(MagicMock, service.application_log_monitor).snapshot.assert_called_once_with(7)
 
 
 def test_status_exposes_server_managed_recordings():
@@ -798,3 +826,4 @@ def test_close_releases_mode_monitor_when_stack_status_fails():
     manager.close.assert_called_once_with()
     monitor.close.assert_called_once_with()
     cast(MagicMock, service.node_rate_monitor).close.assert_called_once_with()
+    cast(MagicMock, service.application_log_monitor).close.assert_called_once_with()

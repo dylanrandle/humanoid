@@ -17,6 +17,24 @@ def parse_process_name(name: str) -> ProcessName:
     return process_name
 
 
+def parse_application_log_cursor(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        cursor = int(value)
+    except ValueError as exc:
+        raise ApiError(
+            "Application log cursor must be a non-negative integer.",
+            HTTPStatus.BAD_REQUEST,
+        ) from exc
+    if cursor < 0:
+        raise ApiError(
+            "Application log cursor must be a non-negative integer.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    return cursor
+
+
 def parse_runtime(value: str) -> Runtime:
     return _parse_enum(
         value,

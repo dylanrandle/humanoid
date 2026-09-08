@@ -15,6 +15,8 @@ export const els = {
   stackActionLabel: document.querySelector("#stack-action-label"),
   nodeRateSummary: document.querySelector("#node-rate-summary"),
   nodeRateList: document.querySelector("#node-rate-list"),
+  applicationLogStatus: document.querySelector("#application-log-status"),
+  applicationLogOutput: document.querySelector("#application-log-output"),
   processes: Object.fromEntries(
     TELEOP_PROCESSES.map((name) => [
       name,

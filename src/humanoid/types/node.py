@@ -22,6 +22,7 @@ class ProcessContext(Protocol):
         *,
         target: Callable[..., None],
         name: str,
+        args: tuple[object, ...] = (),
     ) -> BaseProcess: ...
 
 

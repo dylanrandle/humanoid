@@ -1,6 +1,7 @@
 """Process lifecycle management for humanoid node groups."""
 
 import contextlib
+import logging
 import os
 import signal
 import threading
@@ -8,14 +9,16 @@ import time
 from collections.abc import Sequence
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
+from multiprocessing.queues import Queue
 from typing import cast
 
+from humanoid.config.process import PROCESS_START_METHOD
 from humanoid.constants import (
     ROBOT_ENVIRONMENT_VARIABLE,
     RUNTIME_ENVIRONMENT_VARIABLE,
     Topic,
 )
-from humanoid.logger import get_logger
+from humanoid.logger import get_logger, setup_queue_logging
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.nodes.groups import (
@@ -34,7 +37,6 @@ DEFAULT_STATE_POLL_INTERVAL_SECONDS = 0.1
 DEFAULT_STOP_TIMEOUT_SECONDS = 8.0
 TERMINATE_TIMEOUT_SECONDS = 2.0
 POSIX_OS_NAME = "posix"
-CHILD_PROCESS_CONTEXT = "spawn"
 
 
 class NodeManagerError(Exception):
@@ -50,12 +52,14 @@ class NodeManager:
         robot: RobotName | None = None,
         state_timeout_seconds: float = DEFAULT_STATE_TIMEOUT_SECONDS,
         state_poll_interval_seconds: float = DEFAULT_STATE_POLL_INTERVAL_SECONDS,
+        log_queue: Queue[logging.LogRecord] | None = None,
     ):
         self.runtime = runtime if runtime is not None else Runtime.from_environment()
         self.robot = robot if robot is not None else RobotName.from_environment()
         self.state_timeout_seconds = state_timeout_seconds
         self.state_poll_interval_seconds = state_poll_interval_seconds
-        self._process_context = cast(ProcessContext, get_context(CHILD_PROCESS_CONTEXT))
+        self._process_context = cast(ProcessContext, get_context(PROCESS_START_METHOD))
+        self._log_queue = log_queue
         self._groups: dict[ProcessName, ManagedNodeGroup] = {}
         self._lock = threading.RLock()
 
@@ -168,7 +172,11 @@ class NodeManager:
         nodes: Sequence[type[Node]],
     ) -> None:
         for node in nodes:
-            process = self._process_context.Process(target=node.main, name=node.__name__)
+            process = self._process_context.Process(
+                target=_run_node,
+                name=node.__name__,
+                args=(node, self._log_queue),
+            )
             with _node_environment(group.runtime, group.robot):
                 process.start()
             group.processes.append(process)
@@ -333,6 +341,15 @@ def _stopped_status() -> ProcessStatus:
         uptime_seconds=None,
         last_output=None,
     )
+
+
+def _run_node(
+    node: type[Node],
+    log_queue: Queue[logging.LogRecord] | None,
+) -> None:
+    if log_queue is not None:
+        setup_queue_logging(log_queue)
+    node.main()
 
 
 @contextlib.contextmanager

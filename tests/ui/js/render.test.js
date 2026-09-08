@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ProcessName } from "../../../src/humanoid/ui/static/js/constants.js";
-import { render, renderDisconnected } from "../../../src/humanoid/ui/static/js/render.js";
+import {
+  render,
+  renderApplicationLogs,
+  renderApplicationLogsDisconnected,
+  renderDisconnected,
+} from "../../../src/humanoid/ui/static/js/render.js";
 
 class FakeClassList {
   constructor() {
@@ -30,7 +35,9 @@ function element(dataset = {}) {
     options: [],
     children: [],
     ownerDocument: { createElement: () => element() },
-    setAttribute(name, value) { this[name] = value; },
+    setAttribute(name, value) {
+      this[name] = value;
+    },
     replaceChildren(...children) {
       this.options = children;
       this.children = children;
@@ -54,11 +61,26 @@ function elements() {
     stackActionLabel: element(),
     nodeRateSummary: element(),
     nodeRateList: element(),
+    applicationLogStatus: element(),
+    applicationLogOutput: element(),
     processes: {
-      keyboard: { row: element(), status: element(), error: element(), action: element() },
-      oculus: { row: element(), status: element(), error: element(), action: element() },
+      keyboard: {
+        row: element(),
+        status: element(),
+        error: element(),
+        action: element(),
+      },
+      oculus: {
+        row: element(),
+        status: element(),
+        error: element(),
+        action: element(),
+      },
     },
-    loggingButtons: [element({ loggingAction: "start" }), element({ loggingAction: "stop" })],
+    loggingButtons: [
+      element({ loggingAction: "start" }),
+      element({ loggingAction: "stop" }),
+    ],
     loggingStatus: element(),
     loggingDetail: element(),
     loggingError: element(),
@@ -195,7 +217,37 @@ test("logging lifecycle controls and failures are rendered", () => {
   render(current, new Set(), ui);
   assert.equal(ui.loggingStatus.textContent, "Failed");
   assert.equal(ui.loggingError.hidden, false);
-  assert.equal(ui.loggingError.textContent, "lcm-logger was not found in PATH.");
+  assert.equal(
+    ui.loggingError.textContent,
+    "lcm-logger was not found in PATH.",
+  );
+});
+
+test("recent application logs render as text and follow the live tail", () => {
+  const ui = elements();
+  ui.applicationLogOutput.scrollHeight = 300;
+  ui.applicationLogOutput.clientHeight = 100;
+  ui.applicationLogOutput.scrollTop = 200;
+  const logs = [
+    "[INFO] Controller initialized",
+    "[WARNING] Oculus input is stale",
+  ];
+
+  renderApplicationLogs(logs, ui);
+
+  assert.equal(
+    ui.applicationLogOutput.textContent,
+    "[INFO] Controller initialized\n[WARNING] Oculus input is stale",
+  );
+  assert.equal(ui.applicationLogOutput.scrollTop, 300);
+  assert.equal(ui.applicationLogStatus.textContent, "2 recent entries");
+
+  ui.applicationLogOutput.scrollTop = 20;
+  ui.applicationLogOutput.scrollHeight = 400;
+  logs.push("[INFO] Input recovered");
+  renderApplicationLogs(logs, ui);
+
+  assert.equal(ui.applicationLogOutput.scrollTop, 20);
 });
 
 test("process failures and busy state are rendered", () => {
@@ -208,7 +260,10 @@ test("process failures and busy state are rendered", () => {
 
   render(current, new Set(), ui);
   assert.equal(ui.processes.keyboard.error.hidden, false);
-  assert.equal(ui.processes.keyboard.error.textContent, "KeyboardTeleopNode exited");
+  assert.equal(
+    ui.processes.keyboard.error.textContent,
+    "KeyboardTeleopNode exited",
+  );
 
   render(current, new Set([ProcessName.KEYBOARD]), ui);
   assert.equal(ui.processes.keyboard.status.textContent, "Starting");
@@ -218,7 +273,8 @@ test("process failures and busy state are rendered", () => {
 
 test("disconnected and external-stack errors disable every control", () => {
   const ui = elements();
-  const message = "Another stack is already broadcasting. Stop it before using this console.";
+  const message =
+    "Another stack is already broadcasting. Stop it before using this console.";
 
   renderDisconnected(message, ui);
 
@@ -227,6 +283,8 @@ test("disconnected and external-stack errors disable every control", () => {
   assert.equal(ui.stackAction.disabled, true);
   assert.equal(ui.nodeRateSummary.textContent, "Unavailable");
   assert.match(ui.nodeRateList.children[0].textContent, /Reconnect/);
+  renderApplicationLogsDisconnected(ui);
+  assert.equal(ui.applicationLogStatus.textContent, "Logs unavailable");
   assert.ok(ui.runtimeButtons.every((button) => button.disabled));
   assert.ok(Object.values(ui.processes).every(({ action }) => action.disabled));
   assert.ok(ui.loggingButtons.every((button) => button.disabled));
@@ -247,11 +305,13 @@ test("replay requires a compatible server-managed recording", () => {
   assert.equal(ui.replayStatus.textContent, "Unavailable");
   assert.equal(ui.replayAction.disabled, true);
 
-  current.recordings = [{
-    id: "recording_1",
-    robot: "panda",
-    created_at: "2026-01-01T12:00:00+00:00",
-  }];
+  current.recordings = [
+    {
+      id: "recording_1",
+      robot: "panda",
+      created_at: "2026-01-01T12:00:00+00:00",
+    },
+  ];
   render(current, new Set(), ui);
   assert.equal(ui.replayAction.disabled, true);
   ui.replayRecording.value = "recording_1";

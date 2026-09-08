@@ -32,6 +32,7 @@ from humanoid.ui.constants import (
 )
 from humanoid.ui.errors import ApiError
 from humanoid.ui.validation import (
+    parse_application_log_cursor,
     parse_orchestrator_request,
     parse_process_action,
     parse_process_name,
@@ -43,7 +44,9 @@ from humanoid.ui.validation import (
 logger = get_logger(__name__)
 
 
-def create_app(orchestrator_service: OrchestratorService | None = None) -> Flask:
+def create_app(  # noqa: PLR0915 - route definitions form the application factory
+    orchestrator_service: OrchestratorService | None = None,
+) -> Flask:
     """Create the operator-console application."""
     if orchestrator_service is None:
         orchestrator_service = OrchestratorService()
@@ -95,6 +98,11 @@ def create_app(orchestrator_service: OrchestratorService | None = None) -> Flask
     @app.get(ApiRoute.STATUS)
     def status():
         return jsonify(orchestrator_service.status())
+
+    @app.get(ApiRoute.APPLICATION_LOGS)
+    def application_logs():
+        cursor = parse_application_log_cursor(request.args.get("after"))
+        return jsonify(orchestrator_service.application_logs(cursor))
 
     @app.post(ApiRoute.RUNTIME)
     def set_runtime():
