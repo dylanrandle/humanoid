@@ -1,10 +1,18 @@
 import subprocess
 from unittest.mock import MagicMock, call
 
+import numpy as np
+import pinocchio as pin
+import pytest
+
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
+from humanoid.robots.base import Robot
+from humanoid.types.homing import HomingPreset
 from humanoid.types.visualizer import VisualizerConfig
 from humanoid.visualizers.robot import (
     MESHCAT_SERVER_STOP_TIMEOUT_SECONDS,
     RobotVisualizer,
+    ToolCommandVisualizer,
 )
 
 
@@ -59,3 +67,35 @@ def test_close_leaves_an_externally_managed_meshcat_server_running():
     visualizer.close()
 
     window.zmq_socket.close.assert_called_once_with(linger=0)
+
+
+def _initialized_tool_visualizer() -> tuple[ToolCommandVisualizer, MagicMock, Robot]:
+    robot = Robot(TRISKEL_CONFIG)
+    visualizer = ToolCommandVisualizer(robot, MagicMock(), robot.config.tool.frame)
+    viewer = MagicMock()
+    visualizer._viewer = viewer
+    visualizer._initialized = True
+    visualizer._reference_q = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    visualizer._ee_pose_at_reference = pin.SE3.Identity()
+    return visualizer, viewer, robot
+
+
+def test_tool_command_visualizer_applies_bounded_gripper_position():
+    visualizer, viewer, robot = _initialized_tool_visualizer()
+    gripper_index = robot.get_gripper_position_indices()[0]
+    _, upper_limit = robot.get_gripper_limits()[0]
+
+    visualizer.display(pin.SE3.Identity(), np.array([upper_limit + 1.0]))
+
+    displayed_q = viewer.display.call_args.args[0]
+    assert displayed_q[gripper_index] == pytest.approx(upper_limit)
+
+
+@pytest.mark.parametrize("gripper_positions", [np.array([]), np.array([np.nan])])
+def test_tool_command_visualizer_rejects_invalid_gripper_target(gripper_positions):
+    visualizer, viewer, _ = _initialized_tool_visualizer()
+
+    with pytest.raises(ValueError, match="Gripper target"):
+        visualizer.display(pin.SE3.Identity(), gripper_positions)
+
+    viewer.display.assert_not_called()

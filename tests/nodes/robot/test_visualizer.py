@@ -66,6 +66,7 @@ def test_fixed_base_tool_command_is_already_in_world_frame():
         pin.utils.rotate("z", 0.3),
         np.array([0.4, -0.2, 0.7]),
     )
+    gripper_positions = np.array([0.02])
     robot.get_base_pose.return_value = None
     _set_messages(
         subscriber,
@@ -74,14 +75,16 @@ def test_fixed_base_tool_command_is_already_in_world_frame():
             Topic.ROBOT_TOOL_COMMAND: RobotToolCommand(
                 timestamp=0.0,
                 pose=tool_command_pose,
+                gripper_positions=gripper_positions,
             ),
         },
     )
 
     node.step()
 
-    displayed_pose = visualizer.display_tool_command.call_args.args[0]
+    displayed_pose, displayed_gripper_positions = visualizer.display_tool_command.call_args.args
     _assert_se3_equal(displayed_pose, tool_command_pose)
+    np.testing.assert_array_equal(displayed_gripper_positions, gripper_positions)
     np.testing.assert_array_equal(robot.get_base_pose.call_args.args[0], q)
 
 

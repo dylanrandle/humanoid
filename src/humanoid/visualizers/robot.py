@@ -165,6 +165,7 @@ class ToolCommandVisualizer(CommandVisualizer):
         # Cached once in initialize() — display() then only needs to apply the
         # rigid offset that maps this reference pose to the commanded tool pose.
         self._ee_pose_at_reference: pin.SE3 | None = None
+        self._reference_q: np.ndarray | None = None
 
     def _get_end_effector_subtree_joints(self) -> set[int]:
         """Get all joint indices that are part of the end effector subtree.
@@ -241,27 +242,50 @@ class ToolCommandVisualizer(CommandVisualizer):
         # Lay out the subtree once at the robot's home configuration and cache
         # the resulting EE pose. display() then applies a rigid offset rather
         # than recomputing kinematics every call.
-        reference_q = self.robot.config.homing_presets[HomingPreset.HOME]
-        self._viewer.display(reference_q)
+        self._reference_q = self.robot.config.homing_presets[HomingPreset.HOME].copy()
+        self._viewer.display(self._reference_q)
 
         data = self.robot.model.createData()
-        pin.forwardKinematics(self.robot.model, data, reference_q)
+        pin.forwardKinematics(self.robot.model, data, self._reference_q)
         pin.updateFramePlacements(self.robot.model, data)
         self._ee_pose_at_reference = data.oMf[self._end_effector_frame_id].copy()
 
         self._initialized = True
 
-    def display(self, tool_pose: pin.SE3) -> None:
-        """Move the tool subtree so the EE frame lands at the commanded pose.
+    def display(
+        self,
+        tool_pose: pin.SE3,
+        gripper_positions: np.ndarray | None = None,
+    ) -> None:
+        """Show the commanded tool pose and optional gripper articulation.
 
         The subtree was laid out once during initialize() at a reference
-        configuration. Here we just apply the rigid transform that maps the
-        cached reference EE pose to ``tool_pose`` — no IK, no FK.
+        configuration. Gripper commands update the appropriate joints in that
+        reference configuration before a rigid transform maps the cached tool
+        frame pose to ``tool_pose``. No IK is required.
 
         Args:
             tool_pose: Commanded SE3 pose for the end effector
+            gripper_positions: Optional target for each configured gripper joint
         """
         self._ensure_initialized()
+
+        if gripper_positions is not None:
+            expected_shape = (len(self.robot.get_gripper_position_indices()),)
+            if gripper_positions.shape != expected_shape:
+                raise ValueError(
+                    f"Gripper target must have shape {expected_shape}; "
+                    f"received {gripper_positions.shape}."
+                )
+            if not np.isfinite(gripper_positions).all():
+                raise ValueError("Gripper target values must all be finite.")
+
+            if expected_shape[0]:
+                assert self._reference_q is not None
+                limits = np.asarray(self.robot.get_gripper_limits())
+                bounded_positions = np.clip(gripper_positions, limits[:, 0], limits[:, 1])
+                self.robot.set_gripper_positions(self._reference_q, bounded_positions)
+                self._viewer.display(self._reference_q)  # type: ignore[union-attr]
 
         # tool_pose = root_transform * ee_pose_at_reference
         # => root_transform = tool_pose * ee_pose_at_reference^-1
@@ -455,14 +479,19 @@ class RobotVisualizer:
 
         self._joint_command_viz.display(q)
 
-    def display_tool_command(self, tool_pose: pin.SE3) -> None:
-        """Update the tool command visualizer with a commanded tool pose.
+    def display_tool_command(
+        self,
+        tool_pose: pin.SE3,
+        gripper_positions: np.ndarray | None = None,
+    ) -> None:
+        """Update the tool command visualizer with a tool and gripper target.
 
         This displays a semi-transparent "ghost" end effector showing the commanded
         tool pose, useful for visualizing the target pose for the end effector.
 
         Args:
             tool_pose: Commanded SE3 pose for the end effector
+            gripper_positions: Optional target for each configured gripper joint
 
         Raises:
             RuntimeError: If the visualizer or tool command visualizer has not been initialized
@@ -475,7 +504,7 @@ class RobotVisualizer:
                 "Tool command visualizer not enabled. Set show_commanded_tool_pose=True in config."
             )
 
-        self._tool_command_viz.display(tool_pose)
+        self._tool_command_viz.display(tool_pose, gripper_positions)
 
     def display_base_command(self, base_pose: pin.SE3) -> None:
         if not self._initialized:

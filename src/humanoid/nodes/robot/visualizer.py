@@ -97,7 +97,7 @@ class RobotVisualizerNode(Node):
             base_pose = self.robot.get_base_pose(self.current_q)
             if base_pose is not None:
                 tool_pose = base_pose * tool_pose
-            self.viz.display_tool_command(tool_pose)
+            self.viz.display_tool_command(tool_pose, tool_command.gripper_positions)
 
         # Check for base command update
         base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
