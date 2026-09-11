@@ -4,7 +4,7 @@ This node uses the KeyboardTeleopPolicy with the RealtimeEnvironment to provide
 keyboard-based control of the robot's end-effector pose.
 """
 
-from humanoid.config import ROBOT_CONFIG
+from humanoid.config import ROBOT_CONFIG, get_keyboard_teleop_policy_config
 from humanoid.constants import Topic
 from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.logger import get_logger
@@ -34,6 +34,8 @@ class KeyboardTeleopNode(Node):
             policy_config: Tunable parameters for the keyboard teleop policy.
                 Its ``dt`` field sets the control loop period.
         """
+        if policy_config is None:
+            policy_config = get_keyboard_teleop_policy_config()
         self.policy = KeyboardTeleopPolicy(robot_config=robot_config, config=policy_config)
 
         self.env = RealtimeEnvironment(

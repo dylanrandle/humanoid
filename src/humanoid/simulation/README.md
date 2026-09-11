@@ -39,8 +39,8 @@ continue to receive and simulate their commanded angular velocities.
 
 ## Timing and safety
 
-The default physics timestep is 1 ms. The simulation node publishes at 500 Hz and takes
-two physics substeps per LCM tick. Position targets latch and hold; velocity targets are
+The default physics timestep is 5 ms. The simulation node publishes at 200 Hz and takes
+one physics step per LCM tick. Position targets latch and hold; velocity targets are
 zeroed by the same 250 ms stale-command policy used by the hardware driver.
 
 Restarting the simulation process resets it to the configured Home preset. The engine

@@ -22,6 +22,7 @@ class StubActuatorDriver(ActuatorDriver):
     ):
         super().__init__(actuator_ids)
         self.position_writes: list[dict[int, float]] = []
+        self.position_velocity_writes: list[dict[int, float] | None] = []
         self.velocity_writes: list[dict[int, float]] = []
         self.positions = dict.fromkeys(actuator_ids, 0.0)
         self.velocities = dict.fromkeys(actuator_ids, 0.0)
@@ -43,8 +44,13 @@ class StubActuatorDriver(ActuatorDriver):
             raise RuntimeError("controller cleanup failed")
         self.connected = False
 
-    def write_position(self, positions: dict[int, float]) -> None:
+    def write_position(
+        self,
+        positions: dict[int, float],
+        velocities: dict[int, float] | None = None,
+    ) -> None:
         self.position_writes.append(positions)
+        self.position_velocity_writes.append(velocities)
 
     def read_position(self, actuator_id: int) -> float | None:
         return self.positions.get(actuator_id)
@@ -101,6 +107,63 @@ def test_routes_duplicate_ids_by_controller():
 
     assert left.position_writes == [{1: 0.1}]
     assert right.position_writes == [{1: 0.2}]
+    assert left.position_velocity_writes == [None]
+    assert right.position_velocity_writes == [None]
+
+
+def test_routes_position_trajectory_velocities_by_controller():
+    left = StubActuatorDriver([1])
+    right = StubActuatorDriver([1])
+    system = CompositeActuatorSystem(
+        {
+            "left_joint": _actuator("left"),
+            "right_joint": _actuator("right"),
+        },
+        {
+            "left_joint": ActuatorControlMode.POSITION,
+            "right_joint": ActuatorControlMode.POSITION,
+        },
+        {"left": left, "right": right},
+    )
+
+    system.write_positions(
+        {"left_joint": 0.1, "right_joint": 0.2},
+        {"left_joint": 0.3, "right_joint": 0.4},
+    )
+
+    assert left.position_velocity_writes == [{1: 0.3}]
+    assert right.position_velocity_writes == [{1: 0.4}]
+
+
+def test_position_trajectory_velocities_may_be_a_subset_of_positions():
+    driver = StubActuatorDriver([1])
+    system = CompositeActuatorSystem(
+        {"joint": _actuator("main")},
+        {"joint": ActuatorControlMode.POSITION},
+        {"main": driver},
+    )
+
+    system.write_positions({"joint": 0.1}, {})
+
+    assert driver.position_velocity_writes == [{}]
+
+
+def test_position_trajectory_velocity_requires_a_position_command():
+    driver = StubActuatorDriver([1, 2])
+    system = CompositeActuatorSystem(
+        {
+            "commanded": FeetechActuatorConfig(actuator_id=1, controller="main"),
+            "velocity_only": FeetechActuatorConfig(actuator_id=2, controller="main"),
+        },
+        {
+            "commanded": ActuatorControlMode.POSITION,
+            "velocity_only": ActuatorControlMode.POSITION,
+        },
+        {"main": driver},
+    )
+
+    with pytest.raises(ValueError, match="matching position commands"):
+        system.write_positions({"commanded": 0.1}, {"velocity_only": 0.2})
 
 
 def test_translates_controller_feedback_to_joint_names():

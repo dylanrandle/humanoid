@@ -91,33 +91,6 @@ class BaseTeleopPolicy(Policy):
         """
         return self.robot.get_base_pose(self._get_joint_positions(observation))
 
-    def _limit_tool_pose_step(
-        self,
-        current_pose: pin.SE3,
-        target_pose: pin.SE3,
-        dt: float,
-    ) -> pin.SE3:
-        """Limit one tool-target update using the robot's Cartesian limits."""
-        limits = self.robot_config.tool.velocity_limits
-
-        translation_delta = target_pose.translation - current_pose.translation
-        translation_distance = float(np.linalg.norm(translation_delta))
-        max_translation = limits.linear * dt
-        if translation_distance > max_translation:
-            translation_delta *= max_translation / translation_distance
-
-        rotation_delta = current_pose.rotation.T @ target_pose.rotation
-        rotation_vector = pin.log3(rotation_delta)
-        rotation_distance = float(np.linalg.norm(rotation_vector))
-        max_rotation = limits.angular * dt
-        if rotation_distance > max_rotation:
-            rotation_vector *= max_rotation / rotation_distance
-
-        return pin.SE3(
-            current_pose.rotation @ pin.exp3(rotation_vector),
-            current_pose.translation + translation_delta,
-        )
-
     def _get_current_gripper_positions(self, observation: Observation) -> np.ndarray | None:
         """Read current gripper positions from the observation.
 

@@ -11,16 +11,18 @@ import numpy as np
 import pink
 import pinocchio as pin
 from pink.barriers import SelfCollisionBarrier
+from pink.limits import AccelerationLimit, ConfigurationLimit, Limit, VelocityLimit
 from pink.tasks import (
     DampingTask,
     FrameTask,
+    LowAccelerationTask,
     PostureTask,
     RelativeFrameTask,
 )
 from pink.utils import process_collision_pairs
 
 from humanoid.controllers.base import Controller
-from humanoid.controllers.constraints import lock_uncontrolled_velocities
+from humanoid.controllers.constraints import SelectedVelocityLimit, lock_uncontrolled_velocities
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
 from humanoid.types.controllers import ControlResult, OperationalSpaceConfig
@@ -35,6 +37,7 @@ class TaskName(StrEnum):
     TOOL = "tool"
     JOINT_CENTERING = "joint_centering"
     DAMPING = "damping"
+    LOW_ACCELERATION = "low_acceleration"
 
 
 class OperationalSpaceController(Controller[pin.SE3]):
@@ -95,43 +98,12 @@ class OperationalSpaceController(Controller[pin.SE3]):
         # operational-space configuration only tunes arm behavior.
         root_v_slice = robot.get_root_v_slice()
         root_nv = 0 if root_v_slice is None else root_v_slice.stop - root_v_slice.start
-        arm_mask = np.zeros(robot.model.nv - root_nv)
-        arm_task_indices = self.controlled_v_indices - root_nv
-        arm_mask[arm_task_indices] = 1.0
-
-        def arm_cost_mask(mask: np.ndarray | float, label: str) -> np.ndarray:
-            values = np.asarray(mask, dtype=float)
-            if values.ndim == 0:
-                return arm_mask * values
-            if values.shape == self.controlled_v_indices.shape:
-                result = np.zeros_like(arm_mask)
-                result[arm_task_indices] = values
-                return result
-            if values.shape == arm_mask.shape:
-                return arm_mask * values
-            raise ValueError(
-                f"{label} must be a scalar, one value per arm velocity "
-                f"({len(self.controlled_v_indices)}), or one value per non-root "
-                f"velocity ({len(arm_mask)}); received {values.shape}."
-            )
-
-        # Create posture task for null space control (joint centering)
-        self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
-            cost=(
-                self.config.joint_centering_cost
-                * arm_cost_mask(self.config.joint_centering_mask, "joint_centering_mask")
-            )  # ty:ignore[invalid-argument-type]
-        )
-        self.tasks[TaskName.JOINT_CENTERING].set_target(
-            robot.config.homing_presets[HomingPreset.HOME]
-        )
-
-        # Create damping task for velocity minimization
-        self.tasks[TaskName.DAMPING] = DampingTask(
-            cost=(
-                self.config.damping_cost * arm_cost_mask(self.config.damping_mask, "damping_mask")
-            )  # ty:ignore[invalid-argument-type]
-        )
+        self._root_nv = root_nv
+        self._arm_mask = np.zeros(robot.model.nv - root_nv)
+        self._arm_task_indices = self.controlled_v_indices - root_nv
+        self._arm_mask[self._arm_task_indices] = 1.0
+        self._configure_regularization_tasks()
+        self._configure_motion_limits()
 
         # Initialize barriers
         self.barriers = []
@@ -146,6 +118,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
             collision_barrier = SelfCollisionBarrier(
                 n_collision_pairs=len(self.robot.collision_model.collisionPairs),
                 d_min=self.config.min_collision_distance,
+                safe_displacement_gain=self.config.collision_safe_displacement_gain,
             )
             self.barriers.append(collision_barrier)
             logger.info(
@@ -154,6 +127,101 @@ class OperationalSpaceController(Controller[pin.SE3]):
             )
         else:
             logger.info("Collision avoidance disabled")
+
+    def _arm_cost_mask(self, mask: np.ndarray | float, label: str) -> np.ndarray:
+        values = np.asarray(mask, dtype=float)
+        if values.ndim == 0:
+            return self._arm_mask * values
+        if values.shape == self.controlled_v_indices.shape:
+            result = np.zeros_like(self._arm_mask)
+            result[self._arm_task_indices] = values
+            return result
+        if values.shape == self._arm_mask.shape:
+            return self._arm_mask * values
+        raise ValueError(
+            f"{label} must be a scalar, one value per arm velocity "
+            f"({len(self.controlled_v_indices)}), or one value per non-root "
+            f"velocity ({len(self._arm_mask)}); received {values.shape}."
+        )
+
+    def _arm_limit_values(self, configured: np.ndarray | float, label: str) -> np.ndarray:
+        values = np.asarray(configured, dtype=float)
+        if values.ndim == 0:
+            return np.full(len(self.controlled_v_indices), float(values))
+        if values.shape == self.controlled_v_indices.shape:
+            return values
+        raise ValueError(
+            f"{label} must be a scalar or one value per arm velocity "
+            f"({len(self.controlled_v_indices)}); received {values.shape}."
+        )
+
+    def _configure_regularization_tasks(self) -> None:
+        self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
+            cost=(
+                self.config.joint_centering_cost
+                * self._arm_cost_mask(self.config.joint_centering_mask, "joint_centering_mask")
+            )  # ty:ignore[invalid-argument-type]
+        )
+        self.tasks[TaskName.JOINT_CENTERING].set_target(
+            self.robot.config.homing_presets[HomingPreset.HOME]
+        )
+        self.tasks[TaskName.DAMPING] = DampingTask(
+            cost=(
+                self.config.damping_cost
+                * self._arm_cost_mask(self.config.damping_mask, "damping_mask")
+            )  # ty:ignore[invalid-argument-type]
+        )
+
+        self._low_acceleration_task: LowAccelerationTask | None = None
+        if self.config.low_acceleration_cost <= 0.0:
+            return
+        self._low_acceleration_task = LowAccelerationTask(
+            cost=(
+                self.config.low_acceleration_cost
+                * self._arm_cost_mask(self.config.damping_mask, "damping_mask")
+            )  # ty:ignore[invalid-argument-type]
+        )
+        # Pink's posture-style Jacobian excludes floating-root velocities,
+        # so seed the task with a matching zero displacement before its first solve.
+        self._low_acceleration_task.set_last_integration(
+            np.zeros(self.robot.model.nv - self._root_nv),
+            self.config.dt,
+        )
+        self.tasks[TaskName.LOW_ACCELERATION] = self._low_acceleration_task
+
+    def _configure_motion_limits(self) -> None:
+        self._acceleration_limit: AccelerationLimit | None = None
+        additional_limits: list[Limit] = []
+        if self.config.joint_velocity_limit is not None:
+            additional_limits.append(
+                SelectedVelocityLimit(
+                    self.robot.model.nv,
+                    self.controlled_v_indices,
+                    self._arm_limit_values(
+                        self.config.joint_velocity_limit,
+                        "joint_velocity_limit",
+                    ),
+                )
+            )
+        if self.config.joint_acceleration_limit is not None:
+            acceleration_limits = np.zeros(self.robot.model.nv)
+            acceleration_limits[self.controlled_v_indices] = self._arm_limit_values(
+                self.config.joint_acceleration_limit,
+                "joint_acceleration_limit",
+            )
+            self._acceleration_limit = AccelerationLimit(
+                self.robot.model,
+                acceleration_limits,
+            )
+            additional_limits.append(self._acceleration_limit)
+
+        self._limits = None
+        if additional_limits:
+            self._limits = [
+                ConfigurationLimit(self.robot.model),
+                VelocityLimit(self.robot.model),
+                *additional_limits,
+            ]
 
     def update_state(self, q: np.ndarray) -> None:
         """Update the robot configuration state.
@@ -180,6 +248,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
     def compute_control(
         self,
         target: pin.SE3,
+        dt: float | None = None,
     ) -> ControlResult:
         """Compute arm motion to achieve a target tool pose.
 
@@ -203,6 +272,10 @@ class OperationalSpaceController(Controller[pin.SE3]):
                 "Call update_state() with robot state first."
             )
 
+        dt = self.config.dt if dt is None else dt
+        if not np.isfinite(dt) or dt <= 0.0:
+            raise ValueError("Controller timestep must be positive and finite.")
+
         # Set the target for the end-effector task
         self.tasks[TaskName.TOOL].set_target(target)
 
@@ -212,15 +285,29 @@ class OperationalSpaceController(Controller[pin.SE3]):
             solved_velocity = pink.solve_ik(
                 self.configuration,
                 self.tasks.values(),
-                self.config.dt,
+                dt,
                 solver=self.config.solver,
+                limits=self._limits,
                 barriers=self.barriers,
                 constraints=self._constraints,
             )
             velocity[self.controlled_v_indices] = solved_velocity[self.controlled_v_indices]
-            self.configuration.integrate_inplace(velocity, self.config.dt)
+            self.configuration.integrate_inplace(velocity, dt)
+            self._set_previous_velocity(velocity, dt)
         except Exception as e:
             # TODO: try to get unstuck if we are at limits
             logger.error(f"Encountered exception: {e}")
+            self._set_previous_velocity(velocity, dt)
 
         return ControlResult(q=self.configuration.q.copy(), v=velocity)
+
+    def reset_motion(self) -> None:
+        """Reset stateful velocity smoothing when control is disengaged."""
+        self._set_previous_velocity(np.zeros(self.robot.model.nv), self.config.dt)
+
+    def _set_previous_velocity(self, velocity: np.ndarray, dt: float) -> None:
+        if self._acceleration_limit is not None:
+            self._acceleration_limit.set_last_integration(velocity, dt)
+        if self._low_acceleration_task is not None:
+            # Pink posture-style tasks omit the floating-root coordinates.
+            self._low_acceleration_task.set_last_integration(velocity[self._root_nv :], dt)

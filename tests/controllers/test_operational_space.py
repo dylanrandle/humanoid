@@ -3,7 +3,7 @@ from dataclasses import replace
 import numpy as np
 import pinocchio as pin
 import pytest
-from pink.tasks import FrameTask, RelativeFrameTask
+from pink.tasks import FrameTask, LowAccelerationTask, RelativeFrameTask
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.controllers.operational_space import (
@@ -96,6 +96,54 @@ class TestConstruction:
     def test_configuration_is_none_initially(self, panda_osc):
         """configuration is deferred until first update_state call."""
         assert panda_osc.configuration is None
+
+    def test_optional_low_acceleration_task_is_enabled(self, panda_robot):
+        config = OperationalSpaceConfig(low_acceleration_cost=0.1)
+
+        osc = OperationalSpaceController(robot=panda_robot, config=config)
+
+        assert isinstance(osc.tasks[TaskName.LOW_ACCELERATION], LowAccelerationTask)
+
+    def test_triskel_smoothing_config_constructs_for_mobile_model(self, mobile_robot):
+        config = mobile_robot.config.operational_space_config
+        assert config is not None
+
+        osc = OperationalSpaceController(robot=mobile_robot, config=config)
+
+        assert TaskName.LOW_ACCELERATION in osc.tasks
+        assert osc._acceleration_limit is not None
+
+        q = mobile_robot.config.homing_presets[HomingPreset.HOME].copy()
+        osc.update_state(q)
+        target = mobile_robot.get_tool_command_pose(q)
+        target.translation[0] += 0.01
+
+        result = osc.compute_control(target, dt=config.dt)
+
+        assert np.any(np.abs(result.v[osc.controlled_v_indices]) > 0.0)
+
+    def test_collision_barrier_uses_configured_safe_displacement_gain(self, mobile_robot):
+        configured_gain = 0.025
+        config = OperationalSpaceConfig(
+            avoid_collisions=True,
+            collision_safe_displacement_gain=configured_gain,
+        )
+
+        osc = OperationalSpaceController(robot=mobile_robot, config=config)
+
+        assert len(osc.barriers) == 1
+        assert osc.barriers[0].safe_displacement_gain == pytest.approx(configured_gain)
+
+    @pytest.mark.parametrize("gain", [-1.0, np.inf, np.nan])
+    def test_invalid_collision_safe_displacement_gain_is_rejected(self, gain):
+        with pytest.raises(ValueError, match="safe-displacement"):
+            OperationalSpaceConfig(collision_safe_displacement_gain=gain)
+
+    @pytest.mark.parametrize("field", ["joint_velocity_limit", "joint_acceleration_limit"])
+    @pytest.mark.parametrize("limit", [0.0, -1.0, np.inf, np.nan])
+    def test_invalid_joint_motion_limit_is_rejected(self, field, limit):
+        with pytest.raises(ValueError, match="limits"):
+            OperationalSpaceConfig(**{field: limit})
 
 
 class TestUpdateState:
@@ -225,3 +273,44 @@ class TestComputeControl:
         gripper_indices = panda_robot.get_gripper_position_indices()
         np.testing.assert_allclose(result.q[gripper_indices], q_before[gripper_indices])
         np.testing.assert_array_equal(result.v[gripper_indices], 0.0)
+
+    def test_hard_acceleration_limit_bounds_joint_velocity_change(self, panda_robot):
+        acceleration_limit = 0.5
+        dt = 0.1
+        osc = OperationalSpaceController(
+            robot=panda_robot,
+            config=OperationalSpaceConfig(
+                dt=dt,
+                joint_acceleration_limit=acceleration_limit,
+            ),
+        )
+        q = panda_robot.config.homing_presets[HomingPreset.HOME].copy()
+        osc.update_state(q)
+        target = panda_robot.get_tool_command_pose(q)
+        target.translation[0] += 0.1
+
+        first = osc.compute_control(target, dt=dt)
+        second = osc.compute_control(target, dt=dt)
+        arm_v_indices = panda_robot.get_joint_velocity_indices(panda_robot.get_arm_joint_indices())
+
+        max_velocity_change = acceleration_limit * dt + 1e-6
+        assert np.max(np.abs(first.v[arm_v_indices])) <= max_velocity_change
+        assert np.max(np.abs(second.v[arm_v_indices] - first.v[arm_v_indices])) <= (
+            max_velocity_change
+        )
+
+    def test_configured_joint_velocity_limit_is_enforced(self, panda_robot):
+        velocity_limit = 0.1
+        osc = OperationalSpaceController(
+            robot=panda_robot,
+            config=OperationalSpaceConfig(joint_velocity_limit=velocity_limit),
+        )
+        q = panda_robot.config.homing_presets[HomingPreset.HOME].copy()
+        osc.update_state(q)
+        target = panda_robot.get_tool_command_pose(q)
+        target.translation[0] += 0.5
+
+        result = osc.compute_control(target)
+
+        arm_v_indices = panda_robot.get_joint_velocity_indices(panda_robot.get_arm_joint_indices())
+        assert np.max(np.abs(result.v[arm_v_indices])) <= velocity_limit + 1e-6

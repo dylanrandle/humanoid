@@ -22,12 +22,25 @@ class KeyboardTeleopPolicyConfig:
         gripper_close_time: Seconds of held input required to traverse the
             full gripper joint range. The per-keypress step is
             ``(gripper_max - gripper_min) * dt / gripper_close_time``.
+        tool_linear_acceleration_limit: Optional tool translation acceleration
+            limit in m/s^2. ``None`` disables acceleration shaping.
+        tool_angular_acceleration_limit: Optional tool rotation acceleration
+            limit in rad/s^2. ``None`` disables acceleration shaping.
         verbose: Whether to log pose updates.
     """
 
     dt: float = 0.01
     gripper_close_time: float = 1.0
+    tool_linear_acceleration_limit: float | None = None
+    tool_angular_acceleration_limit: float | None = None
     verbose: bool = True
+
+    def __post_init__(self) -> None:
+        _validate_motion_config(
+            self.dt,
+            self.tool_linear_acceleration_limit,
+            self.tool_angular_acceleration_limit,
+        )
 
 
 @dataclass
@@ -71,6 +84,12 @@ class OculusTeleopPolicyConfig:
             controller frame. Older input is treated as disengaged.
         startup_timeout: Maximum time in seconds to wait for the first valid
             controller frame before failing with a setup error.
+        tool_linear_acceleration_limit: Optional tool translation acceleration
+            limit in m/s^2. ``None`` disables acceleration shaping.
+        tool_angular_acceleration_limit: Optional tool rotation acceleration
+            limit in rad/s^2. ``None`` disables acceleration shaping.
+        controller_pose_filter_time_constant: Low-pass filter time constant for
+            Oculus position and orientation in seconds. Zero disables filtering.
         verbose: Whether to log pose updates.
     """
 
@@ -90,6 +109,9 @@ class OculusTeleopPolicyConfig:
     base_yaw_scale: float = -1.0
     base_deadzone: float = 0.1
     gripper_close_time: float = 1.0
+    tool_linear_acceleration_limit: float | None = None
+    tool_angular_acceleration_limit: float | None = None
+    controller_pose_filter_time_constant: float = 0.0
     ip_address: str | None = None
     port: int = 5555
     input_timeout: float = 0.3
@@ -97,6 +119,18 @@ class OculusTeleopPolicyConfig:
     verbose: bool = True
 
     def __post_init__(self) -> None:
+        _validate_motion_config(
+            self.dt,
+            self.tool_linear_acceleration_limit,
+            self.tool_angular_acceleration_limit,
+        )
+        if (
+            not np.isfinite(self.controller_pose_filter_time_constant)
+            or self.controller_pose_filter_time_constant < 0.0
+        ):
+            raise ValueError(
+                "Controller pose filter time constant must be finite and non-negative."
+            )
         if self.ip_address is not None:
             try:
                 self.ip_address = str(IPv4Address(self.ip_address.strip()))
@@ -108,6 +142,21 @@ class OculusTeleopPolicyConfig:
             raise ValueError("Oculus input timeout must be positive and finite.")
         if not np.isfinite(self.startup_timeout) or self.startup_timeout <= 0.0:
             raise ValueError("Oculus startup timeout must be positive and finite.")
+
+
+def _validate_motion_config(
+    dt: float,
+    linear_acceleration_limit: float | None,
+    angular_acceleration_limit: float | None,
+) -> None:
+    if not np.isfinite(dt) or dt <= 0.0:
+        raise ValueError("Teleop timestep must be positive and finite.")
+    for name, value in (
+        ("linear acceleration limit", linear_acceleration_limit),
+        ("angular acceleration limit", angular_acceleration_limit),
+    ):
+        if value is not None and (not np.isfinite(value) or value <= 0.0):
+            raise ValueError(f"Tool {name} must be positive and finite when configured.")
 
 
 @dataclass(frozen=True)

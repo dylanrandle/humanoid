@@ -3,15 +3,15 @@ from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACTUATOR_ID_MIN,
     FeetechActuatorControllerConfig,
 )
-from humanoid.hardware.actuators.feetech.driver import FeetechActuatorDriver
+from humanoid.hardware.actuators.feetech.driver import (
+    ADDR_D_GAIN,
+    ADDR_I_GAIN,
+    ADDR_P_GAIN,
+    FeetechActuatorDriver,
+)
 from humanoid.logger import get_logger
 
 logger = get_logger(__name__)
-
-ADDR_P_GAIN = 21
-ADDR_D_GAIN = 22
-ADDR_I_GAIN = 23
-ADDR_LOCK = 48
 
 
 class FeetechActuatorConfigurator:

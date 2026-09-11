@@ -5,6 +5,7 @@ from humanoid.config import ROBOT_CONFIGS
 from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
+    FeetechPIDGains,
 )
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.types.actuator import (
@@ -61,6 +62,18 @@ def test_triskel_actuator_hardware_configuration():
     )
     assert actuator_hardware.joints["gripper_1"].actuator_id == EXPECTED_GRIPPER_ACTUATOR_ID
     assert actuator_hardware.joints["gripper_1"].inverted is True
+    for index in range(1, 8):
+        actuator = actuator_hardware.joints[f"arm_{index}"]
+        assert isinstance(actuator, FeetechActuatorConfig)
+        gains = actuator.position_pid
+        assert gains == FeetechPIDGains(p=32, i=0, d=32)
+    gripper = actuator_hardware.joints["gripper_1"]
+    assert isinstance(gripper, FeetechActuatorConfig)
+    assert gripper.position_pid == FeetechPIDGains(
+        p=32,
+        i=0,
+        d=32,
+    )
 
 
 def test_duplicate_actuator_id_on_same_controller_is_rejected():
@@ -130,6 +143,37 @@ def test_feetech_actuator_rejects_acceleration_outside_register_range(accelerati
             controller=MAIN_CONTROLLER,
             max_acceleration=acceleration,
         )
+
+
+@pytest.mark.parametrize("velocity", [0.0, -1.0, np.inf, np.nan])
+def test_feetech_actuator_rejects_invalid_maximum_position_velocity(velocity):
+    with pytest.raises(ValueError, match="maximum position velocity"):
+        FeetechActuatorConfig(
+            actuator_id=1,
+            controller=MAIN_CONTROLLER,
+            max_position_velocity=velocity,
+        )
+
+
+@pytest.mark.parametrize("gain", [-1.0, np.inf, np.nan])
+def test_feetech_actuator_rejects_invalid_position_tracking_error_gain(gain):
+    with pytest.raises(ValueError, match="tracking-error gain"):
+        FeetechActuatorConfig(
+            actuator_id=1,
+            controller=MAIN_CONTROLLER,
+            position_tracking_error_gain=gain,
+        )
+
+
+@pytest.mark.parametrize(
+    ("gain_name", "gain_value"),
+    [("p", -1), ("i", 255), ("d", 1.5)],
+)
+def test_feetech_pid_rejects_invalid_register_values(gain_name, gain_value):
+    gains = {"p": 32, "i": 0, "d": 32, gain_name: gain_value}
+
+    with pytest.raises(ValueError, match=f"{gain_name.upper()} gain must be between 0 and 254"):
+        FeetechPIDGains(**gains)
 
 
 def test_robot_config_owns_physical_binding_equality_validation():

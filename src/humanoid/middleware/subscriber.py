@@ -141,6 +141,7 @@ class Subscriber:
             Topic.ROBOT_TOOL_COMMAND,
             Topic.OCULUS_TOOL_COMMAND,
             Topic.KEYBOARD_TOOL_COMMAND,
+            Topic.SYSTEM_TOOL_COMMAND,
         ],
         timeout: int | None = None,
     ) -> RobotToolCommand | None: ...

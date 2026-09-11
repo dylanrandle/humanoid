@@ -9,6 +9,7 @@ from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop.base import BaseTeleopPolicy
+from humanoid.policy.teleop.motion import CartesianPoseLimiter, low_pass_pose
 from humanoid.policy.teleop.oculus_reader import OculusReader
 from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
@@ -82,6 +83,11 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.tool_rotation_scale = config.tool_rotation_scale
         self.base_config = robot_config.base
         self.oculus_to_tool_command_rotation = config.oculus_to_tool_command_rotation.copy()
+        self.tool_motion_limiter = CartesianPoseLimiter(
+            robot_config.tool.velocity_limits,
+            config.tool_linear_acceleration_limit,
+            config.tool_angular_acceleration_limit,
+        )
         self.gripper_step = (
             (self.gripper_max - self.gripper_min) * self.config.dt / self.config.gripper_close_time
         )
@@ -108,6 +114,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
         # Reference poses (set on first engaged call; cleared whenever the dead-man releases)
         self.reference_controller_pose: np.ndarray | None = None
+        self.filtered_controller_pose: pin.SE3 | None = None
         self.reference_tool_pose: pin.SE3 | None = None
         self.commanded_tool_pose: pin.SE3 | None = None
         self.reference_base_pose: pin.SE3 | None = None
@@ -187,10 +194,12 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
     def reset(self) -> None:
         """Reset policy state."""
         self.reference_controller_pose = None
+        self.filtered_controller_pose = None
         self.reference_tool_pose = None
         self.commanded_tool_pose = None
         self.reference_base_pose = None
         self.commanded_gripper_position = None
+        self.tool_motion_limiter.reset()
 
     def _is_rising_edge(self, current_pressed: bool, key: str) -> bool:
         """Check if button transitioned False -> True. Stores the state for future checks."""
@@ -293,8 +302,13 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             observation: Current observation from the environment
         """
         self.reference_controller_pose = right_controller_pose.copy()
+        self.filtered_controller_pose = pin.SE3(
+            right_controller_pose[:3, :3],
+            right_controller_pose[:3, 3],
+        )
         self.reference_tool_pose = self._get_current_tool_pose(observation)
         self.commanded_tool_pose = self.reference_tool_pose.copy()
+        self.tool_motion_limiter.reset()
         if self.robot_config.base is not None:
             base_pose = self._get_current_base_pose(observation)
             assert base_pose is not None, "Mobile base configured but FK returned None"
@@ -325,6 +339,16 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             right_controller_pose[:3, :3],
             right_controller_pose[:3, 3],
         )
+        if self.filtered_controller_pose is None:
+            self.filtered_controller_pose = current_controller.copy()
+        else:
+            self.filtered_controller_pose = low_pass_pose(
+                self.filtered_controller_pose,
+                current_controller,
+                self.config.dt,
+                self.config.controller_pose_filter_time_constant,
+            )
+        current_controller = self.filtered_controller_pose
         command_rotation = self.oculus_to_tool_command_rotation
 
         # translation
@@ -345,7 +369,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             scaled_rotation_delta @ self.reference_tool_pose.rotation,
             scaled_translation_delta + self.reference_tool_pose.translation,
         )
-        target_pose = self._limit_tool_pose_step(
+        target_pose = self.tool_motion_limiter.step(
             self.commanded_tool_pose,
             desired_pose,
             self.config.dt,

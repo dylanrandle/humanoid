@@ -51,3 +51,9 @@ uv run python -m humanoid.hardware.actuators.feetech.scripts.read_gains --actuat
 Robot configs can set `port`, `baud_rate`, and `servo_type` on each
 `FeetechActuatorControllerConfig`. A single controller may omit `port` to use SDK
 auto-detection. Multiple Feetech controllers require distinct explicit ports.
+
+Position-controlled actuators may also declare persistent `position_pid` gains in
+their `FeetechActuatorConfig`. On connection, the driver reads the servo first and
+only unlocks/writes EEPROM when a configured gain differs, then locks EEPROM and
+verifies the result before enabling torque. Triskel currently keeps the observed
+P=32, D=32 baseline and trials I=1 on the gravity-loaded arm 3 and arm 4 joints.

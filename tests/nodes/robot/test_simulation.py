@@ -16,6 +16,8 @@ from humanoid.types.robot import NormalizedRobotJointCommand, RobotJointCommand,
 from humanoid.types.simulation import MujocoSimulationConfig
 
 SPAWNED_SIMULATION_TIMEOUT_SECONDS = 15.0
+EXPECTED_SIMULATION_RATE_HZ = 200.0
+EXPECTED_SIMULATION_SUBSTEPS = 1
 
 
 def _run_spawned_simulation(result_queue) -> None:
@@ -42,7 +44,7 @@ def _make_node(monkeypatch, *, clock=None, timeout: float = 0.25):
     subscriber = MagicMock(spec=Subscriber)
     publisher = MagicMock(spec=Publisher)
     engine = MagicMock(spec=NativeMujocoEngine)
-    engine.physics_timestep = 0.001
+    engine.physics_timestep = MujocoSimulationConfig().physics_timestep
     engine.read_robot_state.return_value = _state()
     engine.apply_joint_command.return_value = NormalizedRobotJointCommand(
         joint_positions=np.zeros(6),
@@ -74,12 +76,19 @@ def test_steps_physics_and_publishes_state(monkeypatch):
     node.step()
 
     engine.apply_joint_command.assert_called_once_with(command)
-    engine.step.assert_called_once_with(2)
+    engine.step.assert_called_once_with(EXPECTED_SIMULATION_SUBSTEPS)
     engine.read_robot_state.assert_called_once_with(timestamp=1.01)
     publisher.publish.assert_called_once_with(
         engine.read_robot_state.return_value,
         topic=Topic.ROBOT_STATE,
     )
+
+
+def test_default_simulation_runs_at_two_hundred_hz(monkeypatch):
+    node, _, _, _ = _make_node(monkeypatch)
+
+    assert node.rate_hz == pytest.approx(EXPECTED_SIMULATION_RATE_HZ)
+    assert node.substeps == EXPECTED_SIMULATION_SUBSTEPS
 
 
 def test_watchdog_stops_velocity_actuators_once(monkeypatch):

@@ -8,7 +8,11 @@
   max-height: 420px;
   margin: 0;
   padding: 20px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: scroll;
+  scrollbar-color: rgb(255 255 255 / 35%) rgb(255 255 255 / 7%);
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   border: 1px solid rgb(255 255 255 / 8%);
   border-radius: var(--radius-md);
   background: var(--ink);
@@ -19,6 +23,26 @@
   overflow-wrap: anywhere;
   tab-size: 2;
   white-space: pre-wrap;
+}
+
+.application-log-output::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.application-log-output::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgb(255 255 255 / 7%);
+}
+
+.application-log-output::-webkit-scrollbar-thumb {
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 35%);
+}
+
+.application-log-output::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 52%);
 }
 
 .application-log-output:focus-visible {

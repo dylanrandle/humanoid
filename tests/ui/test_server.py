@@ -107,6 +107,8 @@ def test_serves_split_ui_assets(server_client):
     response = client.get("/css/logs.css")
     assert response.status_code == HTTPStatus.OK
     assert b".application-log-output" in response.data
+    assert b"overflow-y: scroll" in response.data
+    assert b"scrollbar-gutter: stable" in response.data
 
 
 def test_routes_status(server_client):

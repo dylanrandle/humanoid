@@ -37,7 +37,11 @@ def _make_robot_config() -> RobotConfig:
     )
 
 
-def _make_controller(robot_config: RobotConfig | None = None) -> RobotControllerNode:
+def _make_controller(
+    robot_config: RobotConfig | None = None,
+    *,
+    clock=None,
+) -> RobotControllerNode:
     """Build a RobotControllerNode with mocked LCM, Robot, and OSC."""
     if robot_config is None:
         robot_config = _make_robot_config()
@@ -94,16 +98,20 @@ def _make_controller(robot_config: RobotConfig | None = None) -> RobotController
         def update_gripper_state(q):
             gripper_state["q"] = q.copy()
 
-        def compute_gripper_control(positions):
+        def compute_gripper_control(positions, *, dt=None):
             q = gripper_state["q"].copy()
             q[gripper_q_indices] = positions
-            return ControlResult(q=q, v=np.zeros(nv))
+            v = np.zeros(nv)
+            if dt is not None:
+                v[mock_gripper.controlled_v_indices] = 0.25
+            return ControlResult(q=q, v=v)
 
         mock_gripper.update_state.side_effect = update_gripper_state
         mock_gripper.compute_control.side_effect = compute_gripper_control
         mock_gripper_cls.return_value = mock_gripper
 
-        return RobotControllerNode(robot_config=robot_config)
+        kwargs = {"clock": clock} if clock is not None else {}
+        return RobotControllerNode(robot_config=robot_config, **kwargs)
 
 
 def _no_messages(topic, timeout=0):
@@ -241,6 +249,18 @@ class TestModeTransitions:
         assert controller.current_mode is Mode.OCULUS
         assert controller.is_active
 
+    def test_system_mode_activates_controller(self, controller):
+        def receive(topic, timeout=0):
+            if topic == Topic.ORCHESTRATOR_MODE:
+                return OrchestratorMode(timestamp=0.0, mode=Mode.SYSTEM)
+            return None
+
+        controller.subscriber.receive = Mock(side_effect=receive)
+        controller.step()
+
+        assert controller.current_mode is Mode.SYSTEM
+        assert controller.is_active
+
     def test_homing_mode_keeps_controller_inactive(self, controller):
         def receive(topic, timeout=0):
             if topic == Topic.ORCHESTRATOR_MODE:
@@ -328,7 +348,7 @@ class TestActiveMode:
         call_kwargs = active_controller.controller.compute_control.call_args
         # First positional arg is the tool pose.
         assert call_kwargs.args[0] is tool_cmd.pose
-        assert not call_kwargs.kwargs
+        assert call_kwargs.kwargs == {"dt": pytest.approx(active_controller._nominal_dt)}
 
         active_controller.publisher.publish.assert_called_once()
         published = active_controller.publisher.publish.call_args
@@ -389,7 +409,8 @@ class TestActiveMode:
         active_mobile_controller.step()
 
         active_mobile_controller.base_controller.compute_control.assert_called_once_with(
-            base_cmd.pose
+            base_cmd.pose,
+            dt=pytest.approx(0.1),
         )
         active_mobile_controller.arm_controller.compute_control.assert_not_called()
         published = active_mobile_controller.publisher.publish.call_args.args[0]
@@ -410,10 +431,12 @@ class TestActiveMode:
         active_mobile_controller.step()
 
         active_mobile_controller.arm_controller.compute_control.assert_called_once_with(
-            tool_cmd.pose
+            tool_cmd.pose,
+            dt=pytest.approx(0.1),
         )
         active_mobile_controller.base_controller.compute_control.assert_called_once_with(
-            base_cmd.pose
+            base_cmd.pose,
+            dt=pytest.approx(0.1),
         )
 
     def test_gripper_positions_use_separate_controller(self, active_mobile_controller):
@@ -422,7 +445,7 @@ class TestActiveMode:
         arm_result = active_mobile_controller.arm_controller.compute_control.return_value
         osc_gripper_positions = []
 
-        def compute_arm_control(tool_pose):
+        def compute_arm_control(tool_pose, *, dt=None):
             state = active_mobile_controller.arm_controller.update_state.call_args.args[0]
             osc_gripper_positions.append(state[-1])
             return arm_result
@@ -437,12 +460,30 @@ class TestActiveMode:
         active_mobile_controller.subscriber.receive = Mock(side_effect=receive)
         active_mobile_controller.step()
 
-        active_mobile_controller.gripper_controller.compute_control.assert_called_once_with(gripper)
+        active_mobile_controller.gripper_controller.compute_control.assert_called_once_with(
+            gripper,
+            dt=pytest.approx(0.1),
+        )
         assert osc_gripper_positions == [pytest.approx(gripper[0])]
         arm_call = active_mobile_controller.arm_controller.compute_control.call_args
         assert arm_call.args == (tool_cmd.pose,)
+        assert arm_call.kwargs == {"dt": pytest.approx(0.1)}
         published = active_mobile_controller.publisher.publish.call_args.args[0]
         assert published.joint_positions[-1] == pytest.approx(gripper[0])
+        assert published.joint_velocities[-1] == pytest.approx(0.25)
+
+
+def test_measured_control_timestep_is_used_and_bounded():
+    now = 1.0
+    controller = _make_controller(TRISKEL_CONFIG, clock=lambda: now)
+
+    assert controller._control_timestep() == pytest.approx(0.1)
+    now = 1.075
+    assert controller._control_timestep() == pytest.approx(0.075)
+    now = 1.5
+    assert controller._control_timestep() == pytest.approx(0.2)
+    now = 1.51
+    assert controller._control_timestep() == pytest.approx(0.05)
 
 
 def test_close_closes_subscriber(controller):

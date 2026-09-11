@@ -68,6 +68,32 @@ same LCM interface to the rest of the stack. Hardware actions require explicit o
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
 
+### Controller Tracking Diagnostic
+
+With the main stack running in **Idle**, command a conservative Cartesian figure eight
+from the gripper's measured pose while cycling the gripper open and closed:
+
+```bash
+uv run python -m humanoid.robots.utils.controller_tracking --robot triskel
+```
+
+The script waits three seconds before motion, acquires the dedicated `SYSTEM` command
+source, and returns the orchestrator to Idle on exit. Its defaults command an 80 mm by
+40 mm figure eight in the XZ plane at 10 Hz and a same-period gripper sinusoid that stays
+5% clear of each URDF joint limit. The ramp blends both motions into and out of their
+measured starting state. Raw CSV samples and an SVG report under `logs/tracking/`
+include tool and gripper tracking errors plus each arm joint's controller target,
+encoder measurement, signed error, timestamps, and overlaid command-versus-measured
+joint trajectories. Use `--help` to change the motion or gripper bounds, or
+`--hold-gripper` to disable gripper motion. Keep the selected `--robot` consistent with
+the running stack.
+
+After deploying, run the installed utility on the Pi with the stack in Idle:
+
+```bash
+/opt/humanoid/.venv/bin/python -m humanoid.robots.utils.controller_tracking --robot triskel
+```
+
 ### Deploying to Triskel
 
 Package the current local code and deploy it to `/opt/humanoid`:

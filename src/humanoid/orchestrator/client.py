@@ -45,6 +45,10 @@ class OrchestratorClient:
     def request_keyboard(self) -> None:
         self._send(EventKind.REQUEST_KEYBOARD)
 
+    def request_system(self) -> None:
+        """Request the source reserved for programmatic system commands."""
+        self._send(EventKind.REQUEST_SYSTEM)
+
     def request_idle(self) -> None:
         self._send(EventKind.REQUEST_IDLE)
 

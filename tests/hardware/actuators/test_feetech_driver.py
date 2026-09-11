@@ -1,5 +1,6 @@
 from unittest.mock import Mock, call, patch
 
+import numpy as np
 import pytest
 from vassar_feetech_servo_sdk import ServoController
 
@@ -8,12 +9,15 @@ from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACCELERATION_MIN,
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
+    FeetechPIDGains,
     FeetechServoType,
 )
 from humanoid.hardware.actuators.feetech.driver import (
     ADDR_GOAL_POSITION,
     ADDR_GOAL_SPEED,
+    ADDR_I_GAIN,
     ADDR_OPERATING_MODE,
+    ADDR_P_GAIN,
     ADDR_PRESENT_POSITION,
     ADDR_PRESENT_SPEED,
     ADDR_TEMPERATURE,
@@ -39,12 +43,16 @@ def _actuator(
     *,
     inverted: bool = False,
     max_acceleration: int = 10,
+    max_position_velocity: float = 1.0,
+    position_pid: FeetechPIDGains | None = None,
 ) -> FeetechActuatorConfig:
     return FeetechActuatorConfig(
         actuator_id=actuator_id,
         controller="main",
         inverted=inverted,
         max_acceleration=max_acceleration,
+        max_position_velocity=max_position_velocity,
+        position_pid=position_pid,
     )
 
 
@@ -73,6 +81,75 @@ def test_connection_config_is_passed_to_sdk():
     assert driver.servo_type == "sts"
 
 
+def test_position_pid_is_rejected_for_velocity_control():
+    actuator = _actuator(position_pid=FeetechPIDGains(p=32, i=0, d=32))
+
+    with pytest.raises(ValueError, match="position PID gains require position control"):
+        _driver([actuator], {1: ActuatorControlMode.VELOCITY})
+
+
+def test_position_pid_writes_only_changed_eeprom_gains_and_verifies():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.read1ByteTxRx.side_effect = [
+        (32, 0, 0),
+        (0, 0, 0),
+        (32, 0, 0),
+        (40, 0, 0),
+        (1, 0, 0),
+        (32, 0, 0),
+    ]
+    driver.packet_handler.unLockEprom.return_value = (0, 0)
+    driver.packet_handler.LockEprom.return_value = (0, 0)
+    driver.packet_handler.write1ByteTxRx.return_value = (0, 0)
+
+    driver._configure_position_pid(1, FeetechPIDGains(p=40, i=1, d=32))
+
+    assert driver.packet_handler.write1ByteTxRx.call_args_list == [
+        call(1, ADDR_P_GAIN, 40),
+        call(1, ADDR_I_GAIN, 1),
+    ]
+    driver.packet_handler.unLockEprom.assert_called_once_with(1)
+    driver.packet_handler.LockEprom.assert_called_once_with(1)
+
+
+def test_matching_position_pid_avoids_eeprom_write():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.read1ByteTxRx.side_effect = [
+        (32, 0, 0),
+        (0, 0, 0),
+        (32, 0, 0),
+    ]
+
+    driver._configure_position_pid(1, FeetechPIDGains(p=32, i=0, d=32))
+
+    driver.packet_handler.unLockEprom.assert_not_called()
+    driver.packet_handler.write1ByteTxRx.assert_not_called()
+    driver.packet_handler.LockEprom.assert_not_called()
+
+
+def test_position_pid_verification_failure_is_raised():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.read1ByteTxRx.side_effect = [
+        (32, 0, 0),
+        (0, 0, 0),
+        (32, 0, 0),
+        (32, 0, 0),
+        (0, 0, 0),
+        (32, 0, 0),
+    ]
+    driver.packet_handler.unLockEprom.return_value = (0, 0)
+    driver.packet_handler.LockEprom.return_value = (0, 0)
+    driver.packet_handler.write1ByteTxRx.return_value = (0, 0)
+
+    with pytest.raises(RuntimeError, match="Position PID verification failed"):
+        driver._configure_position_pid(1, FeetechPIDGains(p=40, i=0, d=32))
+
+    driver.packet_handler.write1ByteTxRx.assert_called_once_with(1, ADDR_P_GAIN, 40)
+
+
 def test_angle_conversion_round_trips_with_inversion():
     driver = _driver([_actuator(inverted=True)])
 
@@ -90,14 +167,112 @@ def test_position_writes_are_grouped_by_configured_acceleration():
 
     driver.write_position({1: 0.1, 2: 0.2})
 
+    conservative_speed = driver.velocity_to_position_speed(1.0)
     assert driver.packet_handler.SyncWritePosEx.call_args_list == [
-        call(1, driver.angle_to_position(0.1, 1), 32767, 10),
-        call(2, driver.angle_to_position(0.2, 2), 32767, 20),
+        call(1, driver.angle_to_position(0.1, 1), conservative_speed, 10),
+        call(2, driver.angle_to_position(0.2, 2), conservative_speed, 20),
     ]
     assert (
         driver.packet_handler.groupSyncWrite.txPacket.call_count
         == EXPECTED_ACCELERATION_GROUP_COUNT
     )
+
+
+def test_position_trajectory_velocity_sets_per_actuator_speed():
+    driver = _driver([_actuator(1), _actuator(2)])
+    driver.packet_handler = Mock()
+    driver.packet_handler.SyncWritePosEx.return_value = True
+    driver.packet_handler.groupSyncWrite.txPacket.return_value = 0
+    driver._last_positions = {1: 0.1, 2: 0.2}
+
+    driver.write_position(
+        {1: 0.1, 2: 0.2},
+        {1: 2 * SPEED_UNIT_RAD_S, 2: 4 * SPEED_UNIT_RAD_S},
+    )
+
+    assert driver.packet_handler.SyncWritePosEx.call_args_list == [
+        call(1, driver.angle_to_position(0.1, 1), 2, 10),
+        call(2, driver.angle_to_position(0.2, 2), 4, 10),
+    ]
+
+
+def test_missing_position_trajectory_velocity_uses_configured_fallback():
+    driver = _driver([_actuator(1), _actuator(2)])
+    driver.packet_handler = Mock()
+    driver.packet_handler.SyncWritePosEx.return_value = True
+    driver.packet_handler.groupSyncWrite.txPacket.return_value = 0
+    driver._last_positions = {1: 0.1}
+
+    driver.write_position({1: 0.1, 2: 0.2}, {1: 2 * SPEED_UNIT_RAD_S})
+
+    fallback_speed = driver.velocity_to_position_speed(1.0)
+    assert driver.packet_handler.SyncWritePosEx.call_args_list == [
+        call(1, driver.angle_to_position(0.1, 1), 2, 10),
+        call(2, driver.angle_to_position(0.2, 2), fallback_speed, 10),
+    ]
+
+
+def test_position_trajectory_velocity_is_clamped_to_configured_maximum():
+    driver = _driver([_actuator(max_position_velocity=0.5)])
+    driver.packet_handler = Mock()
+    driver.packet_handler.SyncWritePosEx.return_value = True
+    driver.packet_handler.groupSyncWrite.txPacket.return_value = 0
+    driver._last_positions = {1: 0.1}
+
+    driver.write_position({1: 0.1}, {1: 10.0})
+
+    expected_speed = driver.velocity_to_position_speed(0.5)
+    assert driver.packet_handler.SyncWritePosEx.call_args.args[2] == expected_speed
+
+
+def test_zero_position_trajectory_velocity_uses_minimum_servo_speed():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.SyncWritePosEx.return_value = True
+    driver.packet_handler.groupSyncWrite.txPacket.return_value = 0
+    driver._last_positions = {1: 0.1}
+
+    driver.write_position({1: 0.1}, {1: 0.0})
+
+    assert driver.packet_handler.SyncWritePosEx.call_args.args[2] == 1
+
+
+def test_position_tracking_error_adds_catch_up_speed():
+    driver = _driver([_actuator(max_position_velocity=2.0)])
+    driver.packet_handler = Mock()
+    driver.packet_handler.SyncWritePosEx.return_value = True
+    driver.packet_handler.groupSyncWrite.txPacket.return_value = 0
+    driver._last_positions = {1: 0.0}
+
+    feedforward_velocity = 2 * SPEED_UNIT_RAD_S
+    driver.write_position({1: 0.05}, {1: feedforward_velocity})
+
+    expected_velocity = feedforward_velocity + 10.0 * 0.05
+    expected_speed = driver.velocity_to_position_speed(expected_velocity)
+    assert driver.packet_handler.SyncWritePosEx.call_args.args[2] == expected_speed
+
+
+def test_missing_position_feedback_uses_configured_speed_for_headroom():
+    driver = _driver([_actuator(max_position_velocity=0.5)])
+    driver.packet_handler = Mock()
+    driver.packet_handler.SyncWritePosEx.return_value = True
+    driver.packet_handler.groupSyncWrite.txPacket.return_value = 0
+
+    driver.write_position({1: 0.1}, {1: 0.0})
+
+    expected_speed = driver.velocity_to_position_speed(0.5)
+    assert driver.packet_handler.SyncWritePosEx.call_args.args[2] == expected_speed
+
+
+@pytest.mark.parametrize("velocity", [np.inf, np.nan])
+def test_position_trajectory_rejects_non_finite_velocity(velocity):
+    driver = _driver()
+    driver.packet_handler = Mock()
+
+    with pytest.raises(ValueError, match="position velocity must be finite"):
+        driver.write_position({1: 0.1}, {1: velocity})
+
+    driver.packet_handler.SyncWritePosEx.assert_not_called()
 
 
 def test_position_sync_packet_failure_is_raised():
@@ -232,6 +407,7 @@ def test_feedback_uses_one_group_read_for_all_actuators_and_fields():
         2: pytest.approx(2 * SPEED_UNIT_RAD_S),
     }
     assert temperatures == {1: 31.0, 2: 32.0}
+    assert driver._last_positions == positions
     group_read.clearParam.assert_called_once_with()
 
 

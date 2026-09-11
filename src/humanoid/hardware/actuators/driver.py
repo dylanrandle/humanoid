@@ -18,8 +18,12 @@ class ActuatorDriver(ABC):
         """Close the controller connection."""
 
     @abstractmethod
-    def write_position(self, positions: dict[int, float]) -> None:
-        """Write target positions in radians, keyed by actuator ID."""
+    def write_position(
+        self,
+        positions: dict[int, float],
+        velocities: dict[int, float] | None = None,
+    ) -> None:
+        """Write positions and optional trajectory speeds, keyed by actuator ID."""
 
     @abstractmethod
     def read_position(self, actuator_id: int) -> float | None:

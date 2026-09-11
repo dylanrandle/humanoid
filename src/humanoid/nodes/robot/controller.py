@@ -1,6 +1,7 @@
 """Robot node that composes arm, mobile-base, and gripper controllers."""
 
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from pprint import pformat
 
@@ -34,7 +35,7 @@ logger = get_logger(__name__)
 # Modes in which the OSC's joint commands are forwarded to the robot. In any
 # other mode (HOMING, IDLE) the OSC continuously re-syncs from ROBOT_STATE so
 # that reactivation holds the current pose.
-OSC_ACTIVE_MODES = {Mode.OCULUS, Mode.KEYBOARD}
+OSC_ACTIVE_MODES = {Mode.OCULUS, Mode.KEYBOARD, Mode.SYSTEM}
 
 
 class RobotControllerNode(Node):
@@ -43,6 +44,7 @@ class RobotControllerNode(Node):
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
+        clock: Callable[[], float] = time.perf_counter,
     ):
         """Initialize the robot controller node.
 
@@ -79,6 +81,9 @@ class RobotControllerNode(Node):
         if len(set(controller_periods)) != 1:
             raise ValueError("Arm and base controllers must use the same timestep.")
         self.rate_hz = 1 / arm_config.dt
+        self._nominal_dt = arm_config.dt
+        self._clock = clock
+        self._last_control_time: float | None = None
 
         # Set up LCM communication
         self.subscriber = Subscriber(
@@ -132,7 +137,7 @@ class RobotControllerNode(Node):
         if self.gripper_controller is not None:
             self.gripper_controller.update_state(joint_positions)
 
-    def _apply_gripper_target_to_model_state(self) -> ControlResult | None:
+    def _apply_gripper_target_to_model_state(self, dt: float) -> ControlResult | None:
         """Apply the latest gripper command before model-based controllers solve."""
         gripper_positions = (
             self.current_tool_command.gripper_positions
@@ -142,7 +147,7 @@ class RobotControllerNode(Node):
         if self.gripper_controller is None or gripper_positions is None:
             return None
 
-        result = self.gripper_controller.compute_control(gripper_positions)
+        result = self.gripper_controller.compute_control(gripper_positions, dt=dt)
         self.arm_controller.update_state(result.q)
         if self.base_controller is not None:
             self.base_controller.update_state(result.q)
@@ -158,6 +163,8 @@ class RobotControllerNode(Node):
         if mode_msg is not None:
             if mode_msg.mode != self.current_mode:
                 logger.debug(f"Updated mode: {self.current_mode} -> {mode_msg.mode}")
+                self._last_control_time = None
+                self.arm_controller.reset_motion()
             self.current_mode = mode_msg.mode
 
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE)
@@ -195,24 +202,26 @@ class RobotControllerNode(Node):
             logger.debug(f"Received base command: {base_command}")
             self.current_base_command = base_command
 
+        dt = self._control_timestep()
+
         # Apply the latest gripper target to the shared model state before solving
         # arm IK. The OSC collision model therefore sees the commanded finger pose
         # from this tick rather than the previous command.
-        gripper_result = self._apply_gripper_target_to_model_state()
+        gripper_result = self._apply_gripper_target_to_model_state(dt)
 
         results: list[tuple[Controller[pin.SE3], ControlResult]] = []
         if self.current_tool_command is not None:
             results.append(
                 (
                     self.arm_controller,
-                    self.arm_controller.compute_control(self.current_tool_command.pose),
+                    self.arm_controller.compute_control(self.current_tool_command.pose, dt=dt),
                 )
             )
         if self.base_controller is not None and self.current_base_command is not None:
             results.append(
                 (
                     self.base_controller,
-                    self.base_controller.compute_control(self.current_base_command.pose),
+                    self.base_controller.compute_control(self.current_base_command.pose, dt=dt),
                 )
             )
         if not results:
@@ -230,6 +239,9 @@ class RobotControllerNode(Node):
             q[self.gripper_controller.controlled_q_indices] = gripper_result.q[
                 self.gripper_controller.controlled_q_indices
             ]
+            v[self.gripper_controller.controlled_v_indices] = gripper_result.v[
+                self.gripper_controller.controlled_v_indices
+            ]
 
         # Keep each strategy's non-owned coordinates current for FK and collision
         # calculations on the next tick.
@@ -241,6 +253,17 @@ class RobotControllerNode(Node):
 
         logger.debug(f"Publishing joint command: {joint_command}")
         self.publisher.publish(joint_command, topic=Topic.CONTROLLER_JOINT_COMMAND)
+
+    def _control_timestep(self) -> float:
+        """Return measured elapsed time, bounded around the configured period."""
+        now = self._clock()
+        if self._last_control_time is None:
+            dt = self._nominal_dt
+        else:
+            elapsed = now - self._last_control_time
+            dt = float(np.clip(elapsed, self._nominal_dt * 0.5, self._nominal_dt * 2.0))
+        self._last_control_time = now
+        return dt
 
     def on_close(self) -> None:
         self.subscriber.close()

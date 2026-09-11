@@ -30,6 +30,7 @@ EXPECTED_DRIVER_RATE_HZ = 50.0
 class StubActuatorSystem(ActuatorSystem):
     def __init__(self):
         self.position_writes: list[dict[str, float]] = []
+        self.position_velocity_writes: list[dict[str, float] | None] = []
         self.velocity_writes: list[dict[str, float]] = []
         self.states: dict[str, ActuatorState] = {}
         self.connected = False
@@ -41,8 +42,13 @@ class StubActuatorSystem(ActuatorSystem):
     def disconnect(self) -> None:
         self.connected = False
 
-    def write_positions(self, positions: dict[str, float]) -> None:
+    def write_positions(
+        self,
+        positions: dict[str, float],
+        velocities: dict[str, float] | None = None,
+    ) -> None:
         self.position_writes.append(positions)
+        self.position_velocity_writes.append(velocities)
 
     def write_velocities(self, velocities: dict[str, float]) -> None:
         self.velocity_writes.append(velocities)
@@ -64,7 +70,11 @@ class StubRootStateEstimator(RootStateEstimator):
         return self.state
 
 
-def _robot_config(modes: list[ActuatorControlMode]) -> RobotConfig:
+def _robot_config(
+    modes: list[ActuatorControlMode],
+    *,
+    gripper_joint_indices: list[int] | None = None,
+) -> RobotConfig:
     return RobotConfig(
         name=RobotName.PANDA,
         tool=RobotToolConfig(frame="tool"),
@@ -74,6 +84,7 @@ def _robot_config(modes: list[ActuatorControlMode]) -> RobotConfig:
         },
         actuator_control_modes={f"joint_{index}": mode for index, mode in enumerate(modes)},
         hardware=None,
+        gripper_joint_indices=gripper_joint_indices,
     )
 
 
@@ -198,7 +209,7 @@ def test_position_clipping_mixed_violations(robot_driver):
         assert lower <= written[f"joint_{index}"] <= upper
 
 
-def test_position_only_actuators_skip_velocity(robot_driver):
+def test_position_only_actuators_receive_trajectory_velocity(robot_driver):
     command = RobotJointCommand(
         timestamp=0.0,
         joint_positions=np.zeros(7),
@@ -209,6 +220,29 @@ def test_position_only_actuators_skip_velocity(robot_driver):
     robot_driver.receive()
 
     assert _actuator_system(robot_driver).velocity_writes == [{}]
+    assert _actuator_system(robot_driver).position_velocity_writes[-1] == {
+        f"joint_{index}": pytest.approx(0.5) for index in range(7)
+    }
+
+
+def test_gripper_omits_position_trajectory_velocity():
+    driver = _make_driver(
+        _robot_config(
+            [ActuatorControlMode.POSITION, ActuatorControlMode.POSITION],
+            gripper_joint_indices=[1],
+        )
+    )
+    driver.subscriber.receive = Mock(  # ty: ignore[invalid-assignment]
+        return_value=RobotJointCommand(
+            timestamp=0.0,
+            joint_positions=np.array([0.1, 0.2]),
+            joint_velocities=np.array([0.5, 0.0]),
+        )
+    )
+
+    driver.receive()
+
+    assert _actuator_system(driver).position_velocity_writes[-1] == {"joint_0": pytest.approx(0.5)}
 
 
 def _make_mixed_driver() -> RobotDriverNode:
@@ -231,10 +265,14 @@ def test_mixed_modes_route_position_and_velocity_separately():
     driver.receive()
 
     written_positions = _actuator_system(driver).position_writes[-1]
+    position_velocities = _actuator_system(driver).position_velocity_writes[-1]
     written_velocities = _actuator_system(driver).velocity_writes[-1]
     assert set(written_velocities) == {"joint_0", "joint_1", "joint_2"}
     assert set(written_positions) == {f"joint_{index}" for index in range(3, 11)}
+    assert position_velocities is not None
+    assert set(position_velocities) == {f"joint_{index}" for index in range(3, 11)}
     assert written_positions["joint_5"] == pytest.approx(positions[5])
+    assert position_velocities["joint_5"] == pytest.approx(velocities[5])
     assert written_velocities["joint_1"] == pytest.approx(velocities[1])
 
 

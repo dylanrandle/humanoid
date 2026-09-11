@@ -67,13 +67,17 @@ class OmniwheelBaseController(Controller[pin.SE3]):
             raise ValueError("Configuration values must all be finite.")
         self.configuration = q.copy()
 
-    def compute_control(self, target: pin.SE3) -> ControlResult:
+    def compute_control(self, target: pin.SE3, dt: float | None = None) -> ControlResult:
         """Compute bounded base and wheel motion toward ``target``."""
         if self.configuration is None:
             raise RuntimeError(
                 "Controller configuration not initialized. "
                 "Call update_state() with robot state first."
             )
+
+        dt = self.config.dt if dt is None else dt
+        if not np.isfinite(dt) or dt <= 0.0:
+            raise ValueError("Controller timestep must be positive and finite.")
 
         # Frame poses returned by Robot may alias its reusable Pinocchio data.
         # Copy the command before querying the current pose into that same data.
@@ -89,9 +93,9 @@ class OmniwheelBaseController(Controller[pin.SE3]):
         )
         root_velocity = np.array(
             [
-                self.config.position_gain * target_in_base.translation[0] / self.config.dt,
-                self.config.position_gain * target_in_base.translation[1] / self.config.dt,
-                self.config.orientation_gain * yaw_error / self.config.dt,
+                self.config.position_gain * target_in_base.translation[0] / dt,
+                self.config.position_gain * target_in_base.translation[1] / dt,
+                self.config.orientation_gain * yaw_error / dt,
             ]
         )
         root_velocity[:2] = np.clip(
@@ -127,7 +131,7 @@ class OmniwheelBaseController(Controller[pin.SE3]):
         self.configuration = pin.integrate(
             self.robot.model,
             self.configuration,
-            velocity * self.config.dt,
+            velocity * dt,
         )
         self.target_pose = target
 

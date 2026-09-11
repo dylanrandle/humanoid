@@ -19,5 +19,5 @@ class Controller[TargetT](ABC):
         """Replace the full-model configuration used by the controller."""
 
     @abstractmethod
-    def compute_control(self, target: TargetT) -> ControlResult:
-        """Compute a full-model command for the requested target."""
+    def compute_control(self, target: TargetT, dt: float | None = None) -> ControlResult:
+        """Compute a full-model command for the requested target and elapsed timestep."""

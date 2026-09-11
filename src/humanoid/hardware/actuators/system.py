@@ -28,8 +28,12 @@ class ActuatorSystem(ABC):
         """Disconnect every controller used by the system."""
 
     @abstractmethod
-    def write_positions(self, positions: dict[str, float]) -> None:
-        """Write joint positions in radians."""
+    def write_positions(
+        self,
+        positions: dict[str, float],
+        velocities: dict[str, float] | None = None,
+    ) -> None:
+        """Write joint positions and optional trajectory speeds in SI units."""
 
     @abstractmethod
     def write_velocities(self, velocities: dict[str, float]) -> None:
@@ -95,10 +99,24 @@ class CompositeActuatorSystem(ActuatorSystem):
         if first_error is not None:
             raise first_error
 
-    def write_positions(self, positions: dict[str, float]) -> None:
+    def write_positions(
+        self,
+        positions: dict[str, float],
+        velocities: dict[str, float] | None = None,
+    ) -> None:
         grouped = self._group_commands(positions, ActuatorControlMode.POSITION)
+        grouped_velocities = (
+            self._group_commands(velocities, ActuatorControlMode.POSITION)
+            if velocities is not None
+            else None
+        )
+        if velocities is not None and not velocities.keys() <= positions.keys():
+            raise ValueError("Position trajectory velocities require matching position commands.")
         for controller, commands in grouped.items():
-            self.drivers[controller].write_position(commands)
+            controller_velocities = (
+                grouped_velocities.get(controller, {}) if grouped_velocities is not None else None
+            )
+            self.drivers[controller].write_position(commands, controller_velocities)
 
     def write_velocities(self, velocities: dict[str, float]) -> None:
         grouped = self._group_commands(velocities, ActuatorControlMode.VELOCITY)

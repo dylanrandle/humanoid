@@ -62,6 +62,12 @@ class RobotDriverNode(Node):
             for joint_name in self.actuator_joint_names
             if self.actuator_control_modes[joint_name] is ActuatorControlMode.POSITION
         ]
+        gripper_joint_indices = set(robot_config.gripper_joint_indices or [])
+        self.position_trajectory_joints = [
+            joint_name
+            for joint_name in self.position_controlled_joints
+            if self.joint_indices[joint_name] not in gripper_joint_indices
+        ]
         self.velocity_controlled_joints = [
             joint_name
             for joint_name in self.actuator_joint_names
@@ -118,6 +124,18 @@ class RobotDriverNode(Node):
             )
             for joint_name in self.position_controlled_joints
         }
+        position_velocities = (
+            {
+                joint_name: float(
+                    normalized.joint_velocities[
+                        self.robot.joint_idx_to_velocity_idx(self.joint_indices[joint_name])
+                    ]
+                )
+                for joint_name in self.position_trajectory_joints
+            }
+            if command.joint_velocities is not None
+            else None
+        )
 
         velocities = {
             joint_name: float(
@@ -128,7 +146,7 @@ class RobotDriverNode(Node):
             for joint_name in self.velocity_controlled_joints
         }
 
-        self.actuator_system.write_positions(positions)
+        self.actuator_system.write_positions(positions, position_velocities)
         self.actuator_system.write_velocities(velocities)
         self._command_watchdog.observe_command(velocity_active=any(velocities.values()))
 

@@ -65,6 +65,14 @@ def test_request_keyboard_publishes_single_event():
     assert call.args[0].kind is EventKind.REQUEST_KEYBOARD
 
 
+def test_request_system_publishes_single_event():
+    client, publisher = _make_client()
+    client.request_system()
+
+    call = publisher.publish.call_args
+    assert call.args[0].kind is EventKind.REQUEST_SYSTEM
+
+
 def test_request_idle_publishes_single_event():
     client, publisher = _make_client()
     client.request_idle()

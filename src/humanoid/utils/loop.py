@@ -2,6 +2,15 @@ import time
 from collections.abc import Callable
 
 
+def _next_deadline(previous_deadline: float, period: float, now: float) -> float:
+    """Advance one period, skipping deadlines that have already elapsed."""
+    deadline = previous_deadline + period
+    if deadline <= now:
+        missed_periods = int((now - deadline) // period) + 1
+        deadline += missed_periods * period
+    return deadline
+
+
 def loop_at_rate(
     func: Callable[[], None],
     rate_hz: float,
@@ -15,7 +24,6 @@ def loop_at_rate(
     start_time = time.perf_counter()
     next_call_time = start_time
 
-    iteration = 0
     while True:
         if duration is not None:
             elapsed = time.perf_counter() - start_time
@@ -28,12 +36,8 @@ def loop_at_rate(
         # Execute the function
         func()
 
-        # Calculate next call time
-        iteration += 1
-        next_call_time = start_time + (iteration * period)
-
         current_time = time.perf_counter()
+        next_call_time = _next_deadline(next_call_time, period, current_time)
         sleep_time = next_call_time - current_time
 
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+        time.sleep(sleep_time)

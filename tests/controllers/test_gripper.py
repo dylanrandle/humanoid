@@ -52,6 +52,21 @@ def test_controls_only_gripper_position(panda_robot):
     np.testing.assert_array_equal(result.v, np.zeros(panda_robot.model.nv))
 
 
+def test_reports_gripper_trajectory_velocity(panda_robot):
+    controller = GripperController(panda_robot)
+    q = panda_robot.config.homing_presets[HomingPreset.HOME].copy()
+    gripper_index = panda_robot.get_gripper_position_indices()[0]
+    velocity_index = controller.controlled_v_indices[0]
+    lower, upper = panda_robot.get_gripper_limits()[0]
+    q[gripper_index] = (lower + upper) / 2.0
+    controller.update_state(q)
+    target = np.array([q[gripper_index] + 0.01])
+
+    result = controller.compute_control(target, dt=0.1)
+
+    assert result.v[velocity_index] == pytest.approx(0.1)
+
+
 def test_mobile_gripper_uses_position_index_not_joint_index(triskel_robot):
     controller = GripperController(triskel_robot)
     q = triskel_robot.config.homing_presets[HomingPreset.HOME].copy()

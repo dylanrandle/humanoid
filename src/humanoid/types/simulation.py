@@ -8,8 +8,8 @@ from dataclasses import dataclass
 class MujocoSimulationConfig:
     """Physics and actuator defaults shared by every generated robot model."""
 
-    physics_timestep: float = 0.001
-    publish_rate_hz: float = 500.0
+    physics_timestep: float = 0.005
+    publish_rate_hz: float = 200.0
     position_kp: float = 1000.0
     position_damping_ratio: float = 1.0
     velocity_kv: float = 2.0

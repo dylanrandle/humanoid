@@ -8,6 +8,7 @@ behavior, and use a full ``step()`` for the request/forward integration tests.
 from collections.abc import Iterable
 from unittest.mock import Mock, patch
 
+import pinocchio as pin
 import pytest
 
 from humanoid.constants import Topic
@@ -18,6 +19,7 @@ from humanoid.types.orchestrator import (
     OrchestratorEvent,
     OrchestratorMode,
 )
+from humanoid.types.robot import RobotToolCommand
 
 EXPECTED_ORCHESTRATOR_RATE_HZ = 100.0
 
@@ -67,6 +69,10 @@ class TestTransitions:
     def test_request_keyboard_from_idle(self, node):
         node._handle_event(_event(EventKind.REQUEST_KEYBOARD))
         assert node.mode is Mode.KEYBOARD
+
+    def test_request_system_from_idle(self, node):
+        node._handle_event(_event(EventKind.REQUEST_SYSTEM))
+        assert node.mode is Mode.SYSTEM
 
     def test_request_idle_from_teleop(self, node):
         node.mode = Mode.OCULUS
@@ -155,3 +161,24 @@ class TestStepIntegration:
         msg = mode_calls[0].args[0]
         assert isinstance(msg, OrchestratorMode)
         assert msg.mode is Mode.IDLE
+
+    def test_system_mode_routes_only_system_tool_commands(self, node):
+        node.mode = Mode.SYSTEM
+        system_command = RobotToolCommand(timestamp=1.0, pose=pin.SE3.Identity())
+        keyboard_command = RobotToolCommand(timestamp=2.0, pose=pin.SE3.Identity())
+        messages = {
+            Topic.SYSTEM_TOOL_COMMAND: system_command,
+            Topic.KEYBOARD_TOOL_COMMAND: keyboard_command,
+        }
+
+        def receive(topic, timeout=0):
+            return messages.pop(topic, None)
+
+        node.subscriber.receive = Mock(side_effect=receive)
+        node.step()
+
+        node.publisher.publish.assert_any_call(system_command, topic=Topic.ROBOT_TOOL_COMMAND)
+        assert not any(
+            call.args and call.args[0] is keyboard_command
+            for call in node.publisher.publish.call_args_list
+        )

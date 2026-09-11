@@ -2,6 +2,7 @@
 
 import numpy as np
 import pink
+from pink.limits import Limit
 from pink.tasks import Task
 
 
@@ -32,3 +33,27 @@ def lock_uncontrolled_velocities(
     if locked_indices.size == 0:
         return []
     return [LockedVelocityConstraint(model_nv, locked_indices)]
+
+
+class SelectedVelocityLimit(Limit):
+    """Bound the tangent velocity of a selected set of model coordinates."""
+
+    def __init__(
+        self,
+        model_nv: int,
+        indices: np.ndarray,
+        velocity_limits: np.ndarray,
+    ) -> None:
+        self._projection = np.eye(model_nv)[indices]
+        self._velocity_limits = velocity_limits.copy()
+
+    def compute_qp_inequalities(
+        self,
+        configuration: pink.Configuration,
+        dt: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        del configuration
+        matrix = np.vstack((self._projection, -self._projection))
+        displacement_limits = dt * self._velocity_limits
+        vector = np.concatenate((displacement_limits, displacement_limits))
+        return matrix, vector

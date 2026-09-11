@@ -358,6 +358,14 @@ def test_teleop_mode_uses_running_process():
     client.request_keyboard.assert_called_once_with()
 
 
+def test_system_mode_does_not_require_a_teleop_process():
+    service, _, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
+
+    service.request_mode(OrchestratorRequest(mode=Mode.SYSTEM))
+
+    client.request_system.assert_called_once_with()
+
+
 @pytest.mark.parametrize(
     ("action", "method_name"),
     [

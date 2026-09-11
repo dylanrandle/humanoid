@@ -23,6 +23,7 @@ export const Mode = Object.freeze({
   HOMING: "homing",
   OCULUS: "oculus",
   KEYBOARD: "keyboard",
+  SYSTEM: "system",
 });
 
 export const LoggingState = Object.freeze({

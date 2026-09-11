@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 from humanoid.config import ROBOT_CONFIG
 from humanoid.logger import get_logger
 from humanoid.policy.teleop.base import BaseTeleopPolicy
+from humanoid.policy.teleop.motion import CartesianPoseLimiter
 from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
@@ -87,6 +88,12 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
         # Current target tool pose (will be initialized on first observation)
         self.current_tool_pose: pin.SE3 | None = None
+        self.commanded_tool_pose: pin.SE3 | None = None
+        self.tool_motion_limiter = CartesianPoseLimiter(
+            robot_config.tool.velocity_limits,
+            config.tool_linear_acceleration_limit,
+            config.tool_angular_acceleration_limit,
+        )
 
         # Current gripper positions (will be initialized on first observation)
         # Track gripper positions based on gripper_joint_indices from config
@@ -145,8 +152,10 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         """Reset policy state."""
         with self.lock:
             self.current_tool_pose = None
+            self.commanded_tool_pose = None
             self.gripper_positions = None
             self.current_base_pose = None
+            self.tool_motion_limiter.reset()
         self.running = True
 
         # Stop existing listener if any
@@ -407,6 +416,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         if self.current_tool_pose is None:
             with self.lock:
                 self.current_tool_pose = self._get_current_tool_pose(observation)
+                self.commanded_tool_pose = self.current_tool_pose.copy()
 
                 # Initialize gripper positions from current state
                 self.gripper_positions = self._get_current_gripper_positions(observation)
@@ -435,11 +445,19 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
             # Start keyboard listener
             self.start_listener()
 
-        # Return current target pose and gripper positions
+        # Shape discrete keyboard target changes into a continuous Cartesian
+        # trajectory before publishing them to the arm controller.
         with self.lock:
+            assert self.commanded_tool_pose is not None
+            self.commanded_tool_pose = self.tool_motion_limiter.step(
+                self.commanded_tool_pose,
+                self.current_tool_pose,
+                self.config.dt,
+            )
             # Create a copy of the pose to avoid race conditions
             target_pose = pin.SE3(
-                self.current_tool_pose.rotation, self.current_tool_pose.translation
+                self.commanded_tool_pose.rotation,
+                self.commanded_tool_pose.translation,
             )
             # Copy gripper positions if available
             gripper_positions_copy = (

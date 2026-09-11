@@ -11,8 +11,10 @@ from humanoid.hardware.actuators.driver import ActuatorDriver
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACTUATOR_ID_MAX,
     FEETECH_ACTUATOR_ID_MIN,
+    FEETECH_SPEED_UNIT_RAD_S,
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
+    FeetechPIDGains,
     validate_feetech_acceleration,
 )
 from humanoid.logger import get_logger
@@ -30,13 +32,22 @@ ADDR_GOAL_POSITION = 42
 ADDR_GOAL_SPEED = 46
 ADDR_OPERATING_MODE = 33
 ADDR_TORQUE_ENABLE = 40
+ADDR_P_GAIN = 21
+ADDR_D_GAIN = 22
+ADDR_I_GAIN = 23
+POSITION_PID_REGISTERS = (
+    ("p", ADDR_P_GAIN),
+    ("i", ADDR_I_GAIN),
+    ("d", ADDR_D_GAIN),
+)
 OPERATING_MODE = {
     ActuatorControlMode.POSITION: 0,
     ActuatorControlMode.VELOCITY: 1,
 }
-# 0.732 RPM per raw unit, BIT15 encodes direction
-SPEED_UNIT_RAD_S = 0.732 * 2 * math.pi / 60
+# BIT15 encodes direction in the raw speed register.
+SPEED_UNIT_RAD_S = FEETECH_SPEED_UNIT_RAD_S
 DEFAULT_POSITION_SPEED = 32767
+MIN_POSITION_SPEED = 1
 HLS_FULL_TORQUE = 1000
 UTILITY_CONTROLLER = "utility"
 POSITION_DATA_LENGTH = 2
@@ -62,8 +73,20 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         actuator_ids = list(self.actuator_configs)
         if control_modes.keys() != self.actuator_configs.keys():
             raise ValueError("Feetech control modes must match the configured actuator IDs.")
+        invalid_pid_ids: list[int] = [
+            actuator_id
+            for actuator_id, control_mode in control_modes.items()
+            if control_mode is not ActuatorControlMode.POSITION
+            and self.actuator_configs[actuator_id].position_pid is not None
+        ]
+        if invalid_pid_ids:
+            raise ValueError(
+                "Feetech position PID gains require position control; invalid actuator IDs: "
+                + ", ".join(str(actuator_id) for actuator_id in invalid_pid_ids)
+            )
         self.control_modes = dict(control_modes)
         self._configure_on_connect = configure_on_connect
+        self._last_positions: dict[int, float] = {}
         ServoController.__init__(
             self,
             servo_ids=actuator_ids,
@@ -101,6 +124,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
 
     def connect(self) -> None:
         """Connect each actuator with a safe goal before torque is enabled."""
+        self._last_positions.clear()
         super().connect()
         if not self._configure_on_connect:
             return
@@ -138,8 +162,83 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
                     f"Operating mode verification failed for actuator {actuator_id}."
                 )
 
+        position_pid = self.actuator_configs[actuator_id].position_pid
+        if position_pid is not None:
+            self._configure_position_pid(actuator_id, position_pid)
+
         self._stage_safe_goal(actuator_id, control_mode)
         self._set_torque_enabled(actuator_id, enabled=True)
+
+    def _configure_position_pid(
+        self,
+        actuator_id: int,
+        gains: FeetechPIDGains,
+    ) -> None:
+        """Write changed EEPROM gains and verify the persistent values."""
+        assert self.packet_handler, "Not connected"
+        current = self._read_position_pid(actuator_id)
+        if current == gains:
+            return
+
+        result, error = self.packet_handler.unLockEprom(actuator_id)
+        if result != 0 or error != 0:
+            raise RuntimeError(f"Failed to unlock EEPROM for actuator {actuator_id}.")
+
+        write_error: Exception | None = None
+        try:
+            for gain_name, address in POSITION_PID_REGISTERS:
+                expected = getattr(gains, gain_name)
+                if getattr(current, gain_name) == expected:
+                    continue
+                result, error = self.packet_handler.write1ByteTxRx(
+                    actuator_id,
+                    address,
+                    expected,
+                )
+                if result != 0 or error != 0:
+                    raise RuntimeError(
+                        f"Failed to write {gain_name.upper()} gain for actuator {actuator_id}."
+                    )
+        except Exception as exc:
+            write_error = exc
+
+        result, error = self.packet_handler.LockEprom(actuator_id)
+        if result != 0 or error != 0:
+            lock_error = RuntimeError(f"Failed to lock EEPROM for actuator {actuator_id}.")
+            if write_error is not None:
+                raise ExceptionGroup(
+                    f"Failed to configure position PID for actuator {actuator_id}.",
+                    [write_error, lock_error],
+                )
+            raise lock_error
+        if write_error is not None:
+            raise write_error
+
+        actual = self._read_position_pid(actuator_id)
+        if actual != gains:
+            raise RuntimeError(
+                f"Position PID verification failed for actuator {actuator_id}: "
+                f"expected {gains}, read {actual}."
+            )
+        logger.info(
+            "Configured position PID for actuator %s: P=%s I=%s D=%s",
+            actuator_id,
+            gains.p,
+            gains.i,
+            gains.d,
+        )
+
+    def _read_position_pid(self, actuator_id: int) -> FeetechPIDGains:
+        assert self.packet_handler, "Not connected"
+        values: dict[str, int] = {}
+        for gain_name, address in POSITION_PID_REGISTERS:
+            value, result, error = self.packet_handler.read1ByteTxRx(actuator_id, address)
+            if result != 0 or error != 0:
+                raise RuntimeError(
+                    f"Failed to read {gain_name.upper()} gain for actuator {actuator_id}."
+                )
+            values[gain_name] = value
+        return FeetechPIDGains(**values)
 
     def _stage_safe_goal(
         self,
@@ -218,6 +317,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
     def write_position(  # ty: ignore[invalid-method-override]
         self,
         positions: dict[int, float],
+        velocities: dict[int, float] | None = None,
         **kwargs,
     ) -> None:
         raw_positions = {
@@ -225,16 +325,33 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             for actuator_id, angle in positions.items()
         }
         requested_acceleration = kwargs.pop("acceleration", None)
-        speed = kwargs.pop("speed", DEFAULT_POSITION_SPEED)
+        speed = kwargs.pop("speed", None)
         if kwargs:
             arguments = ", ".join(sorted(kwargs))
             raise TypeError(f"Unsupported Feetech position arguments: {arguments}.")
+        if velocities is not None and not velocities.keys() <= positions.keys():
+            raise ValueError(
+                "Position trajectory velocities require matching position actuator IDs."
+            )
+        raw_speeds = {
+            actuator_id: (
+                self._trajectory_position_speed(
+                    actuator_id,
+                    positions[actuator_id],
+                    velocities[actuator_id],
+                )
+                if velocities is not None and actuator_id in velocities
+                else self._default_position_speed(actuator_id, speed)
+            )
+            for actuator_id in raw_positions
+        }
+
         if requested_acceleration is not None:
             validate_feetech_acceleration(requested_acceleration)
             self._write_raw_positions(
                 raw_positions,
                 acceleration=requested_acceleration,
-                speed=speed,
+                speeds=raw_speeds,
             )
             return
 
@@ -246,15 +363,49 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             self._write_raw_positions(
                 grouped_positions,
                 acceleration=acceleration,
-                speed=speed,
+                speeds={actuator_id: raw_speeds[actuator_id] for actuator_id in grouped_positions},
             )
+
+    @staticmethod
+    def velocity_to_position_speed(velocity: float) -> int:
+        """Convert a trajectory velocity in rad/s to an unsigned servo speed."""
+        if not math.isfinite(velocity):
+            raise ValueError("Feetech position velocity must be finite.")
+        speed = round(abs(velocity) / SPEED_UNIT_RAD_S)
+        return max(MIN_POSITION_SPEED, min(speed, DEFAULT_POSITION_SPEED))
+
+    def _trajectory_position_speed(
+        self,
+        actuator_id: int,
+        target_position: float,
+        velocity: float,
+    ) -> int:
+        if not math.isfinite(velocity):
+            raise ValueError("Feetech position velocity must be finite.")
+        actuator_config = self.actuator_configs[actuator_id]
+        measured_position = self._last_positions.get(actuator_id)
+        if measured_position is None:
+            return self.velocity_to_position_speed(actuator_config.max_position_velocity)
+
+        tracking_error = abs(target_position - measured_position)
+        requested_velocity = (
+            abs(velocity) + actuator_config.position_tracking_error_gain * tracking_error
+        )
+        bounded_velocity = min(requested_velocity, actuator_config.max_position_velocity)
+        return self.velocity_to_position_speed(bounded_velocity)
+
+    def _default_position_speed(self, actuator_id: int, speed: int | None) -> int:
+        if speed is not None:
+            return speed
+        configured_velocity = self.actuator_configs[actuator_id].max_position_velocity
+        return self.velocity_to_position_speed(configured_velocity)
 
     def _write_raw_positions(
         self,
         raw_positions: dict[int, int],
         *,
         acceleration: int,
-        speed: int,
+        speeds: dict[int, int],
     ) -> None:
         """Build and transmit one sync packet, checking the final bus result."""
         if not raw_positions:
@@ -269,6 +420,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         try:
             added = {}
             for actuator_id, raw_position in raw_positions.items():
+                speed = speeds[actuator_id]
                 if self.servo_type == "hls":
                     succeeded = packet_handler.SyncWritePosEx(
                         actuator_id,
@@ -307,14 +459,18 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         raw_position = super().read_position(actuator_id)
         if raw_position is None:
             return None
-        return self.position_to_angle(raw_position, actuator_id)
+        position = self.position_to_angle(raw_position, actuator_id)
+        self._last_positions[actuator_id] = position
+        return position
 
     def read_all_positions(self) -> dict[int, float]:  # ty: ignore[invalid-method-override]
         raw_positions = super().read_all_positions()
-        return {
+        positions = {
             actuator_id: self.position_to_angle(position, actuator_id)
             for actuator_id, position in raw_positions.items()
         }
+        self._last_positions.update(positions)
+        return positions
 
     def probe(self, actuator_id: int) -> bool:
         """Return whether an ID responds, without logging expected misses."""
@@ -406,6 +562,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             actuator_id: self.position_to_angle(values[0], actuator_id)
             for actuator_id, values in raw_feedback.items()
         }
+        self._last_positions.update(positions)
         velocities = {
             actuator_id: self._velocity_from_raw(values[1], actuator_id)
             for actuator_id, values in raw_feedback.items()

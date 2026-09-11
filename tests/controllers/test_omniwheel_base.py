@@ -136,3 +136,18 @@ def test_small_pose_error_is_corrected_in_one_tick(triskel_robot):
     root_v_slice = triskel_robot.get_root_v_slice()
     assert root_v_slice is not None
     np.testing.assert_allclose(result.v[root_v_slice], [0.1, 0.0, 0.0], atol=1e-9)
+
+
+def test_runtime_timestep_overrides_configured_timestep(triskel_robot):
+    controller = OmniwheelBaseController(triskel_robot, OmniwheelBaseConfig(dt=0.1))
+    q = triskel_robot.config.homing_presets[HomingPreset.HOME].copy()
+    controller.update_state(q)
+    target = triskel_robot.get_base_pose(q)
+    assert target is not None
+    target.translation[0] += 0.001
+
+    result = controller.compute_control(target, dt=0.01)
+
+    root_v_slice = triskel_robot.get_root_v_slice()
+    assert root_v_slice is not None
+    np.testing.assert_allclose(result.v[root_v_slice], [0.1, 0.0, 0.0], atol=1e-9)

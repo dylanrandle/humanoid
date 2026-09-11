@@ -26,6 +26,7 @@ class Mode(StrEnum):
     HOMING = "homing"
     OCULUS = "oculus"
     KEYBOARD = "keyboard"
+    SYSTEM = "system"
 
 
 class OrchestratorParameter(StrEnum):
@@ -129,6 +130,7 @@ class EventKind(StrEnum):
     REQUEST_HOMING = "request_homing"
     REQUEST_OCULUS = "request_oculus"
     REQUEST_KEYBOARD = "request_keyboard"
+    REQUEST_SYSTEM = "request_system"
     REQUEST_IDLE = "request_idle"
     COMPLETE = "complete"
     START_LOGGING = "start_logging"
