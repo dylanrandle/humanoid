@@ -1,3 +1,4 @@
+from humanoid.types.actuator import ActuatorHealthReport
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -10,7 +11,8 @@ from humanoid.types.robot import (
 )
 
 AcceptedTypes = (
-    NodeRateSample
+    ActuatorHealthReport
+    | NodeRateSample
     | RobotJointCommand
     | RobotToolCommand
     | RobotBaseCommand

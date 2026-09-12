@@ -1,9 +1,40 @@
 import numpy as np
 import pinocchio as pin
 
+from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.node import NodeRateSample
 from humanoid.types.robot import RobotBaseCommand, RobotJointCommand, RobotState, RobotToolCommand
+
+
+def test_actuator_health_report_encode_decode():
+    report = ActuatorHealthReport(
+        timestamp=12.5,
+        actuators=(
+            ActuatorHealth(
+                joint_name="arm_1",
+                controller="main",
+                actuator_id=1,
+                healthy=True,
+                temperature_celsius=31.0,
+            ),
+            ActuatorHealth(
+                joint_name="arm_2",
+                controller="main",
+                actuator_id=2,
+                healthy=False,
+                issue="Overload protection triggered.",
+            ),
+        ),
+        error="Incomplete actuator feedback.",
+    )
+
+    lcm_report = LCMConverter.actuator_health_report_to_lcm(report)
+    recovered = LCMConverter.actuator_health_report_from_lcm(
+        type(lcm_report).decode(lcm_report.encode())
+    )
+
+    assert recovered == report
 
 
 def test_node_rate_sample_encode_decode():

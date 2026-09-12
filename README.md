@@ -115,8 +115,9 @@ Forward the dashboard and MeshCat ports from another local terminal:
 
 Open the [dashboard](http://127.0.0.1:8765) or
 [visualizer](http://127.0.0.1:7000/static/). Run `./scripts/forward-ports --help` for port
-overrides. Recordings and the dashboard's `humanoid.log` application log are preserved in
-`/opt/humanoid/logs`.
+overrides. The dashboard shows live motor feedback and temperatures and retains the last
+driver or servo-reported failure after the stack stops. Recordings and the dashboard's
+`humanoid.log` application log are preserved in `/opt/humanoid/logs`.
 
 SSH into Triskel to manage the service:
 

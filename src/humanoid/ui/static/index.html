@@ -406,12 +406,40 @@
         </section>
 
         <section
+          class="panel actuator-health-panel"
+          aria-labelledby="actuator-health-heading"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">06 · Hardware telemetry</p>
+              <h2 id="actuator-health-heading">Motor health</h2>
+            </div>
+            <span
+              class="panel-note actuator-health-summary"
+              id="actuator-health-summary"
+              >No telemetry</span
+            >
+          </div>
+
+          <p
+            class="actuator-health-error"
+            id="actuator-health-error"
+            hidden
+          ></p>
+          <div class="actuator-health-list" id="actuator-health-list">
+            <p class="actuator-health-empty">
+              Start the real robot stack to view motor health.
+            </p>
+          </div>
+        </section>
+
+        <section
           class="panel application-log-panel"
           aria-labelledby="application-log-heading"
         >
           <div class="section-heading">
             <div>
-              <p class="eyebrow">06 · Diagnostics</p>
+              <p class="eyebrow">07 · Diagnostics</p>
               <h2 id="application-log-heading">Application logs</h2>
             </div>
             <span class="panel-note" id="application-log-status"

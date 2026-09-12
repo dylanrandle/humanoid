@@ -19,8 +19,8 @@ class FakeClassList {
     else this.values.delete(name);
   }
 
-  remove(name) {
-    this.values.delete(name);
+  remove(...names) {
+    names.forEach((name) => this.values.delete(name));
   }
 }
 
@@ -61,6 +61,9 @@ function elements() {
     stackActionLabel: element(),
     nodeRateSummary: element(),
     nodeRateList: element(),
+    actuatorHealthSummary: element(),
+    actuatorHealthError: element(),
+    actuatorHealthList: element(),
     applicationLogStatus: element(),
     applicationLogOutput: element(),
     processes: {
@@ -162,6 +165,13 @@ function snapshot() {
       oculus: processStatus(),
     },
     node_rates: [],
+    actuator_health: {
+      connected: false,
+      healthy: false,
+      age_seconds: null,
+      actuators: [],
+      error: null,
+    },
     logging: {
       timestamp: 0,
       state: "stopped",
@@ -184,6 +194,73 @@ function snapshot() {
     },
   };
 }
+
+test("motor health renders temperatures and retains failure details", () => {
+  const ui = elements();
+  const current = snapshot();
+  current.runtime = "real";
+  current.processes.stack = processStatus({ running: true });
+  current.actuator_health = {
+    connected: true,
+    healthy: false,
+    age_seconds: 0.1,
+    actuators: [
+      {
+        joint_name: "arm_1",
+        controller: "main",
+        actuator_id: 1,
+        healthy: true,
+        temperature_celsius: 31,
+        issue: null,
+      },
+      {
+        joint_name: "arm_2",
+        controller: "main",
+        actuator_id: 2,
+        healthy: false,
+        temperature_celsius: null,
+        issue: "Overload protection triggered.",
+      },
+    ],
+    error: "Incomplete actuator feedback (positions: arm_2).",
+  };
+
+  render(current, new Set(), ui);
+
+  assert.equal(ui.actuatorHealthSummary.textContent, "Driver fault");
+  assert.ok(ui.actuatorHealthSummary.classList.values.has("unhealthy"));
+  assert.equal(ui.actuatorHealthList.children.length, 2);
+  assert.ok(
+    ui.actuatorHealthList.children[0].classList.values.has("healthy"),
+  );
+  assert.ok(
+    ui.actuatorHealthList.children[1].classList.values.has("unhealthy"),
+  );
+  assert.equal(
+    ui.actuatorHealthList.children[0].children[2].children[0].textContent,
+    "31.0 °C",
+  );
+  assert.equal(
+    ui.actuatorHealthList.children[1].children[1].children[2].textContent,
+    "Overload protection triggered.",
+  );
+  assert.equal(ui.actuatorHealthError.hidden, false);
+  assert.equal(
+    ui.actuatorHealthError.textContent,
+    "Incomplete actuator feedback (positions: arm_2).",
+  );
+
+  current.actuator_health.connected = false;
+  render(current, new Set(), ui);
+
+  assert.equal(ui.actuatorHealthSummary.textContent, "Driver fault");
+  assert.ok(ui.actuatorHealthSummary.classList.values.has("unhealthy"));
+  assert.equal(ui.actuatorHealthError.hidden, false);
+  assert.equal(
+    ui.actuatorHealthList.children[1].children[2].children[1].textContent,
+    "Stale",
+  );
+});
 
 test("logging lifecycle controls and failures are rendered", () => {
   const ui = elements();

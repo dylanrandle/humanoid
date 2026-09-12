@@ -1,5 +1,6 @@
 from enum import Enum
 
+from humanoid.types.actuator import ActuatorHealthReport
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -24,6 +25,9 @@ DEFAULT_HUMANOID_ROBOT = RobotName.TRISKEL
 class Topic(Enum):
     # Per-node loop-rate telemetry consumed by the operator console.
     NODE_RATE = "NODE/RATE"
+
+    # Per-actuator feedback health published by the real robot driver.
+    ACTUATOR_HEALTH = "ACTUATOR/HEALTH"
 
     # Robot state (single publisher: robot driver)
     ROBOT_STATE = "ROBOT/STATE"
@@ -59,6 +63,7 @@ class Topic(Enum):
 
 TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.NODE_RATE: NodeRateSample,
+    Topic.ACTUATOR_HEALTH: ActuatorHealthReport,
     Topic.ROBOT_STATE: RobotState,
     Topic.ROBOT_JOINT_COMMAND: RobotJointCommand,
     Topic.ROBOT_TOOL_COMMAND: RobotToolCommand,

@@ -50,3 +50,35 @@ class ActuatorHardwareConfig:
                     f"{actuator.controller!r}."
                 )
             seen_addresses.add(address)
+
+
+@dataclass(frozen=True)
+class ActuatorHealth:
+    """Latest health information for one physical actuator."""
+
+    joint_name: str
+    controller: str
+    actuator_id: int
+    healthy: bool
+    temperature_celsius: float | None = None
+    issue: str | None = None
+
+
+@dataclass(frozen=True)
+class ActuatorHealthReport:
+    """Actuator telemetry emitted by the real robot driver."""
+
+    timestamp: float
+    actuators: tuple[ActuatorHealth, ...]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class ActuatorHealthStatus:
+    """Freshness-qualified actuator health retained for the dashboard."""
+
+    connected: bool
+    healthy: bool
+    age_seconds: float | None
+    actuators: tuple[ActuatorHealth, ...]
+    error: str | None = None

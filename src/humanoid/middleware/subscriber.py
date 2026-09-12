@@ -7,8 +7,10 @@ import lcm
 
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
+from humanoid.types.actuator import ActuatorHealthReport
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
+    actuator_health_report_t,
     homing_target_t,
     logging_status_t,
     node_rate_sample_t,
@@ -70,12 +72,19 @@ class Subscriber:
         while self._running:
             self.lc.handle_timeout(_SPIN_TIMEOUT_MS)
 
-    def _handle_message(self, channel: str, data: bytes) -> None:
+    def _handle_message(  # noqa: PLR0912 - explicit branches document each wire type
+        self,
+        channel: str,
+        data: bytes,
+    ) -> None:
         try:
             topic = Topic(channel)
             expected_type = TOPIC_TO_TYPE.get(topic)
 
-            if expected_type is NodeRateSample:
+            if expected_type is ActuatorHealthReport:
+                lcm_msg = actuator_health_report_t.decode(data)
+                decoded_data = LCMConverter.actuator_health_report_from_lcm(lcm_msg)
+            elif expected_type is NodeRateSample:
                 lcm_msg = node_rate_sample_t.decode(data)
                 decoded_data = LCMConverter.node_rate_sample_from_lcm(lcm_msg)
             elif expected_type is RobotJointCommand:
@@ -112,6 +121,11 @@ class Subscriber:
             q.put_nowait(decoded_data)
         except Exception as e:
             logger.error(f"Error decoding message on channel {channel}: {e}")
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.ACTUATOR_HEALTH], timeout: int | None = None
+    ) -> ActuatorHealthReport | None: ...
 
     @overload
     def receive(

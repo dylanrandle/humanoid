@@ -87,6 +87,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         self.control_modes = dict(control_modes)
         self._configure_on_connect = configure_on_connect
         self._last_positions: dict[int, float] = {}
+        self._health_issues: dict[int, str] = {}
         ServoController.__init__(
             self,
             servo_ids=actuator_ids,
@@ -125,6 +126,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
     def connect(self) -> None:
         """Connect each actuator with a safe goal before torque is enabled."""
         self._last_positions.clear()
+        self._health_issues.clear()
         super().connect()
         if not self._configure_on_connect:
             return
@@ -443,17 +445,20 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             if result != 0:
                 actuator_ids = list(raw_positions)
                 detail = packet_handler.getTxRxResult(result)
-                raise RuntimeError(
+                issue = (
                     f"Feetech position sync write failed for actuator IDs {actuator_ids}: {detail}"
                 )
+                self._health_issues.update(dict.fromkeys(actuator_ids, issue))
+                raise RuntimeError(issue)
         finally:
             sync_write.clearParam()
 
-    @staticmethod
-    def _raise_for_failed_writes(operation: str, results: dict[int, bool]) -> None:
+    def _raise_for_failed_writes(self, operation: str, results: dict[int, bool]) -> None:
         failed_ids = [actuator_id for actuator_id, succeeded in results.items() if not succeeded]
         if failed_ids:
-            raise RuntimeError(f"Feetech {operation} write failed for actuator IDs {failed_ids}.")
+            issue = f"Feetech {operation} write failed for actuator IDs {failed_ids}."
+            self._health_issues.update(dict.fromkeys(failed_ids, issue))
+            raise RuntimeError(issue)
 
     def read_position(self, actuator_id: int) -> float | None:  # ty: ignore[invalid-method-override]
         raw_position = super().read_position(actuator_id)
@@ -520,7 +525,9 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
                 raw,
             )
             if result != 0 or error != 0:
-                raise RuntimeError(f"Feetech velocity write failed for actuator {actuator_id}.")
+                issue = f"Feetech velocity write failed for actuator {actuator_id}."
+                self._health_issues[actuator_id] = issue
+                raise RuntimeError(issue)
 
     def read_velocity(self, actuator_id: int) -> float | None:
         assert self.packet_handler, "Not connected"
@@ -572,6 +579,10 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         }
         return positions, velocities, temperatures
 
+    def health_issues(self) -> dict[int, str]:
+        """Return the latest read or command issues keyed by actuator ID."""
+        return dict(self._health_issues)
+
     def _velocity_from_raw(self, raw_velocity: int, actuator_id: int) -> float:
         assert self.packet_handler, "Not connected"
         signed_velocity = self.packet_handler.scs_tohost(raw_velocity, 15)
@@ -594,20 +605,21 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             data_length,
         )
         actuator_ids = []
+        health_issues: dict[int, str] = {}
         try:
             for actuator_id in self.actuator_ids:
                 if group_sync_read.addParam(actuator_id):
                     actuator_ids.append(actuator_id)
                 else:
-                    logger.warning(
-                        "Failed to add actuator %s to Feetech %s sync read",
-                        actuator_id,
-                        label,
+                    health_issues[actuator_id] = (
+                        f"Failed to add actuator to Feetech {label} sync read."
                     )
 
             result = group_sync_read.txRxPacket()
             if result != scs.COMM_SUCCESS:
                 detail = self.packet_handler.getTxRxResult(result)
+                issue = f"Feetech {label} sync read failed: {detail}"
+                self._health_issues = dict.fromkeys(self.actuator_ids, issue)
                 raise RuntimeError(f"Feetech {label} sync read failed: {detail}")
 
             values: dict[int, tuple[int, ...]] = {}
@@ -619,24 +631,18 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
                 )
                 if error != 0:
                     detail = self.packet_handler.getRxPacketError(error)
-                    logger.warning(
-                        "Feetech %s sync read reported an error for actuator %s: %s",
-                        label,
-                        actuator_id,
-                        detail,
-                    )
+                    health_issues[actuator_id] = f"Feetech {label} sync read reported: {detail}"
                     continue
                 if not available:
-                    logger.warning(
-                        "Feetech %s sync read returned no data for actuator %s",
-                        label,
-                        actuator_id,
-                    )
+                    health_issues[actuator_id] = f"Feetech {label} sync read returned no data."
                     continue
                 values[actuator_id] = tuple(
                     group_sync_read.getData(actuator_id, address, length)
                     for address, length in fields
                 )
+            self._health_issues = health_issues
+            for actuator_id, issue in health_issues.items():
+                logger.warning("Actuator %s health issue: %s", actuator_id, issue)
             return values
         finally:
             group_sync_read.clearParam()

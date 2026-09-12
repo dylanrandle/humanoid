@@ -60,6 +60,12 @@ export function render(snapshot, busy, elements) {
     elements,
   );
   renderNodeRates(snapshot.node_rates || [], elements);
+  renderActuatorHealth(
+    snapshot.actuator_health,
+    snapshot.runtime,
+    stackActive || replayActive,
+    elements,
+  );
   for (const name of TELEOP_PROCESSES) {
     renderProcess(name, processes[name], controlsReady, busy, elements);
   }
@@ -146,6 +152,117 @@ function renderNodeRates(nodeRates, elements) {
   elements.nodeRateSummary.classList.toggle("unhealthy", !allHealthy);
 }
 
+function renderActuatorHealth(health, runtime, driverActive, elements) {
+  elements.actuatorHealthSummary.classList.remove(
+    "healthy",
+    "unhealthy",
+    "stale",
+  );
+  elements.actuatorHealthError.hidden = true;
+  elements.actuatorHealthError.textContent = "";
+
+  if (runtime === Runtime.SIM) {
+    renderActuatorHealthEmpty(
+      "Motor telemetry is available when running on real hardware.",
+      elements,
+    );
+    elements.actuatorHealthSummary.textContent = "Simulation";
+    return;
+  }
+
+  if (!health || health.actuators.length === 0) {
+    renderActuatorHealthEmpty(
+      driverActive
+        ? "Waiting for the robot driver to report motor feedback."
+        : "Start the real robot stack to view motor health.",
+      elements,
+    );
+    elements.actuatorHealthSummary.textContent = driverActive
+      ? "Waiting"
+      : "No telemetry";
+    return;
+  }
+
+  const rows = health.actuators.map((actuator) => {
+    const row =
+      elements.actuatorHealthList.ownerDocument.createElement("article");
+    const responsive = health.connected && actuator.healthy;
+    row.className = "actuator-health-row";
+    row.classList.toggle("healthy", responsive);
+    row.classList.toggle("unhealthy", health.connected && !actuator.healthy);
+    row.classList.toggle("stale", !health.connected);
+    row.setAttribute("data-actuator-health", actuator.joint_name);
+
+    const dot = elements.actuatorHealthList.ownerDocument.createElement("span");
+    dot.className = "actuator-health-dot";
+    dot.setAttribute("aria-hidden", "true");
+
+    const copy = elements.actuatorHealthList.ownerDocument.createElement("div");
+    copy.className = "actuator-health-copy";
+    const name =
+      elements.actuatorHealthList.ownerDocument.createElement("strong");
+    name.textContent = formatActuatorName(actuator.joint_name);
+    const address =
+      elements.actuatorHealthList.ownerDocument.createElement("small");
+    address.textContent = `${actuator.controller} · ID ${actuator.actuator_id}`;
+    const detail =
+      elements.actuatorHealthList.ownerDocument.createElement("small");
+    detail.className = "actuator-health-detail";
+    detail.textContent = actuator.issue || "Feedback responding";
+    copy.replaceChildren(name, address, detail);
+
+    const readings =
+      elements.actuatorHealthList.ownerDocument.createElement("div");
+    readings.className = "actuator-health-readings";
+    const temperature =
+      elements.actuatorHealthList.ownerDocument.createElement("strong");
+    temperature.textContent = Number.isFinite(actuator.temperature_celsius)
+      ? `${actuator.temperature_celsius.toFixed(1)} °C`
+      : "— °C";
+    const state =
+      elements.actuatorHealthList.ownerDocument.createElement("small");
+    state.textContent = health.connected
+      ? actuator.healthy
+        ? "Healthy"
+        : "Fault"
+      : "Stale";
+    readings.replaceChildren(temperature, state);
+
+    row.replaceChildren(dot, copy, readings);
+    return row;
+  });
+  elements.actuatorHealthList.replaceChildren(...rows);
+
+  const healthyCount = health.actuators.filter(
+    (actuator) => actuator.healthy,
+  ).length;
+  if (health.error) {
+    elements.actuatorHealthSummary.textContent = "Driver fault";
+    elements.actuatorHealthSummary.classList.toggle("unhealthy", true);
+  } else if (!health.connected) {
+    elements.actuatorHealthSummary.textContent = "Telemetry stale";
+    elements.actuatorHealthSummary.classList.toggle("stale", true);
+  } else if (health.healthy) {
+    elements.actuatorHealthSummary.textContent = `${healthyCount} of ${health.actuators.length} healthy`;
+    elements.actuatorHealthSummary.classList.toggle("healthy", true);
+  } else {
+    elements.actuatorHealthSummary.textContent = `${healthyCount} of ${health.actuators.length} healthy`;
+    elements.actuatorHealthSummary.classList.toggle("unhealthy", true);
+  }
+
+  if (health.error) {
+    elements.actuatorHealthError.hidden = false;
+    elements.actuatorHealthError.textContent = health.error;
+  }
+}
+
+function renderActuatorHealthEmpty(message, elements) {
+  const empty = elements.actuatorHealthList.ownerDocument.createElement("p");
+  empty.className = "actuator-health-empty";
+  empty.textContent = message;
+  elements.actuatorHealthList.replaceChildren(empty);
+}
+
 function rateDetail(rate) {
   if (rate.target_rate_hz === null) return "Waiting for telemetry";
   if (rate.measured_rate_hz === null) {
@@ -173,6 +290,10 @@ function resourceDetail(rate) {
 
 function formatNodeName(name) {
   return name.replace(/Node$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+}
+
+function formatActuatorName(name) {
+  return name.replaceAll("_", " ");
 }
 
 function renderLogging(logging, controlsReady, busy, elements) {
@@ -411,6 +532,14 @@ export function renderDisconnected(
   nodeRateMessage.className = "node-rate-empty";
   nodeRateMessage.textContent = "Reconnect to view node-rate health.";
   elements.nodeRateList.replaceChildren(nodeRateMessage);
+  elements.actuatorHealthSummary.textContent = "Unavailable";
+  elements.actuatorHealthSummary.classList.remove(
+    "healthy",
+    "unhealthy",
+    "stale",
+  );
+  elements.actuatorHealthError.hidden = true;
+  renderActuatorHealthEmpty("Reconnect to view motor health.", elements);
   elements.runtimeButtons.forEach((button) => {
     button.disabled = true;
   });

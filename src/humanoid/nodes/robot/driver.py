@@ -9,7 +9,7 @@ import pinocchio as pin
 from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.hardware.actuators.factory import create_actuator_system
-from humanoid.hardware.actuators.system import ActuatorSystem
+from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
@@ -22,7 +22,12 @@ from humanoid.state_estimation.root.base import (
     RootStateEstimator,
 )
 from humanoid.state_estimation.root.factory import create_root_state_estimator
-from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.actuator import (
+    ActuatorConfig,
+    ActuatorControlMode,
+    ActuatorHealth,
+    ActuatorHealthReport,
+)
 from humanoid.types.robot import RobotConfig, RobotState
 
 logger = get_logger(__name__)
@@ -74,9 +79,16 @@ class RobotDriverNode(Node):
             if self.actuator_control_modes[joint_name] is ActuatorControlMode.VELOCITY
         ]
 
+        actuator_hardware = (
+            robot_config.hardware.actuators if robot_config.hardware is not None else None
+        )
+        self._actuator_configs: dict[str, ActuatorConfig] = (
+            dict(actuator_hardware.joints) if actuator_hardware is not None else {}
+        )
+        self._latest_actuator_states: dict[str, ActuatorState] = {}
         self.actuator_system = actuator_system or create_actuator_system(
             self.actuator_control_modes,
-            robot_config.hardware.actuators if robot_config.hardware is not None else None,
+            actuator_hardware,
         )
         self._command_watchdog = VelocityCommandWatchdog(
             self._stop_actuators,
@@ -100,7 +112,11 @@ class RobotDriverNode(Node):
                 initial_root_state,
             )
 
-        self.actuator_system.connect()
+        try:
+            self.actuator_system.connect()
+        except Exception as error:
+            self._publish_actuator_failure(f"Actuator connection failed: {error}")
+            raise
 
     def receive(self) -> None:
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
@@ -155,6 +171,7 @@ class RobotDriverNode(Node):
 
     def publish(self) -> None:
         actuator_states = self.actuator_system.read_states()
+        self._latest_actuator_states = actuator_states
         missing_positions = [
             joint_name
             for joint_name in self.actuator_joint_names
@@ -171,7 +188,10 @@ class RobotDriverNode(Node):
                 details.append(f"positions: {', '.join(missing_positions)}")
             if missing_velocities:
                 details.append(f"velocities: {', '.join(missing_velocities)}")
-            raise RuntimeError(f"Incomplete actuator feedback ({'; '.join(details)}).")
+            error = f"Incomplete actuator feedback ({'; '.join(details)})."
+            self._publish_actuator_health(error=error)
+            raise RuntimeError(error)
+        self._publish_actuator_health()
         joint_idx_to_position = {
             self.joint_indices[joint_name]: state.position
             for joint_name, state in actuator_states.items()
@@ -218,17 +238,74 @@ class RobotDriverNode(Node):
         pass
 
     def step(self) -> None:
-        self.receive()
-        self.publish()
+        try:
+            self.receive()
+            self.publish()
+        except Exception as error:
+            self._publish_actuator_failure(str(error))
+            raise
+
+    def _publish_actuator_failure(self, error: str) -> None:
+        try:
+            self._publish_actuator_health(error=error)
+        except Exception:
+            logger.exception("Failed to publish actuator failure telemetry")
+
+    def _publish_actuator_health(self, *, error: str | None = None) -> None:
+        if not self._actuator_configs:
+            return
+
+        hardware_issues = self.actuator_system.health_issues()
+        actuators = []
+        for joint_name, actuator_config in self._actuator_configs.items():
+            state = self._latest_actuator_states.get(joint_name)
+            missing_feedback = []
+            if state is None or state.position is None:
+                missing_feedback.append("position")
+            if state is None or state.velocity is None:
+                missing_feedback.append("velocity")
+            if state is None or state.temperature is None:
+                missing_feedback.append("temperature")
+
+            issue = hardware_issues.get(joint_name)
+            if issue is None and missing_feedback:
+                issue = f"Missing {', '.join(missing_feedback)} feedback."
+            actuators.append(
+                ActuatorHealth(
+                    joint_name=joint_name,
+                    controller=actuator_config.controller,
+                    actuator_id=actuator_config.actuator_id,
+                    healthy=issue is None,
+                    temperature_celsius=(state.temperature if state is not None else None),
+                    issue=issue,
+                )
+            )
+
+        self.publisher.publish(
+            ActuatorHealthReport(
+                timestamp=time.perf_counter(),
+                actuators=tuple(actuators),
+                error=error,
+            ),
+            topic=Topic.ACTUATOR_HEALTH,
+        )
 
     def on_close(self) -> None:
         try:
-            self._command_watchdog.stop()
+            try:
+                self._command_watchdog.stop()
+            except Exception as error:
+                self._publish_actuator_failure(f"Actuator stop failed: {error}")
+                raise
         finally:
             try:
                 self.subscriber.close()
             finally:
-                self.actuator_system.disconnect()
+                try:
+                    self.actuator_system.disconnect()
+                except Exception as error:
+                    self._publish_actuator_failure(f"Actuator disconnect failed: {error}")
+                    raise
 
 
 def main() -> None:

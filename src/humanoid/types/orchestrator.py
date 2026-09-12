@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 
+from humanoid.types.actuator import ActuatorHealthStatus
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateStatus
@@ -103,6 +104,7 @@ class OrchestratorStatus:
     robots: list[RobotName]
     processes: dict[ProcessName, ProcessStatus]
     node_rates: list[NodeRateStatus]
+    actuator_health: ActuatorHealthStatus
     logging: LoggingStatus
     recordings: list[RecordingSummary]
     replay: ReplayStatus

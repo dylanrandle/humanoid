@@ -6,7 +6,9 @@ import pytest
 
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
+from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
 from humanoid.types.lcm import (
+    actuator_health_report_t,
     logging_status_t,
     node_rate_sample_t,
     orchestrator_mode_t,
@@ -59,6 +61,30 @@ def _make_base_command():
 
 
 class TestPublisher:
+    def test_publish_actuator_health(self, mock_lcm):
+        publisher = Publisher()
+        report = ActuatorHealthReport(
+            timestamp=1.0,
+            actuators=(
+                ActuatorHealth(
+                    joint_name="arm_1",
+                    controller="main",
+                    actuator_id=1,
+                    healthy=True,
+                    temperature_celsius=30.0,
+                ),
+            ),
+        )
+
+        publisher.publish(report, topic=Topic.ACTUATOR_HEALTH)
+
+        channel, data_bytes = mock_lcm.publish.call_args[0]
+        assert channel == Topic.ACTUATOR_HEALTH.value
+        recovered = LCMConverter.actuator_health_report_from_lcm(
+            actuator_health_report_t.decode(data_bytes)
+        )
+        assert recovered == report
+
     def test_publish_node_rate(self, mock_lcm):
         publisher = Publisher()
         sample = NodeRateSample(

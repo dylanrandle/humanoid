@@ -1,0 +1,13 @@
+package humanoid.types.lcm;
+
+struct actuator_health_report_t {
+    int64_t timestamp;
+    int32_t num_actuators;
+    string joint_names[num_actuators];
+    string controllers[num_actuators];
+    int32_t actuator_ids[num_actuators];
+    int32_t healthy[num_actuators];
+    double temperatures_celsius[num_actuators];
+    string issues[num_actuators];
+    string error;
+}

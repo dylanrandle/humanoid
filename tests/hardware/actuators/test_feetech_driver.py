@@ -286,6 +286,23 @@ def test_position_sync_packet_failure_is_raised():
         driver.write_position({1: 0.1})
 
     driver.packet_handler.groupSyncWrite.clearParam.assert_called()
+    assert driver.health_issues() == {
+        1: "Feetech position sync write failed for actuator IDs [1]: transmit failed"
+    }
+
+
+def test_position_parameter_failure_is_attributed_to_failed_actuator():
+    driver = _driver([_actuator(1), _actuator(2)])
+    driver.packet_handler = Mock()
+    driver.packet_handler.SyncWritePosEx.side_effect = [True, False]
+
+    with pytest.raises(RuntimeError, match=r"actuator IDs \[2\]"):
+        driver.write_position({1: 0.1, 2: 0.2})
+
+    assert driver.health_issues() == {
+        2: "Feetech position parameter write failed for actuator IDs [2]."
+    }
+    driver.packet_handler.groupSyncWrite.txPacket.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -338,6 +355,8 @@ def test_velocity_communication_failure_is_raised():
 
     with pytest.raises(RuntimeError, match="velocity write failed"):
         driver.write_velocity({1: 1.0})
+
+    assert driver.health_issues() == {1: "Feetech velocity write failed for actuator 1."}
 
 
 @pytest.mark.parametrize(
@@ -474,6 +493,28 @@ def test_feedback_group_read_raises_communication_failure_and_clears_parameters(
         driver.read_all_feedback()
 
     group_read.clearParam.assert_called_once_with()
+    assert driver.health_issues() == {1: "Feetech feedback sync read failed: receive failed"}
+
+
+def test_feedback_group_read_retains_motor_reported_issue():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.getRxPacketError.return_value = "overload protection"
+    group_read = Mock()
+    group_read.addParam.return_value = True
+    group_read.txRxPacket.return_value = 0
+    group_read.isAvailable.return_value = (False, 32)
+
+    with patch(
+        "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
+        return_value=group_read,
+    ):
+        positions, velocities, temperatures = driver.read_all_feedback()
+
+    assert positions == {}
+    assert velocities == {}
+    assert temperatures == {}
+    assert driver.health_issues() == {1: "Feetech feedback sync read reported: overload protection"}
 
 
 @pytest.mark.parametrize(

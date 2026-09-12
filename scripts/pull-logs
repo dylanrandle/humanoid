@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REMOTE_HOST="${HUMANOID_ROBOT_HOST:-triskel}"
+INSTALL_DIR="${HUMANOID_ROBOT_DIR:-/opt/humanoid}"
+LOCAL_LOG_DIR="${PROJECT_ROOT}/logs/pi-logs"
+
+mkdir -p "${LOCAL_LOG_DIR}"
+
+rsync \
+    -avh \
+    --progress \
+    "${REMOTE_HOST}:${INSTALL_DIR}/logs/" \
+    "${LOCAL_LOG_DIR}/"

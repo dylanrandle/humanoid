@@ -70,3 +70,7 @@ class ActuatorDriver(ABC):
             self.read_all_velocities(),
             self.read_all_temperatures(),
         )
+
+    def health_issues(self) -> dict[int, str]:
+        """Return current actuator issues, keyed by physical actuator ID."""
+        return {}

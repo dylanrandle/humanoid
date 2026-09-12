@@ -8,6 +8,7 @@ import pytest
 
 from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
+from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingState, LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -117,10 +118,29 @@ class TestSubscriber:
                 Topic.ROBOT_BASE_COMMAND,
                 Topic.LOGGING_STATUS,
                 Topic.NODE_RATE,
+                Topic.ACTUATOR_HEALTH,
             ]
         )
 
         cases = [
+            (
+                Topic.ACTUATOR_HEALTH,
+                LCMConverter.actuator_health_report_to_lcm(
+                    ActuatorHealthReport(
+                        timestamp=0.5,
+                        actuators=(
+                            ActuatorHealth(
+                                joint_name="arm_1",
+                                controller="main",
+                                actuator_id=1,
+                                healthy=True,
+                                temperature_celsius=30.0,
+                            ),
+                        ),
+                    )
+                ),
+                ActuatorHealthReport,
+            ),
             (
                 Topic.NODE_RATE,
                 LCMConverter.node_rate_sample_to_lcm(

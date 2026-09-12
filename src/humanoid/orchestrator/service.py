@@ -25,6 +25,7 @@ from humanoid.orchestrator.constants import (
     STALE_CONFIGURATION_ERROR,
     TELEOP_PROCESSES,
 )
+from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
 from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
@@ -59,6 +60,7 @@ class OrchestratorService:
         mode_monitor: ModeMonitor | None = None,
         logging_monitor: LoggingMonitor | None = None,
         node_rate_monitor: NodeRateMonitor | None = None,
+        actuator_health_monitor: ActuatorHealthMonitor | None = None,
         replay_manager: ReplayManager | None = None,
         application_log_monitor: ApplicationLogMonitor | None = None,
     ):
@@ -79,6 +81,11 @@ class OrchestratorService:
         self.logging_monitor = logging_monitor if logging_monitor is not None else LoggingMonitor()
         self.node_rate_monitor = (
             node_rate_monitor if node_rate_monitor is not None else NodeRateMonitor()
+        )
+        self.actuator_health_monitor = (
+            actuator_health_monitor
+            if actuator_health_monitor is not None
+            else ActuatorHealthMonitor()
         )
         self.replay_manager = replay_manager if replay_manager is not None else ReplayManager()
         self.recording_catalog = RecordingCatalog()
@@ -113,6 +120,7 @@ class OrchestratorService:
                 robots=list(RobotName),
                 processes=processes,
                 node_rates=self.node_rate_monitor.snapshot(self.node_manager.active_nodes()),
+                actuator_health=self.actuator_health_monitor.snapshot(),
                 logging=self.logging_monitor.snapshot(),
                 recordings=self.recording_catalog.list(),
                 replay=replay,
@@ -145,6 +153,7 @@ class OrchestratorService:
             if requires_real_acknowledgement:
                 self._require_real_hardware_acknowledgement(safety)
             self._run_manager_action(action)
+            self.actuator_health_monitor.reset()
             return self.status()
 
     def start_process(
@@ -163,6 +172,8 @@ class OrchestratorService:
                 raise OrchestratorError(REPLAY_ACTIVE_ERROR)
             if process_name is not ProcessName.STACK:
                 self._require_ready_stack(current)
+            else:
+                self.actuator_health_monitor.reset()
             self._run_manager_action(lambda: self.node_manager.start(process_name))
             return self.status()
 
@@ -254,6 +265,7 @@ class OrchestratorService:
                 recording = self.recording_catalog.get(recording_id)
                 robot_config = ROBOT_CONFIGS[self.node_manager.robot]
                 self.replay_manager.validate(recording, robot_config)
+                self.actuator_health_monitor.reset()
                 self._run_manager_action(lambda: self.node_manager.start(ProcessName.REPLAY))
                 replay_nodes_started = True
                 self._run_manager_action(self.node_manager.wait_until_robot_ready)
@@ -290,6 +302,7 @@ class OrchestratorService:
             self.mode_monitor.close()
             self.logging_monitor.close()
             self.node_rate_monitor.close()
+            self.actuator_health_monitor.close()
             self.replay_manager.close()
             self.application_log_monitor.close()
 

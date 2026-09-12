@@ -6,6 +6,7 @@ import pytest
 from flask.testing import FlaskClient
 
 from humanoid.orchestrator.service import OrchestratorService
+from humanoid.types.actuator import ActuatorHealth, ActuatorHealthStatus
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import (
     ApplicationLogEntry,
@@ -78,6 +79,8 @@ def test_serves_split_ui_assets(server_client):
     assert b'id="replay-recording"' in response.data
     assert b'id="replay-action"' in response.data
     assert b'id="node-rate-list"' in response.data
+    assert b'id="actuator-health-list"' in response.data
+    assert b'id="actuator-health-error"' in response.data
     assert b'id="application-log-output"' in response.data
     assert b'role="region"' in response.data
     assert b'role="log"' not in response.data
@@ -103,6 +106,7 @@ def test_serves_split_ui_assets(server_client):
     response = client.get("/css/health.css")
     assert response.status_code == HTTPStatus.OK
     assert b".node-rate-row.healthy" in response.data
+    assert b".actuator-health-row.healthy" in response.data
 
     response = client.get("/css/logs.css")
     assert response.status_code == HTTPStatus.OK
@@ -191,6 +195,22 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 memory_rss_mb=86.3,
             )
         ],
+        actuator_health=ActuatorHealthStatus(
+            connected=True,
+            healthy=False,
+            age_seconds=0.1,
+            actuators=(
+                ActuatorHealth(
+                    joint_name="panda_joint1",
+                    controller="main",
+                    actuator_id=1,
+                    healthy=False,
+                    temperature_celsius=42.0,
+                    issue="Overload protection triggered.",
+                ),
+            ),
+            error="Incomplete actuator feedback.",
+        ),
         logging=LoggingStatus(
             timestamp=1.0,
             state=LoggingState.RUNNING,
@@ -255,6 +275,22 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 "memory_rss_mb": 86.3,
             }
         ],
+        "actuator_health": {
+            "connected": True,
+            "healthy": False,
+            "age_seconds": 0.1,
+            "actuators": [
+                {
+                    "joint_name": "panda_joint1",
+                    "controller": "main",
+                    "actuator_id": 1,
+                    "healthy": False,
+                    "temperature_celsius": 42.0,
+                    "issue": "Overload protection triggered.",
+                }
+            ],
+            "error": "Incomplete actuator feedback.",
+        },
         "logging": {
             "timestamp": 1.0,
             "state": "running",

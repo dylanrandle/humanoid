@@ -7,6 +7,7 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.orchestrator.client import OrchestratorClient
+from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
 from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
@@ -14,6 +15,7 @@ from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.recording import RecordingCatalog, RecordingError
+from humanoid.types.actuator import ActuatorHealthStatus
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import (
     ApplicationLogEntry,
@@ -99,6 +101,13 @@ def _make_service(
     )
     node_rate_monitor = MagicMock(spec=NodeRateMonitor)
     node_rate_monitor.snapshot.return_value = []
+    actuator_health_monitor = MagicMock(spec=ActuatorHealthMonitor)
+    actuator_health_monitor.snapshot.return_value = ActuatorHealthStatus(
+        connected=False,
+        healthy=False,
+        age_seconds=None,
+        actuators=(),
+    )
     application_log_monitor = MagicMock(spec=ApplicationLogMonitor)
     application_log_monitor.snapshot.return_value = ApplicationLogSnapshot(
         cursor=0,
@@ -112,6 +121,7 @@ def _make_service(
         mode_monitor=monitor,
         logging_monitor=logging_monitor,
         node_rate_monitor=node_rate_monitor,
+        actuator_health_monitor=actuator_health_monitor,
         replay_manager=replay_manager,
         application_log_monitor=application_log_monitor,
     )
@@ -417,6 +427,20 @@ def test_status_exposes_latest_logging_lifecycle():
     cast(MagicMock, service.logging_monitor).snapshot.return_value = expected
 
     assert service.status().logging == expected
+
+
+def test_status_exposes_latest_actuator_health():
+    service, _, _, _ = _make_service()
+    expected = ActuatorHealthStatus(
+        connected=False,
+        healthy=False,
+        age_seconds=3.0,
+        actuators=(),
+        error="Robot driver stopped.",
+    )
+    cast(MagicMock, service.actuator_health_monitor).snapshot.return_value = expected
+
+    assert service.status().actuator_health == expected
 
 
 def test_application_logs_exposes_incremental_snapshot():
@@ -834,4 +858,5 @@ def test_close_releases_mode_monitor_when_stack_status_fails():
     manager.close.assert_called_once_with()
     monitor.close.assert_called_once_with()
     cast(MagicMock, service.node_rate_monitor).close.assert_called_once_with()
+    cast(MagicMock, service.actuator_health_monitor).close.assert_called_once_with()
     cast(MagicMock, service.application_log_monitor).close.assert_called_once_with()

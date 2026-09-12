@@ -44,6 +44,10 @@ class ActuatorSystem(ABC):
         """Read all available actuator feedback."""
 
     @abstractmethod
+    def health_issues(self) -> dict[str, str]:
+        """Return current hardware issues keyed by logical joint name."""
+
+    @abstractmethod
     def stop(self) -> None:
         """Stop every velocity-controlled actuator while position actuators hold."""
 
@@ -138,6 +142,15 @@ class CompositeActuatorSystem(ActuatorSystem):
                     temperature=temperatures.get(actuator_id),
                 )
         return states
+
+    def health_issues(self) -> dict[str, str]:
+        issues: dict[str, str] = {}
+        for controller, driver in self.drivers.items():
+            for actuator_id, issue in driver.health_issues().items():
+                joint_name = self._joint_by_address.get((controller, actuator_id))
+                if joint_name is not None:
+                    issues[joint_name] = issue
+        return issues
 
     def stop(self) -> None:
         errors: list[Exception] = []

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
+from humanoid.constants import Topic
 from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
 from humanoid.nodes.robot.driver import DEFAULT_RATE_HZ, RobotDriverNode
 from humanoid.state_estimation.root.base import (
@@ -15,6 +16,7 @@ from humanoid.state_estimation.root.wheel_dead_reckoning import (
 )
 from humanoid.types.actuator import (
     ActuatorControlMode,
+    ActuatorHealthReport,
 )
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
@@ -25,6 +27,7 @@ from humanoid.types.robot import (
 )
 
 EXPECTED_DRIVER_RATE_HZ = 50.0
+EXPECTED_ARM_3_ACTUATOR_ID = 3
 
 
 class StubActuatorSystem(ActuatorSystem):
@@ -33,6 +36,7 @@ class StubActuatorSystem(ActuatorSystem):
         self.position_velocity_writes: list[dict[str, float] | None] = []
         self.velocity_writes: list[dict[str, float]] = []
         self.states: dict[str, ActuatorState] = {}
+        self.issues: dict[str, str] = {}
         self.connected = False
         self.stop_calls = 0
 
@@ -55,6 +59,9 @@ class StubActuatorSystem(ActuatorSystem):
 
     def read_states(self) -> dict[str, ActuatorState]:
         return self.states
+
+    def health_issues(self) -> dict[str, str]:
+        return self.issues
 
     def stop(self) -> None:
         self.stop_calls += 1
@@ -584,6 +591,89 @@ def test_publish_rejects_incomplete_actuator_feedback(robot_driver):
 
     with pytest.raises(RuntimeError, match="Incomplete actuator feedback"):
         robot_driver.publish()
+
+
+def test_real_driver_publishes_per_actuator_health_and_temperature():
+    driver = _make_driver(TRISKEL_CONFIG)
+    actuator_system = _actuator_system(driver)
+    actuator_system.states = {
+        joint_name: ActuatorState(position=0.0, velocity=0.0, temperature=30.0 + index)
+        for index, joint_name in enumerate(driver.actuator_joint_names)
+    }
+
+    driver.publish()
+
+    report_call = next(
+        call
+        for call in driver.publisher.publish.call_args_list  # ty: ignore[unresolved-attribute]
+        if call.kwargs["topic"] is Topic.ACTUATOR_HEALTH
+    )
+    report = report_call.args[0]
+    assert isinstance(report, ActuatorHealthReport)
+    assert report.error is None
+    assert len(report.actuators) == len(driver.actuator_joint_names)
+    arm = next(actuator for actuator in report.actuators if actuator.joint_name == "arm_3")
+    assert arm.actuator_id == EXPECTED_ARM_3_ACTUATOR_ID
+    assert arm.controller == "main"
+    assert arm.healthy is True
+    assert arm.temperature_celsius == pytest.approx(35.0)
+
+
+def test_real_driver_reports_motor_issue_before_rejecting_incomplete_feedback():
+    driver = _make_driver(TRISKEL_CONFIG)
+    actuator_system = _actuator_system(driver)
+    actuator_system.states = {
+        joint_name: ActuatorState(position=0.0, velocity=0.0, temperature=31.0)
+        for joint_name in driver.actuator_joint_names
+        if joint_name != "arm_3"
+    }
+    actuator_system.issues = {"arm_3": "Feetech feedback reported overload protection."}
+
+    with pytest.raises(RuntimeError, match="Incomplete actuator feedback"):
+        driver.publish()
+
+    report = driver.publisher.publish.call_args.args[0]  # ty: ignore[unresolved-attribute]
+    assert isinstance(report, ActuatorHealthReport)
+    arm = next(actuator for actuator in report.actuators if actuator.joint_name == "arm_3")
+    assert arm.healthy is False
+    assert arm.issue == "Feetech feedback reported overload protection."
+    assert report.error is not None
+
+
+def test_real_driver_publishes_command_failure_before_step_exits():
+    driver = _make_driver(TRISKEL_CONFIG)
+    actuator_system = _actuator_system(driver)
+    actuator_system.states = {
+        joint_name: ActuatorState(position=0.0, velocity=0.0, temperature=31.0)
+        for joint_name in driver.actuator_joint_names
+    }
+    driver.subscriber.receive = Mock(  # ty: ignore[invalid-assignment]
+        return_value=RobotJointCommand(
+            timestamp=0.0,
+            joint_positions=np.zeros(len(driver.actuator_joint_names)),
+        )
+    )
+
+    def fail_position_write(*_args, **_kwargs):
+        actuator_system.issues["arm_3"] = "Position command failed."
+        raise RuntimeError("Position write failed for actuator ID 3.")
+
+    with (
+        patch.object(
+            actuator_system,
+            "write_positions",
+            side_effect=fail_position_write,
+        ),
+        pytest.raises(RuntimeError, match="actuator ID 3"),
+    ):
+        driver.step()
+
+    report = driver.publisher.publish.call_args.args[0]  # ty: ignore[unresolved-attribute]
+    assert isinstance(report, ActuatorHealthReport)
+    assert report.error == "Position write failed for actuator ID 3."
+    arm = next(actuator for actuator in report.actuators if actuator.joint_name == "arm_3")
+    assert arm.healthy is False
+    assert arm.issue == "Position command failed."
 
 
 def test_close_stops_hardware_before_closing_middleware(robot_driver):

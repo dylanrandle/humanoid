@@ -2,6 +2,7 @@ import lcm
 
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
+from humanoid.types.actuator import ActuatorHealthReport
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingStatus
@@ -28,7 +29,9 @@ class Publisher:
         if expected_type is not type(data):
             raise TypeError(f"Topic {topic} expects {expected_type}, but got {type(data).__name__}")
 
-        if isinstance(data, NodeRateSample):
+        if isinstance(data, ActuatorHealthReport):
+            lcm_data = LCMConverter.actuator_health_report_to_lcm(data)
+        elif isinstance(data, NodeRateSample):
             lcm_data = LCMConverter.node_rate_sample_to_lcm(data)
         elif isinstance(data, RobotJointCommand):
             lcm_data = LCMConverter.robot_joint_command_to_lcm(data)

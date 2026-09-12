@@ -1,10 +1,14 @@
 """Converter between LCM types and Python dataclasses."""
 
+import math
+
 import numpy as np
 import pinocchio as pin
 
+from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
+    actuator_health_report_t,
     homing_target_t,
     logging_status_t,
     node_rate_sample_t,
@@ -33,6 +37,56 @@ from humanoid.types.robot import (
 
 class LCMConverter:
     """Handles conversion between LCM types and Python dataclasses."""
+
+    @staticmethod
+    def actuator_health_report_to_lcm(
+        report: ActuatorHealthReport,
+    ) -> actuator_health_report_t:
+        """Convert actuator health telemetry to its LCM representation."""
+        lcm_report = actuator_health_report_t()
+        lcm_report.timestamp = int(report.timestamp * 1e9)
+        lcm_report.num_actuators = len(report.actuators)
+        lcm_report.joint_names = [actuator.joint_name for actuator in report.actuators]
+        lcm_report.controllers = [actuator.controller for actuator in report.actuators]
+        lcm_report.actuator_ids = [actuator.actuator_id for actuator in report.actuators]
+        lcm_report.healthy = [int(actuator.healthy) for actuator in report.actuators]
+        lcm_report.temperatures_celsius = [
+            actuator.temperature_celsius if actuator.temperature_celsius is not None else math.nan
+            for actuator in report.actuators
+        ]
+        lcm_report.issues = [actuator.issue or "" for actuator in report.actuators]
+        lcm_report.error = report.error or ""
+        return lcm_report
+
+    @staticmethod
+    def actuator_health_report_from_lcm(
+        lcm_report: actuator_health_report_t,
+    ) -> ActuatorHealthReport:
+        """Convert LCM actuator health telemetry to application types."""
+        actuators = tuple(
+            ActuatorHealth(
+                joint_name=joint_name,
+                controller=controller,
+                actuator_id=actuator_id,
+                healthy=bool(healthy),
+                temperature_celsius=(None if math.isnan(temperature) else temperature),
+                issue=issue or None,
+            )
+            for joint_name, controller, actuator_id, healthy, temperature, issue in zip(
+                lcm_report.joint_names,
+                lcm_report.controllers,
+                lcm_report.actuator_ids,
+                lcm_report.healthy,
+                lcm_report.temperatures_celsius,
+                lcm_report.issues,
+                strict=True,
+            )
+        )
+        return ActuatorHealthReport(
+            timestamp=lcm_report.timestamp / 1e9,
+            actuators=actuators,
+            error=lcm_report.error or None,
+        )
 
     @staticmethod
     def node_rate_sample_to_lcm(sample: NodeRateSample) -> node_rate_sample_t:

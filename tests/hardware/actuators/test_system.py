@@ -31,6 +31,7 @@ class StubActuatorDriver(ActuatorDriver):
         self.fail_connect = fail_connect
         self.fail_disconnect = fail_disconnect
         self.fail_velocity_ids = fail_velocity_ids or set()
+        self.issues: dict[int, str] = {}
         self.disconnect_calls = 0
 
     def connect(self) -> None:
@@ -77,6 +78,9 @@ class StubActuatorDriver(ActuatorDriver):
 
     def read_all_velocities(self) -> dict[int, float]:
         return self.velocities
+
+    def health_issues(self) -> dict[int, str]:
+        return self.issues
 
 
 def _actuator(
@@ -182,6 +186,18 @@ def test_translates_controller_feedback_to_joint_names():
     assert state.position == EXPECTED_POSITION
     assert state.velocity == EXPECTED_VELOCITY
     assert state.temperature == EXPECTED_TEMPERATURE
+
+
+def test_translates_controller_health_issues_to_joint_names():
+    driver = StubActuatorDriver([1])
+    driver.issues[1] = "Overload protection triggered."
+    system = CompositeActuatorSystem(
+        {"joint": _actuator("main")},
+        {"joint": ActuatorControlMode.POSITION},
+        {"main": driver},
+    )
+
+    assert system.health_issues() == {"joint": "Overload protection triggered."}
 
 
 def test_rejects_commands_for_the_wrong_control_mode():
