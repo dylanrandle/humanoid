@@ -21,6 +21,7 @@ from humanoid.types.actuator import (
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     RobotConfig,
+    RobotGripperConfig,
     RobotJointCommand,
     RobotName,
     RobotToolConfig,
@@ -80,7 +81,7 @@ class StubRootStateEstimator(RootStateEstimator):
 def _robot_config(
     modes: list[ActuatorControlMode],
     *,
-    gripper_joint_indices: list[int] | None = None,
+    gripper_joint_names: tuple[str, ...] | None = None,
 ) -> RobotConfig:
     return RobotConfig(
         name=RobotName.PANDA,
@@ -91,7 +92,11 @@ def _robot_config(
         },
         actuator_control_modes={f"joint_{index}": mode for index, mode in enumerate(modes)},
         hardware=None,
-        gripper_joint_indices=gripper_joint_indices,
+        gripper=(
+            RobotGripperConfig(joint_names=gripper_joint_names)
+            if gripper_joint_names is not None
+            else None
+        ),
     )
 
 
@@ -236,7 +241,7 @@ def test_gripper_omits_position_trajectory_velocity():
     driver = _make_driver(
         _robot_config(
             [ActuatorControlMode.POSITION, ActuatorControlMode.POSITION],
-            gripper_joint_indices=[1],
+            gripper_joint_names=("joint_1",),
         )
     )
     driver.subscriber.receive = Mock(  # ty: ignore[invalid-assignment]

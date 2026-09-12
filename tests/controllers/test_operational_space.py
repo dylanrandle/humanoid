@@ -211,7 +211,7 @@ class TestComputeControl:
         wheel_v_indices = mobile_robot.get_joint_velocity_indices(wheel_joint_indices)
         gripper_q_indices = mobile_robot.get_gripper_position_indices()
         gripper_v_indices = mobile_robot.get_joint_velocity_indices(
-            mobile_robot.config.gripper_joint_indices or []
+            mobile_robot.get_gripper_joint_indices()
         )
         assert root_q_slice is not None
         assert root_v_slice is not None

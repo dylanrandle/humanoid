@@ -71,7 +71,7 @@ class RobotControllerNode(Node):
             )
 
         self.gripper_controller: GripperController | None = None
-        if robot_config.gripper_joint_indices:
+        if robot_config.gripper is not None:
             self.gripper_controller = GripperController(robot=self.robot)
             logger.info("Initialized gripper controller")
 

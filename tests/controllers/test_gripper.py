@@ -21,7 +21,7 @@ def triskel_robot() -> Robot:
 
 
 def test_requires_configured_gripper(panda_robot):
-    config = replace(panda_robot.config, gripper_joint_indices=None)
+    config = replace(panda_robot.config, gripper=None)
     robot = Robot.__new__(Robot)
     robot.__dict__.update(panda_robot.__dict__)
     robot._config = config
@@ -70,7 +70,7 @@ def test_reports_gripper_trajectory_velocity(panda_robot):
 def test_mobile_gripper_uses_position_index_not_joint_index(triskel_robot):
     controller = GripperController(triskel_robot)
     q = triskel_robot.config.homing_presets[HomingPreset.HOME].copy()
-    joint_idx = triskel_robot.config.gripper_joint_indices[0]
+    joint_idx = triskel_robot.get_gripper_joint_indices()[0]
     position_idx = triskel_robot.joint_idx_to_position_idx(joint_idx)
     target = np.array([0.123])
     assert joint_idx != position_idx

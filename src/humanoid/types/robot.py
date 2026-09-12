@@ -86,6 +86,21 @@ class RobotBaseConfig:
             raise ValueError("Robot base frame must not be empty.")
 
 
+@dataclass(frozen=True, kw_only=True)
+class RobotGripperConfig:
+    """Independently commanded gripper joints identified by URDF name."""
+
+    joint_names: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.joint_names:
+            raise ValueError("Robot gripper must define at least one joint name.")
+        if any(not joint_name.strip() for joint_name in self.joint_names):
+            raise ValueError("Robot gripper joint names must not be empty.")
+        if len(set(self.joint_names)) != len(self.joint_names):
+            raise ValueError("Robot gripper joint names must be unique.")
+
+
 @dataclass
 class RobotJointCommand:
     timestamp: float
@@ -132,7 +147,7 @@ class RobotConfig:
     actuator_control_modes: dict[str, ActuatorControlMode]
     base: RobotBaseConfig | None = None
     wheels: list[WheelConfig] | None = None
-    gripper_joint_indices: list[int] | None = None
+    gripper: RobotGripperConfig | None = None
     hardware: RobotHardwareConfig | None = None
     state_estimation: RobotStateEstimationConfig | None = None
     operational_space_config: OperationalSpaceConfig | None = None
@@ -162,7 +177,21 @@ class RobotConfig:
                 )
             if any(wheel.type is not WheelType.OMNI for wheel in self.wheels):
                 raise ValueError("Omniwheel base control requires omniwheel configurations.")
+        self._validate_gripper()
         if self.hardware is None or self.hardware.actuators is None:
             return
         if self.hardware.actuators.joints.keys() != self.actuator_control_modes.keys():
             raise ValueError("Physical actuator bindings must match the robot's controlled joints.")
+
+    def _validate_gripper(self) -> None:
+        if self.gripper is None:
+            return
+        missing_gripper_joints = set(self.gripper.joint_names) - self.actuator_control_modes.keys()
+        if missing_gripper_joints:
+            missing = ", ".join(sorted(missing_gripper_joints))
+            raise ValueError(f"Gripper joints must be configured actuators: {missing}.")
+        if any(
+            self.actuator_control_modes[joint_name] is not ActuatorControlMode.POSITION
+            for joint_name in self.gripper.joint_names
+        ):
+            raise ValueError("Gripper joints must use position control.")

@@ -79,7 +79,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
         gripper_range = self.gripper_max - self.gripper_min
         self.gripper_step = gripper_range * config.dt / config.gripper_close_time
-        if self.verbose and robot_config.gripper_joint_indices:
+        if self.verbose and robot_config.gripper is not None:
             logger.info(
                 f"Gripper step: {self.gripper_step:.4f} "
                 f"({self.gripper_step * 1000:.2f}mm, "
@@ -96,7 +96,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         )
 
         # Current gripper positions (will be initialized on first observation)
-        # Track gripper positions based on gripper_joint_indices from config
+        # Track gripper positions from the configured gripper joints.
         self.gripper_positions: np.ndarray | None = None
 
         # Current target base pose (initialized when the robot has a mobile base).
@@ -118,8 +118,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         """Log initialization info and controls."""
         logger.info(f"KeyboardTeleopPolicy initialized for {self.robot_config.name}")
         logger.info(f"End effector frame: {self.robot_config.tool.frame}")
-        if self.robot_config.gripper_joint_indices:
-            logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
+        if self.robot_config.gripper is not None:
+            logger.info(f"Gripper joints: {self.robot_config.gripper.joint_names}")
         logger.info(
             f"Translation step: {self.tool_translation_step:.4f} m "
             f"({self.tool_translation_step * 100:.2f} cm)"

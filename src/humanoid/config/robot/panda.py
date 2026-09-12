@@ -7,6 +7,7 @@ from humanoid.types.controllers import OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     RobotConfig,
+    RobotGripperConfig,
     RobotName,
     RobotToolConfig,
 )
@@ -19,6 +20,7 @@ JOINT_IDS = [
 HOME_POSITION = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04])
 REST_POSITION = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.785, 0.0])
 TOOL_CONFIG = RobotToolConfig(frame="panda_hand_tcp")
+GRIPPER_CONFIG = RobotGripperConfig(joint_names=("panda_finger_joint1",))
 HOMING_PRESETS = {
     HomingPreset.HOME: HOME_POSITION,
     HomingPreset.REST: REST_POSITION,
@@ -33,6 +35,6 @@ PANDA_CONFIG = RobotConfig(
     homing_presets=HOMING_PRESETS,
     actuator_control_modes=ACTUATOR_CONTROL_MODES,
     hardware=None,
-    gripper_joint_indices=[7],
+    gripper=GRIPPER_CONFIG,
     operational_space_config=OPERATIONAL_SPACE_CONFIG,
 )

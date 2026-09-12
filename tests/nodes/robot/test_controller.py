@@ -61,7 +61,7 @@ def _make_controller(
         mock_robot.model.nq = nq
         mock_robot.model.nv = nv
         # Geometry helpers used by _reset_commands_from_state.
-        gripper_q_indices = [nq - 1] if robot_config.gripper_joint_indices else []
+        gripper_q_indices = [nq - 1] if robot_config.gripper is not None else []
         mock_robot.get_gripper_position_indices.return_value = gripper_q_indices
         mock_robot.get_tool_command_pose.return_value = pin.SE3.Identity()
         mock_robot.get_base_pose.return_value = pin.SE3.Identity() if is_mobile else None

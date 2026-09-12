@@ -68,7 +68,7 @@ def test_moves_base_and_wheels_without_moving_arm_or_gripper(triskel_robot):
     arm_v_indices = triskel_robot.get_joint_velocity_indices(arm_joint_indices)
     gripper_q_indices = triskel_robot.get_gripper_position_indices()
     gripper_v_indices = triskel_robot.get_joint_velocity_indices(
-        triskel_robot.config.gripper_joint_indices or []
+        triskel_robot.get_gripper_joint_indices()
     )
     root_v_slice = triskel_robot.get_root_v_slice()
     base = triskel_robot.config.base

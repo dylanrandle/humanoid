@@ -160,8 +160,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
     def log_configuration(self):
         logger.info(f"OculusTeleopPolicy initialized for {self.robot_config.name}")
         logger.info(f"End effector frame: {self.robot_config.tool.frame}")
-        if self.robot_config.gripper_joint_indices:
-            logger.info(f"Gripper joint indices: {self.robot_config.gripper_joint_indices}")
+        if self.robot_config.gripper is not None:
+            logger.info(f"Gripper joints: {self.robot_config.gripper.joint_names}")
         logger.info(f"Translation scale: {self.tool_translation_scale:.2f}")
         logger.info(f"Rotation scale: {self.tool_rotation_scale:.2f}")
         if self.config.ip_address is None:
@@ -262,7 +262,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
         Returns None when the robot has no gripper joint configured.
         """
-        if not self.robot_config.gripper_joint_indices:
+        if self.robot_config.gripper is None:
             return None
 
         if self.commanded_gripper_position is None:

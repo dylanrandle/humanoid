@@ -764,7 +764,7 @@ class TestGripper:
         assert action.gripper_positions[0] == pytest.approx(seeded_gripper - step)
 
     def test_no_gripper_indices_yields_none(self):
-        cfg = replace(ROBOT_CONFIGS["panda"], gripper_joint_indices=None)
+        cfg = replace(ROBOT_CONFIGS["panda"], gripper=None)
         policy = OculusTeleopPolicy(
             robot_config=cfg,
             config=OculusTeleopPolicyConfig(
@@ -958,7 +958,7 @@ class TestHomingButtons:
 
     def test_homing_passes_through_when_no_gripper_configured(self):
         """With no gripper joints, the target equals the config array verbatim."""
-        cfg = replace(ROBOT_CONFIGS["panda"], gripper_joint_indices=None)
+        cfg = replace(ROBOT_CONFIGS["panda"], gripper=None)
         policy = OculusTeleopPolicy(
             robot_config=cfg,
             config=OculusTeleopPolicyConfig(

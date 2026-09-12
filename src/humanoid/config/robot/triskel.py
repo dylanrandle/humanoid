@@ -19,6 +19,7 @@ from humanoid.types.robot import (
     CartesianVelocityLimits,
     RobotBaseConfig,
     RobotConfig,
+    RobotGripperConfig,
     RobotName,
     RobotToolConfig,
     WheelConfig,
@@ -133,6 +134,7 @@ STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
     root=WheelDeadReckoningRootStateEstimatorConfig(),
 )
 TOOL_CONFIG = RobotToolConfig(frame="gripper_base_link")
+GRIPPER_CONFIG = RobotGripperConfig(joint_names=(GRIPPER_ID,))
 BASE_CONFIG = RobotBaseConfig(
     frame="root_joint",
     velocity_limits=CartesianVelocityLimits(
@@ -166,7 +168,7 @@ TRISKEL_CONFIG = RobotConfig(
     actuator_control_modes=ACTUATOR_CONTROL_MODES,
     hardware=HARDWARE_CONFIG,
     state_estimation=STATE_ESTIMATION_CONFIG,
-    gripper_joint_indices=[11],
+    gripper=GRIPPER_CONFIG,
     operational_space_config=OPERATIONAL_SPACE_CONFIG,
     omniwheel_base_config=OMNIWHEEL_BASE_CONFIG,
 )

@@ -101,7 +101,7 @@ class TestConstruction:
         assert panda_policy.gripper_step == pytest.approx(expected)
 
     def test_no_gripper_config_zeroes_step_and_limits(self):
-        cfg = replace(ROBOT_CONFIGS["panda"], gripper_joint_indices=None)
+        cfg = replace(ROBOT_CONFIGS["panda"], gripper=None)
         policy = KeyboardTeleopPolicy(
             robot_config=cfg, config=KeyboardTeleopPolicyConfig(verbose=False)
         )

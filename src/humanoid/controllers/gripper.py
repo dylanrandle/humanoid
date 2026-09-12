@@ -12,10 +12,11 @@ class GripperController(Controller[NDArray[np.float64]]):
     """Apply gripper targets without coupling them to an arm controller."""
 
     def __init__(self, robot: Robot):
-        if not robot.config.gripper_joint_indices:
+        controlled_joint_indices = robot.get_gripper_joint_indices()
+        if not controlled_joint_indices:
             raise ValueError("Gripper controller requires configured gripper joints.")
         self.robot = robot
-        self.controlled_joint_indices = list(robot.config.gripper_joint_indices)
+        self.controlled_joint_indices = controlled_joint_indices
         self.controlled_q_indices = np.asarray(
             robot.get_joint_position_indices(self.controlled_joint_indices), dtype=int
         )

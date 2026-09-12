@@ -164,6 +164,13 @@ class Robot:
         if missing_actuator_joints:
             missing = ", ".join(sorted(missing_actuator_joints))
             raise ValueError(f"Actuator joints not found in the robot model: {missing}")
+        for joint_index in self.get_gripper_joint_indices():
+            joint = self.model.joints[joint_index + 1]
+            if joint.nq != 1 or joint.nv != 1:
+                joint_name = self.joint_idx_to_name(joint_index)
+                raise ValueError(
+                    f"Gripper joint {joint_name!r} must have one position and velocity coordinate."
+                )
 
     @property
     def config(self) -> RobotConfig:
@@ -473,18 +480,25 @@ class Robot:
             return None
         return self.get_frame_pose(self.config.base.frame, q)
 
+    def get_gripper_joint_indices(self) -> list[int]:
+        """Resolve the configured gripper's URDF joint names to model indices."""
+        if self.config.gripper is None:
+            return []
+        return [self.joint_name_to_idx(name) for name in self.config.gripper.joint_names]
+
     def get_gripper_position_indices(self) -> list[int]:
         """Return the position indices for each configured gripper joint.
 
         Returns an empty list when no gripper joints are configured. Each
-        joint index in ``config.gripper_joint_indices`` is mapped through
+        configured gripper joint is mapped through
         :meth:`joint_idx_to_position_idx`, which is the correct index into
         ``q`` / observation arrays even when a planar base joint shifts the
         layout.
         """
-        if not self.config.gripper_joint_indices:
-            return []
-        return [self.joint_idx_to_position_idx(j) for j in self.config.gripper_joint_indices]
+        return [
+            self.joint_idx_to_position_idx(joint_index)
+            for joint_index in self.get_gripper_joint_indices()
+        ]
 
     def get_gripper_limits(self) -> list[tuple[float, float]]:
         """Return ``(lower, upper)`` position limits for each gripper joint.
@@ -508,12 +522,13 @@ class Robot:
             q: Configuration vector mutated in place
             gripper_positions: Target positions, one per gripper joint
         """
-        if not self.config.gripper_joint_indices:
+        gripper_joint_indices = self.get_gripper_joint_indices()
+        if not gripper_joint_indices:
             return
-        assert len(gripper_positions) == len(self.config.gripper_joint_indices), (
+        assert len(gripper_positions) == len(gripper_joint_indices), (
             "Received invalid number of gripper_positions "
-            f"(expected: {len(self.config.gripper_joint_indices)}, "
+            f"(expected: {len(gripper_joint_indices)}, "
             f"received: {len(gripper_positions)})"
         )
-        for i, joint_idx in enumerate(self.config.gripper_joint_indices):
+        for i, joint_idx in enumerate(gripper_joint_indices):
             q[self.joint_idx_to_position_idx(joint_idx)] = gripper_positions[i]

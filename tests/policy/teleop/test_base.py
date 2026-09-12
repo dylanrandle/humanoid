@@ -12,7 +12,7 @@ from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
-from humanoid.types.robot import RobotState
+from humanoid.types.robot import RobotGripperConfig, RobotState
 
 
 class _DummyTeleopPolicy(BaseTeleopPolicy):
@@ -70,13 +70,16 @@ class TestConstruction:
         )
 
     def test_no_gripper_config_zeroes_limits(self, panda_config):
-        no_gripper = replace(panda_config, gripper_joint_indices=None)
+        no_gripper = replace(panda_config, gripper=None)
         policy = _DummyTeleopPolicy(robot_config=no_gripper, verbose=False)
         assert policy.gripper_min == 0.0
         assert policy.gripper_max == 0.0
 
     def test_multi_gripper_config_rejected(self, panda_config):
-        multi = replace(panda_config, gripper_joint_indices=[7, 7])
+        multi = replace(
+            panda_config,
+            gripper=RobotGripperConfig(joint_names=("panda_finger_joint1", "panda_joint7")),
+        )
         with pytest.raises(AssertionError, match="only supports 1 gripper joint"):
             _DummyTeleopPolicy(robot_config=multi, verbose=False)
 
@@ -109,7 +112,7 @@ class TestForwardKinematicsHelpers:
 
 class TestGripperFromObservation:
     def test_returns_none_when_no_grippers_configured(self, panda_config):
-        no_gripper = replace(panda_config, gripper_joint_indices=None)
+        no_gripper = replace(panda_config, gripper=None)
         policy = _DummyTeleopPolicy(robot_config=no_gripper, verbose=False)
         obs = _observation_from_q(panda_config.homing_presets[HomingPreset.HOME])
         assert policy._get_current_gripper_positions(obs) is None
@@ -122,7 +125,7 @@ class TestGripperFromObservation:
         We craft a synthetic q where those two slots hold distinct values and
         confirm the helper returns the position-index slot.
         """
-        joint_idx = mobile_config.gripper_joint_indices[0]
+        joint_idx = mobile_policy.robot.get_gripper_joint_indices()[0]
         position_idx = mobile_policy.robot.joint_idx_to_position_idx(joint_idx)
         assert joint_idx != position_idx, (
             "Test premise: mobile-robot gripper joint_idx must differ from position_idx."

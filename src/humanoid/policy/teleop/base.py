@@ -48,17 +48,18 @@ class BaseTeleopPolicy(Policy):
         self.verbose = verbose
         self.robot = Robot(robot_config)
 
-        if robot_config.gripper_joint_indices:
-            assert len(robot_config.gripper_joint_indices) == 1, (
+        gripper_joint_indices = self.robot.get_gripper_joint_indices()
+        if gripper_joint_indices:
+            assert len(gripper_joint_indices) == 1, (
                 f"{type(self).__name__} only supports 1 gripper joint, "
-                f"but {len(robot_config.gripper_joint_indices)} were specified"
+                f"but {len(gripper_joint_indices)} were specified"
             )
             (self.gripper_min, self.gripper_max), *_ = self.robot.get_gripper_limits()
             if self.verbose:
-                gripper_joint_idx = robot_config.gripper_joint_indices[0]
+                gripper_joint_name = self.robot.joint_idx_to_name(gripper_joint_indices[0])
                 gripper_range = self.gripper_max - self.gripper_min
                 logger.info(
-                    f"Gripper joint {gripper_joint_idx}: "
+                    f"Gripper joint {gripper_joint_name}: "
                     f"[{self.gripper_min:.4f}, {self.gripper_max:.4f}] "
                     f"(range: {gripper_range:.4f}, {gripper_range * 1000:.2f}mm)"
                 )

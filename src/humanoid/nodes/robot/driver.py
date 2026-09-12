@@ -67,11 +67,13 @@ class RobotDriverNode(Node):
             for joint_name in self.actuator_joint_names
             if self.actuator_control_modes[joint_name] is ActuatorControlMode.POSITION
         ]
-        gripper_joint_indices = set(robot_config.gripper_joint_indices or [])
+        gripper_joint_names = set(
+            robot_config.gripper.joint_names if robot_config.gripper is not None else ()
+        )
         self.position_trajectory_joints = [
             joint_name
             for joint_name in self.position_controlled_joints
-            if self.joint_indices[joint_name] not in gripper_joint_indices
+            if joint_name not in gripper_joint_names
         ]
         self.velocity_controlled_joints = [
             joint_name

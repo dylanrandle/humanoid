@@ -327,7 +327,7 @@ class TestJointIdxLookup:
 class TestSetGripperPositions:
     def test_writes_at_position_index_for_fixed_base(self, panda_robot):
         """Panda's gripper joint_idx happens to equal its position_idx (7)."""
-        gripper_joint_idx = panda_robot.config.gripper_joint_indices[0]
+        gripper_joint_idx = panda_robot.get_gripper_joint_indices()[0]
         position_idx = panda_robot.joint_idx_to_position_idx(gripper_joint_idx)
 
         q = pin.neutral(panda_robot.model)
@@ -338,7 +338,7 @@ class TestSetGripperPositions:
 
     def test_writes_at_position_index_not_joint_index_on_mobile(self, mobile_robot):
         """Regression: the planar base shifts q, so position_idx != joint_idx (11 vs 17)."""
-        joint_idx = mobile_robot.config.gripper_joint_indices[0]
+        joint_idx = mobile_robot.get_gripper_joint_indices()[0]
         position_idx = mobile_robot.joint_idx_to_position_idx(joint_idx)
         assert joint_idx != position_idx, (
             "Test premise: mobile robot's gripper joint_idx must differ from position_idx."
@@ -357,7 +357,7 @@ class TestSetGripperPositions:
         )
 
     def test_no_grippers_configured_is_noop(self, panda_robot):
-        no_gripper_config = replace(panda_robot.config, gripper_joint_indices=None)
+        no_gripper_config = replace(panda_robot.config, gripper=None)
         robot = Robot.__new__(Robot)
         robot.__dict__.update(panda_robot.__dict__)
         robot._config = no_gripper_config
@@ -369,18 +369,6 @@ class TestSetGripperPositions:
 
         np.testing.assert_array_equal(q, q_before)
 
-    def test_empty_gripper_list_is_noop(self, panda_robot):
-        empty = replace(panda_robot.config, gripper_joint_indices=[])
-        robot = Robot.__new__(Robot)
-        robot.__dict__.update(panda_robot.__dict__)
-        robot._config = empty
-
-        q = pin.neutral(robot.model)
-        q_before = q.copy()
-        robot.set_gripper_positions(q, np.array([]))
-
-        np.testing.assert_array_equal(q, q_before)
-
     def test_wrong_count_raises_assertion(self, panda_robot):
         """gripper_positions length must match the number of configured gripper joints."""
         q = pin.neutral(panda_robot.model)
@@ -389,7 +377,7 @@ class TestSetGripperPositions:
 
     def test_mutates_in_place(self, panda_robot):
         """The function returns None and mutates the supplied q."""
-        gripper_joint_idx = panda_robot.config.gripper_joint_indices[0]
+        gripper_joint_idx = panda_robot.get_gripper_joint_indices()[0]
         position_idx = panda_robot.joint_idx_to_position_idx(gripper_joint_idx)
 
         q = pin.neutral(panda_robot.model)
