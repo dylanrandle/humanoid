@@ -170,7 +170,9 @@ class RealtimeEnvironment(Environment):
         Returns:
             Timestamp (seconds) at which the commands were published
         """
-        timestamp = time.time()
+        # Robot state and controller output use the monotonic performance clock;
+        # command timestamps share that clock so latency remains meaningful.
+        timestamp = time.perf_counter()
 
         if action.joint_positions is not None:
             if self.action_topics.joint is None:

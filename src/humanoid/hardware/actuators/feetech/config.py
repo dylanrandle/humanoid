@@ -16,6 +16,7 @@ DEFAULT_MAX_POSITION_VELOCITY = 1.0
 # Additional position-mode speed budget in rad/s per radian of tracking error.
 DEFAULT_POSITION_TRACKING_ERROR_GAIN = 10.0
 DEFAULT_BAUD_RATE = 1_000_000
+DEFAULT_FEEDBACK_READ_RETRIES = 2
 FEETECH_ACTUATOR_ID_MIN = 1
 FEETECH_ACTUATOR_ID_MAX = 253
 FEETECH_ACCELERATION_MIN = 0
@@ -77,12 +78,19 @@ class FeetechActuatorControllerConfig(ActuatorControllerConfig):
     port: str | None = None
     baud_rate: int = DEFAULT_BAUD_RATE
     servo_type: FeetechServoType = FeetechServoType.STS
+    feedback_read_retries: int = DEFAULT_FEEDBACK_READ_RETRIES
 
     def __post_init__(self) -> None:
         if self.port == "":
             raise ValueError("Feetech controller port must not be empty.")
         if self.baud_rate <= 0:
             raise ValueError("Feetech controller baud rate must be positive.")
+        if (
+            not isinstance(self.feedback_read_retries, int)
+            or isinstance(self.feedback_read_retries, bool)
+            or self.feedback_read_retries < 0
+        ):
+            raise ValueError("Feetech feedback read retries must be a non-negative integer.")
 
 
 @dataclass(frozen=True, kw_only=True)

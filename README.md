@@ -70,29 +70,59 @@ LCM network.
 
 ### Controller Tracking Diagnostic
 
-With the main stack running in **Idle**, command a conservative Cartesian figure eight
-from the gripper's measured pose while cycling the gripper open and closed:
+With the main stack running in **Idle**, measure repeated home-to-rest-to-home joint-space
+trajectories, Cartesian figure-eight tracking through OSC/IK, and a matched endpoint
+comparison between homing-controller joint-space and Cartesian control:
 
 ```bash
 uv run python -m humanoid.robots.utils.controller_tracking --robot triskel
 ```
 
 The script waits three seconds before motion, acquires the dedicated `SYSTEM` command
-source, and returns the orchestrator to Idle on exit. Its defaults command an 80 mm by
-40 mm figure eight in the XZ plane at 10 Hz and a same-period gripper sinusoid that stays
-5% clear of each URDF joint limit. The ramp blends both motions into and out of their
-measured starting state. Raw CSV samples and an SVG report under `logs/tracking/`
-include tool and gripper tracking errors plus each arm joint's controller target,
-encoder measurement, signed error, timestamps, and overlaid command-versus-measured
-joint trajectories. Use `--help` to change the motion or gripper bounds, or
-`--hold-gripper` to disable gripper motion. Keep the selected `--robot` consistent with
+source, and returns the orchestrator to Idle on exit. Its defaults first move home and
+complete two home-to-rest-to-home round trips, ending back at home. It next runs an 80 mm
+by 40 mm figure eight in the XZ plane through Cartesian OSC/IK. Finally, it moves between
+explicit, corresponding joint/task endpoint poses. The joint-space run uses the same
+homing controller as normal HOME/REST motion. After resetting to the supplied start joint
+pose, the Cartesian run uses minimum-jerk SE(3) interpolation from the supplied start tool
+pose to the supplied end tool pose through OSC/IK, with no intermediate waypoints. The
+Cartesian comparison lasts eight seconds by default and can be changed independently with
+`--comparison-duration`; `--cycles` controls only the figure-eight repetitions. Commands
+run at 30 Hz by default. A same-period gripper sinusoid stays 5%
+clear of each URDF joint limit during the figure eight.
+
+Raw tracking samples, losslessly captured OSC publication timing, and three standalone
+SVG reports are written under `logs/tracking/`: one each for joint-space home/rest,
+Cartesian figure eight (OSC/IK), and the same-endpoint command-space comparison. The
+timing CSV reports achieved output rate, period jitter, and delayed intervals independently
+of the tracking sampler. Every experiment includes a joint-level error table and
+commanded-versus-measured joint plots for the arm and gripper. The figure-eight and both
+comparison paths also include Cartesian error statistics and plots. Comparing the two
+endpoint subsections helps distinguish actuator/driver tracking from OSC/IK or Cartesian
+trajectory behavior. Use `--help` to change timing, figure-eight dimensions, gripper
+bounds, or home-convergence criteria. Use `--joint-cycles 0` to omit the baseline section
+or `--hold-gripper` to disable the sinusoid. Keep the selected `--robot` consistent with
 the running stack.
+If motion stops after sampling has begun, the utility still writes a report marked as
+partial before exiting with an error, so the data leading up to the failure is retained.
 
 After deploying, run the installed utility on the Pi with the stack in Idle:
 
 ```bash
 /opt/humanoid/.venv/bin/python -m humanoid.robots.utils.controller_tracking --robot triskel
 ```
+
+To capture measured endpoints for the matched joint/Cartesian comparison, teleoperate the
+robot into each pose and run the read-only snapshot utility:
+
+```bash
+/opt/humanoid/.venv/bin/python -m humanoid.robots.utils.pose_snapshot --robot triskel --label start
+/opt/humanoid/.venv/bin/python -m humanoid.robots.utils.pose_snapshot --robot triskel --label end
+```
+
+Each invocation waits for a fresh robot-state sample and prints copyable JSON containing
+the named position-controlled joint angles and the configured tool-command pose. For a
+mobile robot such as Triskel, the tool pose is relative to the configured base frame.
 
 ### Deploying to Triskel
 

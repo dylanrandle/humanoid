@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 from humanoid.config import ROBOT_CONFIG
@@ -8,6 +10,8 @@ from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig
+
+CUBIC_SMOOTHSTEP_MAX_SLOPE = 1.5
 
 
 class HomingPolicy(Policy):
@@ -92,8 +96,12 @@ def _generate_trajectory(
     min_duration: float = 0.1,
 ) -> list[np.ndarray]:
     max_displacement = float(np.max(np.abs(q_goal - q_start)))
-    duration = max(max_displacement / speed, min_duration)
-    num_steps = max(int(duration / dt), 1)
+    # The peak slope of 3u² - 2u³ is 1.5 at u=0.5. Account for it when
+    # sizing the duration so ``speed`` is a true peak-velocity limit rather
+    # than merely the average displacement divided by duration. Rounding the
+    # step count up preserves the bound after discretization.
+    duration = max(CUBIC_SMOOTHSTEP_MAX_SLOPE * max_displacement / speed, min_duration)
+    num_steps = max(math.ceil(duration / dt), 1)
     return [
         (1 - _smooth_step(i / num_steps)) * q_start + _smooth_step(i / num_steps) * q_goal
         for i in range(num_steps + 1)

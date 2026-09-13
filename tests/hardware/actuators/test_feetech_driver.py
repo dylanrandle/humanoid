@@ -36,6 +36,8 @@ TEST_BAUD_RATE = 115_200
 MID_POSITION = 2048
 RENAMED_ACTUATOR_ID = 7
 EXPECTED_ACCELERATION_GROUP_COUNT = 2
+EXPECTED_FEEDBACK_READ_ATTEMPTS = 3
+EXPECTED_TRANSIENT_FEEDBACK_READ_ATTEMPTS = 2
 
 
 def _actuator(
@@ -59,6 +61,8 @@ def _actuator(
 def _driver(
     actuators: list[FeetechActuatorConfig] | None = None,
     modes: dict[int, ActuatorControlMode] | None = None,
+    *,
+    feedback_read_retries: int = 2,
 ) -> FeetechActuatorDriver:
     actuators = actuators or [_actuator()]
     modes = modes or {actuator.actuator_id: ActuatorControlMode.POSITION for actuator in actuators}
@@ -69,6 +73,7 @@ def _driver(
             port=TEST_PORT,
             baud_rate=TEST_BAUD_RATE,
             servo_type=FeetechServoType.STS,
+            feedback_read_retries=feedback_read_retries,
         ),
     )
 
@@ -492,8 +497,83 @@ def test_feedback_group_read_raises_communication_failure_and_clears_parameters(
     ):
         driver.read_all_feedback()
 
-    group_read.clearParam.assert_called_once_with()
+    assert group_read.txRxPacket.call_count == EXPECTED_FEEDBACK_READ_ATTEMPTS
+    assert group_read.clearParam.call_count == EXPECTED_FEEDBACK_READ_ATTEMPTS
     assert driver.health_issues() == {1: "Feetech feedback sync read failed: receive failed"}
+
+
+def test_feedback_group_read_recovers_from_transient_communication_failure():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.getTxRxResult.return_value = "receive failed"
+    driver.packet_handler.scs_tohost.return_value = 0
+    group_read = Mock()
+    group_read.addParam.return_value = True
+    group_read.txRxPacket.side_effect = [-2, 0]
+    group_read.isAvailable.return_value = (True, 0)
+    group_read.getData.side_effect = [MID_POSITION, 0, 31]
+
+    with patch(
+        "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
+        return_value=group_read,
+    ) as group_read_type:
+        positions, velocities, temperatures = driver.read_all_feedback()
+
+    assert group_read_type.call_count == EXPECTED_TRANSIENT_FEEDBACK_READ_ATTEMPTS
+    assert positions == {1: pytest.approx(driver.position_to_angle(MID_POSITION, 1))}
+    assert velocities == {1: pytest.approx(0.0)}
+    assert temperatures == {1: 31.0}
+    assert driver.health_issues() == {}
+
+
+def test_feedback_group_read_recovers_from_transient_missing_response():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    driver.packet_handler.scs_tohost.return_value = 0
+    missing_read = Mock()
+    missing_read.addParam.return_value = True
+    missing_read.txRxPacket.return_value = 0
+    missing_read.isAvailable.return_value = (False, 0)
+    recovered_read = Mock()
+    recovered_read.addParam.return_value = True
+    recovered_read.txRxPacket.return_value = 0
+    recovered_read.isAvailable.return_value = (True, 0)
+    recovered_read.getData.side_effect = [MID_POSITION, 0, 31]
+
+    with patch(
+        "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
+        side_effect=[missing_read, recovered_read],
+    ) as group_read_type:
+        positions, velocities, temperatures = driver.read_all_feedback()
+
+    assert group_read_type.call_count == EXPECTED_TRANSIENT_FEEDBACK_READ_ATTEMPTS
+    assert positions == {1: pytest.approx(driver.position_to_angle(MID_POSITION, 1))}
+    assert velocities == {1: pytest.approx(0.0)}
+    assert temperatures == {1: 31.0}
+    assert driver.health_issues() == {}
+    missing_read.clearParam.assert_called_once_with()
+    recovered_read.clearParam.assert_called_once_with()
+
+
+def test_feedback_group_read_reports_missing_response_after_retries_are_exhausted():
+    driver = _driver()
+    driver.packet_handler = Mock()
+    group_read = Mock()
+    group_read.addParam.return_value = True
+    group_read.txRxPacket.return_value = 0
+    group_read.isAvailable.return_value = (False, 0)
+
+    with patch(
+        "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
+        return_value=group_read,
+    ) as group_read_type:
+        positions, velocities, temperatures = driver.read_all_feedback()
+
+    assert group_read_type.call_count == EXPECTED_FEEDBACK_READ_ATTEMPTS
+    assert positions == {}
+    assert velocities == {}
+    assert temperatures == {}
+    assert driver.health_issues() == {1: "Feetech feedback sync read returned no data."}
 
 
 def test_feedback_group_read_retains_motor_reported_issue():
@@ -508,13 +588,18 @@ def test_feedback_group_read_retains_motor_reported_issue():
     with patch(
         "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
         return_value=group_read,
-    ):
+    ) as group_read_type:
         positions, velocities, temperatures = driver.read_all_feedback()
 
     assert positions == {}
     assert velocities == {}
     assert temperatures == {}
     assert driver.health_issues() == {1: "Feetech feedback sync read reported: overload protection"}
+    group_read_type.assert_called_once_with(
+        driver.packet_handler,
+        ADDR_PRESENT_POSITION,
+        PRESENT_FEEDBACK_DATA_LENGTH,
+    )
 
 
 @pytest.mark.parametrize(

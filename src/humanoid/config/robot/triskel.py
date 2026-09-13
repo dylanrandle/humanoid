@@ -27,20 +27,21 @@ from humanoid.types.robot import (
 )
 
 MAIN_CONTROLLER = "main"
-CONTROLLER_RATE_HZ = 10.0
+CONTROLLER_RATE_HZ = 30.0
 CONTROLLER_DT = 1 / CONTROLLER_RATE_HZ
 WHEEL_IDS = [f"wheel_{index}" for index in range(1, 4)]
 JOINT_IDS = [f"arm_{index}" for index in range(1, 8)]
 GRIPPER_ID = "gripper_1"
+MAX_POSITION_VELOCITY_RAD_S = 2.0
 POSITION_PID_GAINS_BY_ACTUATOR_ID: dict[int, FeetechPIDGains] = {
-    1: FeetechPIDGains(p=32, i=0, d=32),
-    2: FeetechPIDGains(p=32, i=0, d=32),
-    3: FeetechPIDGains(p=32, i=0, d=32),
-    4: FeetechPIDGains(p=32, i=0, d=32),
-    5: FeetechPIDGains(p=32, i=0, d=32),
-    6: FeetechPIDGains(p=32, i=0, d=32),
-    7: FeetechPIDGains(p=32, i=0, d=32),
-    8: FeetechPIDGains(p=32, i=0, d=32),
+    1: FeetechPIDGains(p=16, i=0, d=32),
+    2: FeetechPIDGains(p=16, i=4, d=32),
+    3: FeetechPIDGains(p=16, i=4, d=32),
+    4: FeetechPIDGains(p=16, i=4, d=32),
+    5: FeetechPIDGains(p=16, i=0, d=32),
+    6: FeetechPIDGains(p=16, i=0, d=32),
+    7: FeetechPIDGains(p=16, i=0, d=32),
+    8: FeetechPIDGains(p=16, i=0, d=32),
 }
 
 HOME_POSITION = np.array(
@@ -113,6 +114,7 @@ ACTUATOR_CONFIGS = {
         joint_id: FeetechActuatorConfig(
             controller=MAIN_CONTROLLER,
             actuator_id=actuator_id,
+            max_position_velocity=MAX_POSITION_VELOCITY_RAD_S,
             position_pid=POSITION_PID_GAINS_BY_ACTUATOR_ID[actuator_id],
         )
         for actuator_id, joint_id in enumerate(JOINT_IDS, start=1)
@@ -121,6 +123,7 @@ ACTUATOR_CONFIGS = {
         controller=MAIN_CONTROLLER,
         actuator_id=8,
         inverted=True,
+        max_position_velocity=MAX_POSITION_VELOCITY_RAD_S,
         position_pid=POSITION_PID_GAINS_BY_ACTUATOR_ID[8],
     ),
 }

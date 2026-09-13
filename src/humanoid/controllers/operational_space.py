@@ -178,7 +178,10 @@ class OperationalSpaceController(Controller[pin.SE3]):
         self._low_acceleration_task = LowAccelerationTask(
             cost=(
                 self.config.low_acceleration_cost
-                * self._arm_cost_mask(self.config.damping_mask, "damping_mask")
+                * self._arm_cost_mask(
+                    self.config.low_acceleration_mask,
+                    "low_acceleration_mask",
+                )
             )  # ty:ignore[invalid-argument-type]
         )
         # Pink's posture-style Jacobian excludes floating-root velocities,

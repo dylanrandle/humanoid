@@ -31,7 +31,8 @@ class OperationalSpaceConfig:
             penalizes joint velocities. Multiplied element-wise with
             ``damping_mask``.
         low_acceleration_cost: Scalar weight on the change in joint velocity
-            between controller ticks. Zero disables the soft smoothing task.
+            between controller ticks. Multiplied element-wise with
+            ``low_acceleration_mask``. Zero disables the soft smoothing task.
         joint_velocity_limit: Optional maximum arm-joint velocity in rad/s.
             A scalar applies to every arm joint and an array specifies one
             value per arm velocity. This is enforced in addition to the URDF.
@@ -53,6 +54,9 @@ class OperationalSpaceConfig:
             Non-arm coordinates are always excluded by the controller.
         damping_mask: Per-joint multiplier on ``damping_cost``, with the
             same scalar/array semantics as ``joint_centering_mask``.
+        low_acceleration_mask: Per-joint multiplier on
+            ``low_acceleration_cost``, with the same scalar/array semantics as
+            ``joint_centering_mask``.
     """
 
     tool_position_cost: float = 1.0
@@ -69,6 +73,7 @@ class OperationalSpaceConfig:
     collision_safe_displacement_gain: float = 1.0
     joint_centering_mask: np.ndarray | float = 1.0
     damping_mask: np.ndarray | float = 1.0
+    low_acceleration_mask: np.ndarray | float = 1.0
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.dt) or self.dt <= 0.0:

@@ -104,6 +104,28 @@ class TestConstruction:
 
         assert isinstance(osc.tasks[TaskName.LOW_ACCELERATION], LowAccelerationTask)
 
+    def test_low_acceleration_mask_is_independent_from_damping_mask(self, panda_robot):
+        low_acceleration_mask = np.array([1.0, 0.5, 0.0, 1.0, 0.5, 0.0, 1.0])
+        config = OperationalSpaceConfig(
+            damping_cost=0.2,
+            damping_mask=0.0,
+            low_acceleration_cost=0.3,
+            low_acceleration_mask=low_acceleration_mask,
+        )
+
+        osc = OperationalSpaceController(robot=panda_robot, config=config)
+
+        damping_cost = osc.tasks[TaskName.DAMPING].cost
+        np.testing.assert_allclose(damping_cost, np.zeros_like(damping_cost))
+        expected_low_acceleration_cost = np.zeros_like(osc.tasks[TaskName.LOW_ACCELERATION].cost)
+        expected_low_acceleration_cost[osc._arm_task_indices] = (
+            config.low_acceleration_cost * low_acceleration_mask
+        )
+        np.testing.assert_allclose(
+            osc.tasks[TaskName.LOW_ACCELERATION].cost,
+            expected_low_acceleration_cost,
+        )
+
     def test_triskel_smoothing_config_constructs_for_mobile_model(self, mobile_robot):
         config = mobile_robot.config.operational_space_config
         assert config is not None

@@ -285,7 +285,10 @@ class TestStep:
         state = _make_state(timestamp=obs_timestamp)
         env.subscriber.receive = MagicMock(side_effect=_state_only_receive(state))
 
-        with patch("humanoid.environment.realtime.time.time", return_value=command_timestamp):
+        with patch(
+            "humanoid.environment.realtime.time.perf_counter",
+            return_value=command_timestamp,
+        ):
             transition = env.step(Action())
 
         assert transition.info["command_timestamp"] == command_timestamp

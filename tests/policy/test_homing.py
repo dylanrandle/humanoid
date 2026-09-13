@@ -71,6 +71,22 @@ class TestWithTarget:
             last_q, panda_config.homing_presets[HomingPreset.REST], atol=1e-9
         )
 
+    def test_trajectory_respects_configured_peak_speed(self, panda_config):
+        speed_rad_s = 0.7
+        dt = 0.01
+        policy = HomingPolicy(speed=speed_rad_s, dt=dt, robot_config=panda_config)
+        start = panda_config.homing_presets[HomingPreset.HOME]
+        policy.set_target(panda_config.homing_presets[HomingPreset.REST])
+        commands = []
+
+        while not policy.is_done:
+            action = policy.step(_observation(start))
+            assert action.joint_positions is not None
+            commands.append(action.joint_positions)
+
+        commanded_velocities = np.diff(np.asarray(commands), axis=0) / dt
+        assert np.max(np.abs(commanded_velocities)) <= speed_rad_s
+
     def test_velocity_controlled_joints_held_at_q_start(self, panda_config):
         """Velocity-controlled joints must not be moved by homing."""
         # Build a config where one joint is velocity-controlled.

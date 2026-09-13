@@ -23,6 +23,9 @@ from humanoid.types.robot import (
     RobotToolConfig,
 )
 
+assert TRISKEL_CONFIG.operational_space_config is not None
+TRISKEL_CONTROLLER_DT = TRISKEL_CONFIG.operational_space_config.dt
+
 
 def _make_robot_config() -> RobotConfig:
     return RobotConfig(
@@ -410,7 +413,7 @@ class TestActiveMode:
 
         active_mobile_controller.base_controller.compute_control.assert_called_once_with(
             base_cmd.pose,
-            dt=pytest.approx(0.1),
+            dt=pytest.approx(TRISKEL_CONTROLLER_DT),
         )
         active_mobile_controller.arm_controller.compute_control.assert_not_called()
         published = active_mobile_controller.publisher.publish.call_args.args[0]
@@ -432,11 +435,11 @@ class TestActiveMode:
 
         active_mobile_controller.arm_controller.compute_control.assert_called_once_with(
             tool_cmd.pose,
-            dt=pytest.approx(0.1),
+            dt=pytest.approx(TRISKEL_CONTROLLER_DT),
         )
         active_mobile_controller.base_controller.compute_control.assert_called_once_with(
             base_cmd.pose,
-            dt=pytest.approx(0.1),
+            dt=pytest.approx(TRISKEL_CONTROLLER_DT),
         )
 
     def test_gripper_positions_use_separate_controller(self, active_mobile_controller):
@@ -462,12 +465,12 @@ class TestActiveMode:
 
         active_mobile_controller.gripper_controller.compute_control.assert_called_once_with(
             gripper,
-            dt=pytest.approx(0.1),
+            dt=pytest.approx(TRISKEL_CONTROLLER_DT),
         )
         assert osc_gripper_positions == [pytest.approx(gripper[0])]
         arm_call = active_mobile_controller.arm_controller.compute_control.call_args
         assert arm_call.args == (tool_cmd.pose,)
-        assert arm_call.kwargs == {"dt": pytest.approx(0.1)}
+        assert arm_call.kwargs == {"dt": pytest.approx(TRISKEL_CONTROLLER_DT)}
         published = active_mobile_controller.publisher.publish.call_args.args[0]
         assert published.joint_positions[-1] == pytest.approx(gripper[0])
         assert published.joint_velocities[-1] == pytest.approx(0.25)
@@ -476,14 +479,15 @@ class TestActiveMode:
 def test_measured_control_timestep_is_used_and_bounded():
     now = 1.0
     controller = _make_controller(TRISKEL_CONFIG, clock=lambda: now)
+    nominal_dt = TRISKEL_CONTROLLER_DT
 
-    assert controller._control_timestep() == pytest.approx(0.1)
-    now = 1.075
-    assert controller._control_timestep() == pytest.approx(0.075)
+    assert controller._control_timestep() == pytest.approx(nominal_dt)
+    now += nominal_dt * 0.75
+    assert controller._control_timestep() == pytest.approx(nominal_dt * 0.75)
     now = 1.5
-    assert controller._control_timestep() == pytest.approx(0.2)
-    now = 1.51
-    assert controller._control_timestep() == pytest.approx(0.05)
+    assert controller._control_timestep() == pytest.approx(nominal_dt * 2.0)
+    now += nominal_dt * 0.25
+    assert controller._control_timestep() == pytest.approx(nominal_dt * 0.5)
 
 
 def test_close_closes_subscriber(controller):

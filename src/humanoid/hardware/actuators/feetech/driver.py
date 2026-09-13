@@ -2,6 +2,7 @@
 
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any, cast
 
 import scservo_sdk as scs
@@ -56,6 +57,22 @@ TEMPERATURE_DATA_LENGTH = 1
 PRESENT_FEEDBACK_DATA_LENGTH = 8
 
 
+@dataclass(frozen=True, kw_only=True)
+class _SyncReadSpec:
+    start_address: int
+    data_length: int
+    fields: tuple[tuple[int, int], ...]
+    label: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class _SyncReadAttempt:
+    values: dict[int, tuple[int, ...]]
+    issues: dict[int, str]
+    retryable_actuator_ids: set[int]
+    communication_issue: str | None = None
+
+
 class FeetechActuatorDriver(ServoController, ActuatorDriver):
     """Drive a configured group of Feetech actuators on one controller."""
 
@@ -86,6 +103,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             )
         self.control_modes = dict(control_modes)
         self._configure_on_connect = configure_on_connect
+        self._feedback_read_retries = controller_config.feedback_read_retries
         self._last_positions: dict[int, float] = {}
         self._health_issues: dict[int, str] = {}
         ServoController.__init__(
@@ -598,51 +616,118 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         label: str,
     ) -> dict[int, tuple[int, ...]]:
         """Read one register range for all configured actuators."""
+        spec = _SyncReadSpec(
+            start_address=start_address,
+            data_length=data_length,
+            fields=fields,
+            label=label,
+        )
+        values: dict[int, tuple[int, ...]] = {}
+        health_issues: dict[int, str] = {}
+        pending_actuator_ids = list(self.actuator_ids)
+        maximum_attempts = self._feedback_read_retries + 1
+        for attempt in range(maximum_attempts):
+            read_attempt = self._read_sync_attempt(pending_actuator_ids, spec)
+            if read_attempt.communication_issue is not None:
+                issue = read_attempt.communication_issue
+                health_issues.update(dict.fromkeys(pending_actuator_ids, issue))
+                if attempt < self._feedback_read_retries:
+                    logger.warning(
+                        "%s; retrying actuator IDs %s (%s/%s)",
+                        issue,
+                        pending_actuator_ids,
+                        attempt + 1,
+                        self._feedback_read_retries,
+                    )
+                    continue
+                self._health_issues = health_issues
+                raise RuntimeError(issue)
+
+            values.update(read_attempt.values)
+            for actuator_id in read_attempt.values:
+                health_issues.pop(actuator_id, None)
+            health_issues.update(read_attempt.issues)
+            pending_actuator_ids = [
+                actuator_id for actuator_id in pending_actuator_ids if actuator_id not in values
+            ]
+            if not pending_actuator_ids:
+                break
+            if any(
+                actuator_id not in read_attempt.retryable_actuator_ids
+                for actuator_id in pending_actuator_ids
+            ):
+                break
+            if attempt < self._feedback_read_retries:
+                logger.warning(
+                    "Feetech %s sync read returned no data for actuator IDs %s; retrying (%s/%s)",
+                    label,
+                    pending_actuator_ids,
+                    attempt + 1,
+                    self._feedback_read_retries,
+                )
+
+        self._health_issues = health_issues
+        for actuator_id, issue in health_issues.items():
+            logger.warning("Actuator %s health issue: %s", actuator_id, issue)
+        return values
+
+    def _read_sync_attempt(
+        self,
+        actuator_ids: list[int],
+        spec: _SyncReadSpec,
+    ) -> _SyncReadAttempt:
+        """Perform one sync-read attempt and classify missing responses."""
         assert self.packet_handler, "Not connected"
         group_sync_read = scs.GroupSyncRead(
             self.packet_handler,
-            start_address,
-            data_length,
+            spec.start_address,
+            spec.data_length,
         )
-        actuator_ids = []
-        health_issues: dict[int, str] = {}
+        added_actuator_ids = []
+        retryable_actuator_ids: set[int] = set()
+        issues: dict[int, str] = {}
+        values: dict[int, tuple[int, ...]] = {}
         try:
-            for actuator_id in self.actuator_ids:
+            for actuator_id in actuator_ids:
                 if group_sync_read.addParam(actuator_id):
-                    actuator_ids.append(actuator_id)
+                    added_actuator_ids.append(actuator_id)
                 else:
-                    health_issues[actuator_id] = (
-                        f"Failed to add actuator to Feetech {label} sync read."
+                    issues[actuator_id] = (
+                        f"Failed to add actuator to Feetech {spec.label} sync read."
                     )
 
             result = group_sync_read.txRxPacket()
             if result != scs.COMM_SUCCESS:
                 detail = self.packet_handler.getTxRxResult(result)
-                issue = f"Feetech {label} sync read failed: {detail}"
-                self._health_issues = dict.fromkeys(self.actuator_ids, issue)
-                raise RuntimeError(f"Feetech {label} sync read failed: {detail}")
+                return _SyncReadAttempt(
+                    values={},
+                    issues=issues,
+                    retryable_actuator_ids=set(actuator_ids),
+                    communication_issue=f"Feetech {spec.label} sync read failed: {detail}",
+                )
 
-            values: dict[int, tuple[int, ...]] = {}
-            for actuator_id in actuator_ids:
+            for actuator_id in added_actuator_ids:
                 available, error = group_sync_read.isAvailable(
                     actuator_id,
-                    start_address,
-                    data_length,
+                    spec.start_address,
+                    spec.data_length,
                 )
                 if error != 0:
                     detail = self.packet_handler.getRxPacketError(error)
-                    health_issues[actuator_id] = f"Feetech {label} sync read reported: {detail}"
+                    issues[actuator_id] = f"Feetech {spec.label} sync read reported: {detail}"
                     continue
                 if not available:
-                    health_issues[actuator_id] = f"Feetech {label} sync read returned no data."
+                    issues[actuator_id] = f"Feetech {spec.label} sync read returned no data."
+                    retryable_actuator_ids.add(actuator_id)
                     continue
                 values[actuator_id] = tuple(
                     group_sync_read.getData(actuator_id, address, length)
-                    for address, length in fields
+                    for address, length in spec.fields
                 )
-            self._health_issues = health_issues
-            for actuator_id, issue in health_issues.items():
-                logger.warning("Actuator %s health issue: %s", actuator_id, issue)
-            return values
+            return _SyncReadAttempt(
+                values=values,
+                issues=issues,
+                retryable_actuator_ids=retryable_actuator_ids,
+            )
         finally:
             group_sync_read.clearParam()

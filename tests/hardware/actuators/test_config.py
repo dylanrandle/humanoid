@@ -2,7 +2,12 @@ import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.robot.triskel import (
+    MAX_POSITION_VELOCITY_RAD_S,
+    POSITION_PID_GAINS_BY_ACTUATOR_ID,
+)
 from humanoid.hardware.actuators.feetech.config import (
+    DEFAULT_FEEDBACK_READ_RETRIES,
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
     FeetechPIDGains,
@@ -22,6 +27,7 @@ from humanoid.types.robot import (
 MAIN_CONTROLLER = "main"
 EXPECTED_GRIPPER_ACTUATOR_ID = 8
 EXPECTED_ACTUATOR_COUNT = 2
+EXPECTED_FEEDBACK_READ_RETRIES = 2
 
 
 def _actuator(
@@ -65,15 +71,12 @@ def test_triskel_actuator_hardware_configuration():
     for index in range(1, 8):
         actuator = actuator_hardware.joints[f"arm_{index}"]
         assert isinstance(actuator, FeetechActuatorConfig)
-        gains = actuator.position_pid
-        assert gains == FeetechPIDGains(p=32, i=0, d=32)
+        assert actuator.max_position_velocity == MAX_POSITION_VELOCITY_RAD_S
+        assert actuator.position_pid == POSITION_PID_GAINS_BY_ACTUATOR_ID[index]
     gripper = actuator_hardware.joints["gripper_1"]
     assert isinstance(gripper, FeetechActuatorConfig)
-    assert gripper.position_pid == FeetechPIDGains(
-        p=32,
-        i=0,
-        d=32,
-    )
+    assert gripper.max_position_velocity == MAX_POSITION_VELOCITY_RAD_S
+    assert gripper.position_pid == POSITION_PID_GAINS_BY_ACTUATOR_ID[EXPECTED_GRIPPER_ACTUATOR_ID]
 
 
 def test_duplicate_actuator_id_on_same_controller_is_rejected():
@@ -112,6 +115,20 @@ def test_feetech_controller_rejects_invalid_connection_details():
         FeetechActuatorControllerConfig(port="")
     with pytest.raises(ValueError, match="baud rate must be positive"):
         FeetechActuatorControllerConfig(baud_rate=0)
+
+
+def test_feetech_controller_defaults_to_two_feedback_read_retries():
+    assert (
+        FeetechActuatorControllerConfig().feedback_read_retries
+        == DEFAULT_FEEDBACK_READ_RETRIES
+        == EXPECTED_FEEDBACK_READ_RETRIES
+    )
+
+
+@pytest.mark.parametrize("retries", [-1, 1.5, True])
+def test_feetech_controller_rejects_invalid_feedback_read_retries(retries):
+    with pytest.raises(ValueError, match="feedback read retries"):
+        FeetechActuatorControllerConfig(feedback_read_retries=retries)
 
 
 @pytest.mark.parametrize("actuator_id", [1, 253])
