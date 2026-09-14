@@ -4,8 +4,7 @@ import csv
 import html
 import json
 import math
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -14,11 +13,9 @@ from numpy.typing import NDArray
 from humanoid.robots.utils.controller_tracking.models import (
     AXIS_NAMES,
     BOUNDS_EPSILON,
-    CARTESIAN_COMPARISON_SEGMENTS,
     DEFAULT_MAXIMUM_SPECTRUM_HZ,
     FIGURE_EIGHT_SEGMENTS,
-    JOINT_COMPARISON_SEGMENTS,
-    JOINT_HOME_REST_SEGMENTS,
+    FIGURE_EIGHT_SETTINGS,
     MAX_PLOT_POINTS,
     MIN_JOINT_PLOT_SPAN_RAD,
     MIN_JOINT_VELOCITY_PLOT_SPAN_RAD_S,
@@ -27,6 +24,8 @@ from humanoid.robots.utils.controller_tracking.models import (
     PLOT_PADDING_FRACTION,
     ControllerTrackingSettings,
     ErrorStatistics,
+    FigureEightSetting,
+    Plane,
     Segment,
     StatisticsTableRow,
     TrackingSample,
@@ -71,21 +70,30 @@ def write_tracking_csv(path: Path, samples: list[TrackingSample]) -> None:
         writer = csv.writer(output)
         header = [
             "segment",
+            "setting",
             "elapsed_s",
             "state_timestamp_s",
             "joint_command_timestamp_s",
             "state_minus_joint_command_s",
-            "command_x_m",
-            "command_y_m",
-            "command_z_m",
+            "reference_x_m",
+            "reference_y_m",
+            "reference_z_m",
+            "osc_fk_x_m",
+            "osc_fk_y_m",
+            "osc_fk_z_m",
             "measured_x_m",
             "measured_y_m",
             "measured_z_m",
-            "error_x_m",
-            "error_y_m",
-            "error_z_m",
-            "position_error_m",
-            "orientation_error_rad",
+            "osc_error_x_m",
+            "osc_error_y_m",
+            "osc_error_z_m",
+            "osc_position_error_m",
+            "osc_orientation_error_rad",
+            "end_to_end_error_x_m",
+            "end_to_end_error_y_m",
+            "end_to_end_error_z_m",
+            "end_to_end_position_error_m",
+            "end_to_end_orientation_error_rad",
             "feedforward_vx_m_s",
             "feedforward_vy_m_s",
             "feedforward_vz_m_s",
@@ -117,15 +125,20 @@ def write_tracking_csv(path: Path, samples: list[TrackingSample]) -> None:
         for sample_index, sample in enumerate(samples):
             row: list[object] = [
                 sample.segment,
+                sample.setting,
                 sample.elapsed_s,
                 sample.state_timestamp_s,
                 sample.joint_command_timestamp_s,
                 sample.state_minus_joint_command_s,
-                *sample.commanded_position_m,
+                *sample.reference_position_m,
+                *sample.osc_position_m,
                 *sample.measured_position_m,
-                *sample.position_error_m,
-                np.linalg.norm(sample.position_error_m),
-                sample.orientation_error_rad,
+                *sample.osc_position_error_m,
+                np.linalg.norm(sample.osc_position_error_m),
+                sample.osc_orientation_error_rad,
+                *sample.end_to_end_position_error_m,
+                np.linalg.norm(sample.end_to_end_position_error_m),
+                sample.end_to_end_orientation_error_rad,
                 *(
                     sample.commanded_linear_velocity_m_s
                     if sample.commanded_linear_velocity_m_s is not None
@@ -173,8 +186,8 @@ def write_controller_timing_csv(
     if not math.isfinite(target_rate_hz) or target_rate_hz <= 0.0:
         raise ValueError("Target publication rate must be positive and finite")
     path.parent.mkdir(parents=True, exist_ok=True)
-    first_timestamp_by_window: dict[tuple[str, Segment, int], float] = {}
-    previous_timestamp_by_window: dict[tuple[str, Segment, int], float] = {}
+    first_timestamp_by_window: dict[tuple[str, Segment, str, int], float] = {}
+    previous_timestamp_by_window: dict[tuple[str, Segment, str, int], float] = {}
     delayed_threshold_s = 1.5 / target_rate_hz
     with path.open("w", newline="", encoding="utf-8") as output:
         writer = csv.writer(output)
@@ -182,6 +195,7 @@ def write_controller_timing_csv(
             [
                 "stream",
                 "segment",
+                "setting",
                 "window_index",
                 "received_timestamp_s",
                 "source_timestamp_s",
@@ -192,7 +206,12 @@ def write_controller_timing_csv(
             ]
         )
         for timing in sorted(timings, key=lambda sample: (sample.stream, sample.timestamp_s)):
-            stream_window = (timing.stream, timing.segment, timing.window_index)
+            stream_window = (
+                timing.stream,
+                timing.segment,
+                timing.setting,
+                timing.window_index,
+            )
             first_timestamp = first_timestamp_by_window.setdefault(
                 stream_window,
                 timing.timestamp_s,
@@ -209,6 +228,7 @@ def write_controller_timing_csv(
                 [
                     timing.stream,
                     timing.segment,
+                    timing.setting,
                     timing.window_index,
                     timing.timestamp_s,
                     "" if timing.source_timestamp_s is None else timing.source_timestamp_s,
@@ -230,6 +250,7 @@ def write_native_joint_telemetry_csv(path: Path, samples: list[NativeJointSample
             [
                 "stream",
                 "segment",
+                "setting",
                 "window_index",
                 "received_timestamp_s",
                 "source_timestamp_s",
@@ -252,6 +273,7 @@ def write_native_joint_telemetry_csv(path: Path, samples: list[NativeJointSample
                     [
                         sample.stream,
                         sample.segment,
+                        sample.setting,
                         sample.window_index,
                         sample.received_timestamp_s,
                         sample.source_timestamp_s,
@@ -270,26 +292,33 @@ def write_run_metrics_json(
 ) -> None:
     """Write machine-readable tracking and smoothness results for A/B comparison."""
     tracking = {}
-    phase_segments: tuple[tuple[str, frozenset[Segment]], ...] = (
-        ("home_rest", frozenset({"joint_home", "joint_rest"})),
-        ("figure_eight", frozenset({"figure_eight"})),
-        ("joint_comparison", frozenset({"joint_comparison"})),
-        ("cartesian_comparison", frozenset({"cartesian_comparison"})),
+    groups = (
+        ("overall", None),
+        *((setting.name, setting.name) for setting in FIGURE_EIGHT_SETTINGS),
     )
-    for phase_name, segments in phase_segments:
-        phase_samples = [sample for sample in samples if sample.segment in segments]
-        if not phase_samples:
+    for group_name, setting_name in groups:
+        group_samples = [
+            sample
+            for sample in samples
+            if sample.segment == "figure_eight"
+            and (setting_name is None or sample.setting == setting_name)
+        ]
+        if not group_samples:
             continue
-        stats = tracking_statistics(phase_samples)
-        _, _, joint_names = _combined_joint_sample_matrices(phase_samples)
+        stats = tracking_statistics(group_samples)
+        _, _, joint_names = _combined_joint_sample_matrices(group_samples)
         joint_stats = (*stats.arm_joint_position_rad, *stats.gripper_position_rad)
-        tracking[phase_name] = {
+        tracking[group_name] = {
             "joints": {
                 name: _error_statistics_payload(error_stats)
                 for name, error_stats in zip(joint_names, joint_stats, strict=True)
             },
-            "tool_translation_m": _error_statistics_payload(stats.position_m),
-            "tool_orientation_rad": _error_statistics_payload(stats.orientation_rad),
+            "osc_tool_translation_m": _error_statistics_payload(stats.osc_position_m),
+            "osc_tool_orientation_rad": _error_statistics_payload(stats.osc_orientation_rad),
+            "end_to_end_tool_translation_m": _error_statistics_payload(stats.end_to_end_position_m),
+            "end_to_end_tool_orientation_rad": _error_statistics_payload(
+                stats.end_to_end_orientation_rad
+            ),
         }
     payload = {
         "tracking": tracking,
@@ -313,52 +342,30 @@ def build_smoothness_analyses(
     settings: ControllerTrackingSettings,
     acceleration_limits_rad_s2: dict[str, float] | None,
 ) -> dict[str, SmoothnessAnalysis]:
-    """Analyze each reported phase using motion and settle windows separately."""
-    configurations: tuple[tuple[str, tuple[Segment, ...], tuple[Segment, ...], bool], ...] = (
-        ("home_rest", ("joint_home", "joint_rest"), ("joint_home_settle",), False),
-        ("figure_eight", ("figure_eight",), ("figure_eight_settle",), True),
-        (
-            "joint_comparison",
-            ("joint_comparison",),
-            ("joint_comparison_settle",),
-            False,
-        ),
-        (
-            "cartesian_comparison",
-            ("cartesian_comparison",),
-            ("cartesian_comparison_settle",),
-            True,
-        ),
+    """Analyze the full run and each plane/size setting independently."""
+    analyses: dict[str, SmoothnessAnalysis] = {}
+    groups = (
+        ("overall", None),
+        *((setting.name, setting.name) for setting in FIGURE_EIGHT_SETTINGS),
     )
-    analyses = {}
-    for name, motion_segments, settle_segments, uses_osc_limits in configurations:
+    for group_name, setting_name in groups:
+        group_samples = [
+            sample for sample in samples if setting_name is None or sample.setting == setting_name
+        ]
         analysis = analyze_smoothness(
-            samples,
-            motion_segments=motion_segments,
-            settle_segments=settle_segments,
+            group_samples,
+            motion_segments=("figure_eight",),
+            settle_segments=("figure_eight_settle",),
             settings=settings,
-            acceleration_limits_rad_s2=(acceleration_limits_rad_s2 if uses_osc_limits else None),
+            acceleration_limits_rad_s2=acceleration_limits_rad_s2,
         )
         if analysis is not None:
-            analyses[name] = analysis
+            analyses[group_name] = analysis
     return analyses
-
-
-@dataclass(frozen=True, kw_only=True)
-class TrackingPlotPaths:
-    """Paths for the three independently rendered tracking reports."""
-
-    home_rest: Path
-    figure_eight: Path
-    comparison: Path
-
-    def __iter__(self) -> Iterator[Path]:
-        return iter((self.home_rest, self.figure_eight, self.comparison))
 
 
 def write_tracking_plots(  # noqa: PLR0913 - output and report inputs are independent
     output_directory: Path,
-    stem: str,
     samples: list[TrackingSample],
     settings: ControllerTrackingSettings,
     robot_name: str,
@@ -367,115 +374,47 @@ def write_tracking_plots(  # noqa: PLR0913 - output and report inputs are indepe
     acceleration_limits_rad_s2: dict[str, float] | None = None,
     completed: bool = True,
     failure_reason: str | None = None,
-) -> TrackingPlotPaths:
-    """Render one standalone SVG report for each tracking experiment."""
+) -> tuple[Path, ...]:
+    """Render one standalone SVG report for every reached plane/size setting."""
     if not samples:
         raise ValueError("Cannot plot an empty tracking run")
-
-    paths = TrackingPlotPaths(
-        home_rest=output_directory / f"{stem}_home_rest.svg",
-        figure_eight=output_directory / f"{stem}_figure_eight.svg",
-        comparison=output_directory / f"{stem}_comparison.svg",
-    )
-    write_home_rest_plot(
-        paths.home_rest,
-        samples,
-        settings,
-        robot_name,
-        native_joint_samples=native_joint_samples,
-        acceleration_limits_rad_s2=acceleration_limits_rad_s2,
-        completed=completed,
-        failure_reason=failure_reason,
-    )
-    write_figure_eight_plot(
-        paths.figure_eight,
-        samples,
-        settings,
-        robot_name,
-        native_joint_samples=native_joint_samples,
-        acceleration_limits_rad_s2=acceleration_limits_rad_s2,
-        completed=completed,
-        failure_reason=failure_reason,
-    )
-    write_comparison_plot(
-        paths.comparison,
-        samples,
-        settings,
-        robot_name,
-        native_joint_samples=native_joint_samples,
-        acceleration_limits_rad_s2=acceleration_limits_rad_s2,
-        completed=completed,
-        failure_reason=failure_reason,
-    )
-    return paths
+    output_directory.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for setting in FIGURE_EIGHT_SETTINGS:
+        setting_samples = [sample for sample in samples if sample.setting == setting.name]
+        if not setting_samples:
+            continue
+        path = output_directory / f"figure_eight_{setting.name}.svg"
+        _write_tracking_plot(
+            path,
+            setting_samples,
+            settings,
+            setting,
+            robot_name,
+            native_joint_samples=[
+                sample for sample in (native_joint_samples or []) if sample.setting == setting.name
+            ],
+            acceleration_limits_rad_s2=acceleration_limits_rad_s2,
+            completed=completed,
+            failure_reason=failure_reason,
+        )
+        paths.append(path)
+    return tuple(paths)
 
 
-def write_home_rest_plot(  # noqa: PLR0913 - output and report inputs are independent
+def _write_tracking_plot(  # noqa: PLR0913 - output and report inputs are independent
     path: Path,
     samples: list[TrackingSample],
     settings: ControllerTrackingSettings,
+    figure_setting: FigureEightSetting,
     robot_name: str,
     *,
-    native_joint_samples: list[NativeJointSample] | None = None,
-    acceleration_limits_rad_s2: dict[str, float] | None = None,
-    completed: bool = True,
-    failure_reason: str | None = None,
+    native_joint_samples: list[NativeJointSample],
+    acceleration_limits_rad_s2: dict[str, float] | None,
+    completed: bool,
+    failure_reason: str | None,
 ) -> None:
-    """Render joint-space HOME/REST tracking."""
-    joint_samples = [sample for sample in samples if sample.segment in JOINT_HOME_REST_SEGMENTS]
-    elements: list[str] = []
-    phase_heading_y = _append_report_heading(
-        elements,
-        title="Joint-space home/rest tracking",
-        completed=completed,
-    )
-    phase_content_top = phase_heading_y + 50.0
-    if joint_samples:
-        smoothness = analyze_smoothness(
-            native_joint_samples or [],
-            motion_segments=("joint_home", "joint_rest"),
-            settle_segments=("joint_home_settle",),
-            settings=settings,
-            acceleration_limits_rad_s2=None,
-        )
-        content_bottom = _append_joint_tracking_block(
-            elements,
-            summary_samples=joint_samples,
-            plot_samples=joint_samples,
-            table_top=phase_content_top,
-            separator_note="Dashed lines mark HOME/REST transitions.",
-            smoothness=smoothness,
-            acceleration_limits_rad_s2=None,
-        )
-    else:
-        content_bottom = _append_empty_tracking_phase(
-            elements,
-            top=phase_content_top,
-            message="Joint-space tracking was disabled or was not reached.",
-        )
-    _write_svg_document(
-        path,
-        elements,
-        content_bottom,
-        settings,
-        robot_name,
-        completed=completed,
-        failure_reason=failure_reason,
-    )
-
-
-def write_figure_eight_plot(  # noqa: PLR0913 - output and report inputs are independent
-    path: Path,
-    samples: list[TrackingSample],
-    settings: ControllerTrackingSettings,
-    robot_name: str,
-    *,
-    native_joint_samples: list[NativeJointSample] | None = None,
-    acceleration_limits_rad_s2: dict[str, float] | None = None,
-    completed: bool = True,
-    failure_reason: str | None = None,
-) -> None:
-    """Render joint and Cartesian tracking for the figure-eight experiment."""
+    """Render the report for one plane/size setting."""
     figure_samples = [sample for sample in samples if sample.segment in FIGURE_EIGHT_SEGMENTS]
     figure_trajectory_samples = [
         sample for sample in figure_samples if sample.segment == "figure_eight"
@@ -483,7 +422,8 @@ def write_figure_eight_plot(  # noqa: PLR0913 - output and report inputs are ind
     elements: list[str] = []
     phase_heading_y = _append_report_heading(
         elements,
-        title="Cartesian-space figure eight (OSC/IK)",
+        title=f"Cartesian figure eight — {figure_setting.plane.upper()} plane, "
+        f"{figure_setting.size_multiplier:g}x size",
         completed=completed,
     )
     phase_content_top = phase_heading_y + 50.0
@@ -496,23 +436,23 @@ def write_figure_eight_plot(  # noqa: PLR0913 - output and report inputs are ind
             settings=settings,
             acceleration_limits_rad_s2=acceleration_limits_rad_s2,
         )
-        content_bottom = _append_joint_tracking_block(
-            elements,
-            summary_samples=figure_summary_samples,
-            plot_samples=figure_samples,
-            table_top=phase_content_top,
-            separator_note="Dashed lines mark the transition to the settle interval.",
-            smoothness=smoothness,
-            acceleration_limits_rad_s2=acceleration_limits_rad_s2,
-        )
         content_bottom = _append_cartesian_tracking_block(
             elements,
             summary_samples=figure_summary_samples,
             plot_samples=figure_samples,
-            settings=settings,
-            table_top=content_bottom + 65.0,
+            plane=figure_setting.plane,
+            top=phase_content_top,
             trajectory_segment="figure_eight",
             settle_segment="figure_eight_settle",
+        )
+        content_bottom = _append_joint_tracking_block(
+            elements,
+            summary_samples=figure_summary_samples,
+            plot_samples=figure_samples,
+            table_top=content_bottom + 65.0,
+            separator_note="Dashed lines mark the transition to the settle interval.",
+            smoothness=smoothness,
+            acceleration_limits_rad_s2=acceleration_limits_rad_s2,
         )
     else:
         content_bottom = _append_empty_tracking_phase(
@@ -525,143 +465,7 @@ def write_figure_eight_plot(  # noqa: PLR0913 - output and report inputs are ind
         elements,
         content_bottom,
         settings,
-        robot_name,
-        completed=completed,
-        failure_reason=failure_reason,
-    )
-
-
-def write_comparison_plot(  # noqa: PLR0913 - report inputs are independent
-    path: Path,
-    samples: list[TrackingSample],
-    settings: ControllerTrackingSettings,
-    robot_name: str,
-    *,
-    native_joint_samples: list[NativeJointSample] | None = None,
-    acceleration_limits_rad_s2: dict[str, float] | None = None,
-    completed: bool = True,
-    failure_reason: str | None = None,
-) -> None:
-    """Render the joint-controller versus OSC/IK endpoint comparison."""
-    direct_samples = [sample for sample in samples if sample.segment in JOINT_COMPARISON_SEGMENTS]
-    direct_trajectory_samples = [
-        sample for sample in direct_samples if sample.segment == "joint_comparison"
-    ]
-    cartesian_samples = [
-        sample for sample in samples if sample.segment in CARTESIAN_COMPARISON_SEGMENTS
-    ]
-    cartesian_trajectory_samples = [
-        sample for sample in cartesian_samples if sample.segment == "cartesian_comparison"
-    ]
-    elements: list[str] = []
-    phase_heading_y = _append_report_heading(
-        elements,
-        title="Same-endpoint command-space comparison",
-        completed=completed,
-    )
-    comparison_note_y = phase_heading_y + 27.0
-    direct_heading_y = phase_heading_y + 72.0
-    elements.extend(
-        [
-            (
-                f'<text class="section-note" x="75" y="{comparison_note_y:.2f}">'
-                "Both paths move between the supplied corresponding joint/task poses.</text>"
-            ),
-            (
-                f'<text class="subsection-title" x="75" y="{direct_heading_y:.2f}">'
-                "A · Joint-space trajectory (homing controller)</text>"
-            ),
-        ]
-    )
-    phase_content_top = direct_heading_y + 42.0
-    if direct_samples:
-        direct_summary_samples = direct_trajectory_samples or direct_samples
-        direct_smoothness = analyze_smoothness(
-            native_joint_samples or [],
-            motion_segments=("joint_comparison",),
-            settle_segments=("joint_comparison_settle",),
-            settings=settings,
-            acceleration_limits_rad_s2=None,
-        )
-        content_bottom = _append_joint_tracking_block(
-            elements,
-            summary_samples=direct_summary_samples,
-            plot_samples=direct_samples,
-            table_top=phase_content_top,
-            separator_note="Dashed lines mark the transition to the settle interval.",
-            smoothness=direct_smoothness,
-            acceleration_limits_rad_s2=None,
-        )
-        content_bottom = _append_cartesian_tracking_block(
-            elements,
-            summary_samples=direct_summary_samples,
-            plot_samples=direct_samples,
-            settings=settings,
-            table_top=content_bottom + 65.0,
-            trajectory_segment="joint_comparison",
-            settle_segment="joint_comparison_settle",
-        )
-    else:
-        content_bottom = _append_empty_tracking_phase(
-            elements,
-            top=phase_content_top,
-            message="The homing-controller comparison phase was not reached.",
-        )
-
-    cartesian_heading_y = content_bottom + 75.0
-    elements.extend(
-        [
-            (
-                f'<line class="subsection-divider" x1="75" '
-                f'y1="{cartesian_heading_y - 38.0:.2f}" x2="1205" '
-                f'y2="{cartesian_heading_y - 38.0:.2f}"/>'
-            ),
-            (
-                f'<text class="subsection-title" x="75" y="{cartesian_heading_y:.2f}">'
-                "B · Cartesian trajectory (OSC/IK)</text>"
-            ),
-        ]
-    )
-    phase_content_top = cartesian_heading_y + 42.0
-    if cartesian_samples:
-        cartesian_summary_samples = cartesian_trajectory_samples or cartesian_samples
-        cartesian_smoothness = analyze_smoothness(
-            native_joint_samples or [],
-            motion_segments=("cartesian_comparison",),
-            settle_segments=("cartesian_comparison_settle",),
-            settings=settings,
-            acceleration_limits_rad_s2=acceleration_limits_rad_s2,
-        )
-        content_bottom = _append_joint_tracking_block(
-            elements,
-            summary_samples=cartesian_summary_samples,
-            plot_samples=cartesian_samples,
-            table_top=phase_content_top,
-            separator_note="Dashed lines mark the transition to the settle interval.",
-            smoothness=cartesian_smoothness,
-            acceleration_limits_rad_s2=acceleration_limits_rad_s2,
-        )
-        content_bottom = _append_cartesian_tracking_block(
-            elements,
-            summary_samples=cartesian_summary_samples,
-            plot_samples=cartesian_samples,
-            settings=settings,
-            table_top=content_bottom + 65.0,
-            trajectory_segment="cartesian_comparison",
-            settle_segment="cartesian_comparison_settle",
-        )
-    else:
-        content_bottom = _append_empty_tracking_phase(
-            elements,
-            top=phase_content_top,
-            message="The Cartesian OSC/IK comparison phase was not reached.",
-        )
-
-    _write_svg_document(
-        path,
-        elements,
-        content_bottom,
-        settings,
+        figure_setting,
         robot_name,
         completed=completed,
         failure_reason=failure_reason,
@@ -686,6 +490,7 @@ def _write_svg_document(  # noqa: PLR0913 - document metadata is independent
     elements: list[str],
     content_bottom: float,
     settings: ControllerTrackingSettings,
+    figure_setting: FigureEightSetting,
     robot_name: str,
     *,
     completed: bool,
@@ -696,7 +501,7 @@ def _write_svg_document(  # noqa: PLR0913 - document metadata is independent
     canvas_height = math.ceil(content_bottom + 55.0)
     partial_run_status = []
     if not completed:
-        detail = failure_reason or "motion stopped before all phases completed"
+        detail = failure_reason or "motion stopped before the trajectory completed"
         partial_run_status.append(
             f'<text class="section-note" x="40" y="96">Partial run — {html.escape(detail)}</text>'
         )
@@ -712,12 +517,11 @@ def _write_svg_document(  # noqa: PLR0913 - document metadata is independent
         ".tick{font-size:11px;fill:#677286}.label{font-size:12px;fill:#3e485a}",
         ".table-bg,.empty-bg{fill:#fff;stroke:#d8dee8}.table-head{font-size:11px;font-weight:700;fill:#677286}",
         ".table-label{font-size:12px;font-weight:650}.table-value{font-size:12px;fill:#3e485a}",
-        ".table-line{stroke:#e6eaf0;stroke-width:1}.phase-divider{stroke:#cfd6e1;stroke-width:1}",
-        ".subsection-divider{stroke:#dce2ea;stroke-width:1}",
+        ".table-line{stroke:#e6eaf0;stroke-width:1}",
         ".command,.joint-command{fill:none;stroke:#2667d8;stroke-width:2.3}",
+        ".osc{fill:none;stroke:#31a36b;stroke-width:2.1}",
         ".measured,.joint-measured{fill:none;stroke:#e07a2d;stroke-width:2.1}",
         ".joint-measured{stroke-width:1.8;stroke-dasharray:5 3}",
-        ".error{fill:none;stroke:#a33bc1;stroke-width:2.1}",
         ".velocity-x{fill:none;stroke:#2667d8;stroke-width:2.0}",
         ".velocity-y{fill:none;stroke:#31a36b;stroke-width:2.0}",
         ".velocity-z{fill:none;stroke:#d6604d;stroke-width:2.0}",
@@ -734,11 +538,10 @@ def _write_svg_document(  # noqa: PLR0913 - document metadata is independent
         '<text class="title" x="40" y="44">Controller tracking measurement</text>',
         (
             f'<text class="subtitle" x="40" y="70">{html.escape(robot_name)} · '
-            f"{settings.plane.upper()} plane · {settings.rate_hz:g} Hz · "
-            f"{settings.cycles} figure-eight cycles · "
-            f"{settings.comparison_duration_s:g} s comparison · "
-            f"velocity feedforward {'on' if settings.velocity_feedforward else 'off'} · "
-            f"{settings.joint_cycles} home/rest round trips</text>"
+            f"{figure_setting.plane.upper()} plane · {figure_setting.size_multiplier:g}x size · "
+            f"2 loops · {settings.rate_hz:g} Hz · "
+            f"{np.rad2deg(settings.orientation_bias_rad):g}° orientation bias · "
+            f"velocity feedforward {'on' if settings.velocity_feedforward else 'off'}</text>"
         ),
         *partial_run_status,
         *elements,
@@ -944,8 +747,8 @@ def _append_smoothness_block(
         [
             (
                 f'<text class="section-note" x="75" y="{table_bottom + 25.0:.2f}">'
-                "LIMIT % is the fraction of source-controller samples at or above 90% of "
-                "the applicable OSC acceleration limit.</text>"
+                "LIMIT % is the fraction of position-derived controller-setpoint acceleration "
+                "samples at or above 90% of the applicable OSC limit.</text>"
             ),
             (
                 f'<text class="section-note" x="75" y="{table_bottom + 45.0:.2f}">'
@@ -994,8 +797,11 @@ def _append_smoothness_block(
         secondary_values=lambda trace: trace.accelerations_rad_s2,
         secondary_class="acceleration-measured",
         heading_y=residual_bottom + 25.0,
-        title="Commanded vs filtered measured acceleration",
-        note="Red dashed lines show configured OSC acceleration limits where applicable.",
+        title="Position-derived commanded vs measured acceleration",
+        note=(
+            "Both traces are derived from joint positions on the same offline time base; "
+            "red dashed lines show configured OSC limits."
+        ),
         y_label="joint acceleration (rad/s²)",
         include_zero=True,
         limits=acceleration_limits_rad_s2,
@@ -1174,15 +980,7 @@ def _append_spectrum_grid(
     elements: list[str], *, analysis: SmoothnessAnalysis, heading_y: float
 ) -> float:
     motion_traces = tuple(
-        trace
-        for trace in analysis.state_traces
-        if trace.segment
-        not in {
-            "joint_home_settle",
-            "figure_eight_settle",
-            "joint_comparison_settle",
-            "cartesian_comparison_settle",
-        }
+        trace for trace in analysis.state_traces if trace.segment != "figure_eight_settle"
     )
     if not motion_traces:
         return heading_y
@@ -1257,38 +1055,22 @@ def _append_cartesian_tracking_block(  # noqa: PLR0913 - phase and plot inputs a
     *,
     summary_samples: list[TrackingSample],
     plot_samples: list[TrackingSample],
-    settings: ControllerTrackingSettings,
-    table_top: float,
+    plane: Plane,
+    top: float,
     trajectory_segment: Segment,
     settle_segment: Segment,
 ) -> float:
-    """Append Cartesian error statistics, tool path, and error curves."""
+    """Append pairwise Cartesian paths followed by their error summary."""
     stats = tracking_statistics(summary_samples)
-    rows = _cartesian_tracking_table_rows(stats)
-    _append_statistics_table(
-        elements,
-        left=75.0,
-        top=table_top,
-        width=1130.0,
-        title="Cartesian tracking error",
-        rows=rows,
-    )
-    table_bottom = table_top + _statistics_table_height(len(rows))
-    plots_heading = table_bottom + 60.0
+    plots_heading = top
     elements.append(
         f'<text class="subsection-title" x="75" y="{plots_heading:.2f}">'
-        "Cartesian tracking plots</text>"
+        "Cartesian path comparisons</text>"
     )
-    _append_legend(
-        elements,
-        875.0,
-        plots_heading,
-        command_class="command",
-        measured_class="measured",
-    )
+    _append_cartesian_legend(elements, 760.0, plots_heading)
 
     if plot_samples[-1].segment == settle_segment:
-        final_error_mm = np.linalg.norm(plot_samples[-1].position_error_m) * 1_000.0
+        final_error_mm = np.linalg.norm(plot_samples[-1].end_to_end_position_error_m) * 1_000.0
         elements.append(
             f'<text class="section-note" text-anchor="end" x="1205" '
             f'y="{plots_heading + 23.0:.2f}">Final settled tool error: '
@@ -1296,69 +1078,74 @@ def _append_cartesian_tracking_block(  # noqa: PLR0913 - phase and plot inputs a
         )
 
     plots_top = plots_heading + 70.0
-    path_panel = (75.0, plots_top, 515.0, 400.0)
-    position_panel = (690.0, plots_top, 515.0, 160.0)
-    orientation_panel = (690.0, plots_top + 260.0, 515.0, 160.0)
-    plane_axes = PLANE_AXES[settings.plane]
+    panel_width = 330.0
+    panel_height = 300.0
+    path_panels = (
+        (75.0, plots_top, panel_width, panel_height),
+        (475.0, plots_top, panel_width, panel_height),
+        (875.0, plots_top, panel_width, panel_height),
+    )
+    plane_axes = PLANE_AXES[plane]
     horizontal_axis, vertical_axis = plane_axes
 
     path_samples = [sample for sample in summary_samples if sample.segment == trajectory_segment]
     path_samples = _decimate(path_samples or summary_samples, MAX_PLOT_POINTS)
     plotted = _decimate(plot_samples, MAX_PLOT_POINTS)
-    command_plane = np.array(
-        [sample.commanded_position_m[list(plane_axes)] for sample in path_samples]
+    reference_plane = np.array(
+        [sample.reference_position_m[list(plane_axes)] for sample in path_samples]
     )
+    osc_plane = np.array([sample.osc_position_m[list(plane_axes)] for sample in path_samples])
     measured_plane = np.array(
         [sample.measured_position_m[list(plane_axes)] for sample in path_samples]
     )
     x_bounds, y_bounds = _equal_aspect_bounds(
-        np.vstack((command_plane, measured_plane)),
-        path_panel[2],
-        path_panel[3],
+        np.vstack((reference_plane, osc_plane, measured_plane)),
+        panel_width,
+        panel_height,
     )
-    _append_axes(
-        elements,
-        path_panel,
-        x_bounds,
-        y_bounds,
-        f"{AXIS_NAMES[horizontal_axis]} position (m)",
-        f"{AXIS_NAMES[vertical_axis]} position (m)",
-        "Tool path",
+    comparisons = (
+        ("OSC command FK vs reference", reference_plane, "command", osc_plane, "osc"),
+        ("Measured FK vs OSC command FK", osc_plane, "osc", measured_plane, "measured"),
+        (
+            "Measured FK vs reference (end-to-end)",
+            reference_plane,
+            "command",
+            measured_plane,
+            "measured",
+        ),
     )
-    elements.extend(
-        [
-            _polyline(command_plane, path_panel, x_bounds, y_bounds, "command"),
-            _polyline(measured_plane, path_panel, x_bounds, y_bounds, "measured"),
-        ]
-    )
+    for panel, (title, first, first_class, second, second_class) in zip(
+        path_panels,
+        comparisons,
+        strict=True,
+    ):
+        _append_axes(
+            elements,
+            panel,
+            x_bounds,
+            y_bounds,
+            f"{AXIS_NAMES[horizontal_axis]} position (m)",
+            f"{AXIS_NAMES[vertical_axis]} position (m)",
+            title,
+        )
+        elements.extend(
+            [
+                _polyline(first, panel, x_bounds, y_bounds, first_class),
+                _polyline(second, panel, x_bounds, y_bounds, second_class),
+            ]
+        )
 
-    times = _relative_times(plotted)
-    time_bounds = _padded_bounds(times, include_zero=True)
-    position_errors_mm = np.array(
-        [np.linalg.norm(sample.position_error_m) * 1_000.0 for sample in plotted]
-    )
-    orientation_errors_deg = np.rad2deg([sample.orientation_error_rad for sample in plotted])
-    _append_error_plot(
+    rows = _cartesian_tracking_table_rows(stats)
+    table_top = plots_top + panel_height + 85.0
+    _append_statistics_table(
         elements,
-        panel=position_panel,
-        times=times,
-        values=position_errors_mm,
-        time_bounds=time_bounds,
-        y_label="position error (mm)",
-        title="Translation error",
+        left=75.0,
+        top=table_top,
+        width=1130.0,
+        title="Cartesian tracking error summary",
+        rows=rows,
     )
-    _append_error_plot(
-        elements,
-        panel=orientation_panel,
-        times=times,
-        values=orientation_errors_deg,
-        time_bounds=time_bounds,
-        y_label="orientation error (deg)",
-        title="Orientation error",
-    )
-    for panel in (position_panel, orientation_panel):
-        _append_segment_separators(elements, panel, times, time_bounds, plotted)
-    content_bottom = plots_top + 500.0
+    content_bottom = table_top + _statistics_table_height(len(rows))
     if any(sample.commanded_linear_velocity_m_s is not None for sample in plotted):
         return _append_feedforward_velocity_plots(
             elements,
@@ -1451,37 +1238,6 @@ def _append_axis_legend(elements: list[str], *, left: float, baseline: float) ->
                 f'y="{baseline:.2f}">{label}</text>',
             ]
         )
-
-
-def _append_error_plot(  # noqa: PLR0913 - plot geometry and labels are independent
-    elements: list[str],
-    *,
-    panel: tuple[float, float, float, float],
-    times: NDArray[np.float64],
-    values: NDArray[np.float64],
-    time_bounds: tuple[float, float],
-    y_label: str,
-    title: str,
-) -> None:
-    value_bounds = _padded_bounds(values, include_zero=True)
-    _append_axes(
-        elements,
-        panel,
-        time_bounds,
-        value_bounds,
-        "elapsed time (s)",
-        y_label,
-        title,
-    )
-    elements.append(
-        _polyline(
-            np.column_stack((times, values)),
-            panel,
-            time_bounds,
-            value_bounds,
-            "error",
-        )
-    )
 
 
 def _append_empty_tracking_phase(elements: list[str], *, top: float, message: str) -> float:
@@ -1647,8 +1403,22 @@ def _joint_tracking_table_rows(
 
 def _cartesian_tracking_table_rows(stats: TrackingStatistics) -> list[StatisticsTableRow]:
     return [
-        ("Tool translation (mm)", stats.position_m, 1_000.0),
-        ("Tool orientation (deg)", stats.orientation_rad, 180.0 / np.pi),
+        ("OSC: reference → command FK translation (mm)", stats.osc_position_m, 1_000.0),
+        (
+            "OSC: reference → command FK orientation (deg)",
+            stats.osc_orientation_rad,
+            180.0 / np.pi,
+        ),
+        (
+            "End-to-end: reference → measured FK translation (mm)",
+            stats.end_to_end_position_m,
+            1_000.0,
+        ),
+        (
+            "End-to-end: reference → measured FK orientation (deg)",
+            stats.end_to_end_orientation_rad,
+            180.0 / np.pi,
+        ),
     ]
 
 
@@ -1740,6 +1510,24 @@ def _append_legend(
             f'<text class="label" x="{left + 167.0:.2f}" y="{baseline:.2f}">measured</text>',
         ]
     )
+
+
+def _append_cartesian_legend(elements: list[str], left: float, baseline: float) -> None:
+    """Label reference, OSC FK, and measured FK curves without crowding."""
+    for offset, label, css_class in (
+        (0.0, "reference", "command"),
+        (145.0, "OSC command FK", "osc"),
+        (335.0, "measured FK", "measured"),
+    ):
+        elements.extend(
+            [
+                f'<line x1="{left + offset:.2f}" y1="{baseline - 4.0:.2f}" '
+                f'x2="{left + offset + 25.0:.2f}" y2="{baseline - 4.0:.2f}" '
+                f'class="{css_class}"/>',
+                f'<text class="label" x="{left + offset + 32.0:.2f}" '
+                f'y="{baseline:.2f}">{label}</text>',
+            ]
+        )
 
 
 def _relative_times(samples: list[TrackingSample]) -> NDArray[np.float64]:

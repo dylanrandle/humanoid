@@ -25,19 +25,6 @@ JOINT_COMMAND_STREAM_TOPICS: tuple[tuple[JointCommandStream, Topic], ...] = (
     ("robot", Topic.ROBOT_JOINT_COMMAND),
 )
 JOINT_STATE_STREAM_TOPIC: tuple[JointTelemetryStream, Topic] = ("state", Topic.ROBOT_STATE)
-HOMING_COMMAND_STREAM_TOPIC: tuple[JointTelemetryStream, Topic] = (
-    "controller",
-    Topic.HOMING_JOINT_COMMAND,
-)
-HOMING_CONTROLLER_SEGMENTS = frozenset({"joint_home", "joint_rest", "joint_comparison"})
-OSC_CONTROLLER_SEGMENTS = frozenset(
-    {
-        "figure_eight",
-        "figure_eight_settle",
-        "cartesian_comparison",
-        "cartesian_comparison_settle",
-    }
-)
 
 
 class ControllerCommandTimingRecorder:
@@ -53,11 +40,7 @@ class ControllerCommandTimingRecorder:
         # subscriber. Per-topic unbounded queues preserve source commands, final
         # routed commands, and state feedback until shutdown.
         self._stream_topics: tuple[tuple[JointTelemetryStream, Topic], ...] = (
-            (
-                *JOINT_COMMAND_STREAM_TOPICS,
-                HOMING_COMMAND_STREAM_TOPIC,
-                JOINT_STATE_STREAM_TOPIC,
-            )
+            (*JOINT_COMMAND_STREAM_TOPICS, JOINT_STATE_STREAM_TOPIC)
             if robot is not None
             else JOINT_COMMAND_STREAM_TOPICS
         )
@@ -68,25 +51,25 @@ class ControllerCommandTimingRecorder:
         )
         self._clock = clock
         self._robot = robot
-        self._windows: list[tuple[int, ControllerTrackingSegment, float, float]] = []
-        self._active_window: tuple[ControllerTrackingSegment, float] | None = None
+        self._windows: list[tuple[int, ControllerTrackingSegment, str, float, float]] = []
+        self._active_window: tuple[ControllerTrackingSegment, str, float] | None = None
         self._native_joint_samples: list[NativeJointSample] = []
         self._closed = False
 
-    def begin(self, segment: ControllerTrackingSegment) -> None:
+    def begin(self, segment: ControllerTrackingSegment, setting: str) -> None:
         """Start attributing raw controller publications to ``segment``."""
         if self._closed:
             raise RuntimeError("Controller command timing recorder is closed")
         if self._active_window is not None:
             raise RuntimeError("Controller command timing window is already active")
-        self._active_window = (segment, self._clock())
+        self._active_window = (segment, setting, self._clock())
 
     def end(self) -> None:
         """Finish the active publication timing window."""
         if self._active_window is None:
             return
-        segment, started_s = self._active_window
-        self._windows.append((len(self._windows), segment, started_s, self._clock()))
+        segment, setting, started_s = self._active_window
+        self._windows.append((len(self._windows), segment, setting, started_s, self._clock()))
         self._active_window = None
 
     @property
@@ -113,18 +96,14 @@ class ControllerCommandTimingRecorder:
 
         timings = []
         native_samples = []
-        for stream, topic, message, received_at_s in messages:
-            for window_index, segment, started_s, ended_s in self._windows:
+        for stream, _topic, message, received_at_s in messages:
+            for window_index, segment, setting, started_s, ended_s in self._windows:
                 if started_s <= received_at_s <= ended_s:
-                    if stream == "controller" and not _is_expected_controller_source(
-                        topic,
-                        segment,
-                    ):
-                        break
                     if stream != "state":
                         timings.append(
                             ControllerCommandTiming(
                                 segment=segment,
+                                setting=setting,
                                 timestamp_s=received_at_s,
                                 stream=stream,
                                 source_timestamp_s=message.timestamp,
@@ -136,6 +115,7 @@ class ControllerCommandTimingRecorder:
                             _native_joint_sample(
                                 robot=self._robot,
                                 segment=segment,
+                                setting=setting,
                                 window_index=window_index,
                                 stream=stream,
                                 message=message,
@@ -150,22 +130,11 @@ class ControllerCommandTimingRecorder:
         return sorted(timings, key=lambda timing: (timing.timestamp_s, timing.stream))
 
 
-def _is_expected_controller_source(
-    topic: Topic,
-    segment: ControllerTrackingSegment,
-) -> bool:
-    """Keep only the controller topic that owns the marked motion phase."""
-    if segment in HOMING_CONTROLLER_SEGMENTS:
-        return topic is Topic.HOMING_JOINT_COMMAND
-    if segment in OSC_CONTROLLER_SEGMENTS:
-        return topic is Topic.CONTROLLER_JOINT_COMMAND
-    return False
-
-
 def _native_joint_sample(  # noqa: PLR0913 - preserves one complete source message
     *,
     robot: Robot,
     segment: ControllerTrackingSegment,
+    setting: str,
     window_index: int,
     stream: JointTelemetryStream,
     message: RobotJointCommand | RobotState,
@@ -185,6 +154,7 @@ def _native_joint_sample(  # noqa: PLR0913 - preserves one complete source messa
     )
     return NativeJointSample(
         segment=segment,
+        setting=setting,
         window_index=window_index,
         stream=stream,
         received_timestamp_s=received_at_s,
@@ -200,7 +170,7 @@ def controller_publication_statistics(
     timings: list[ControllerCommandTiming],
     target_rate_hz: float,
 ) -> ControllerPublicationStatistics:
-    """Summarize achieved rate and period jitter for one stream and segment."""
+    """Summarize one stream without treating gaps between test windows as periods."""
     if not math.isfinite(target_rate_hz) or target_rate_hz <= 0.0:
         raise ValueError("Target publication rate must be positive and finite")
     if len(timings) < MINIMUM_PUBLICATION_COUNT:
@@ -208,14 +178,22 @@ def controller_publication_statistics(
     if len({timing.stream for timing in timings}) != 1:
         raise ValueError("Publication timings must contain exactly one command stream")
 
-    timestamps = np.array(sorted(timing.timestamp_s for timing in timings))
-    periods = np.diff(timestamps)
+    periods_by_window = []
+    for window_index in sorted({timing.window_index for timing in timings}):
+        timestamps = np.array(
+            sorted(timing.timestamp_s for timing in timings if timing.window_index == window_index)
+        )
+        if timestamps.size > 1:
+            periods_by_window.append(np.diff(timestamps))
+    if not periods_by_window:
+        raise ValueError("At least one timing window must contain two publications")
+    periods = np.concatenate(periods_by_window)
     if np.any(periods <= 0.0):
         raise ValueError("Controller publication timestamps must be unique and increasing")
     delayed_threshold_s = 1.5 / target_rate_hz
     return ControllerPublicationStatistics(
         command_count=len(timings),
-        mean_rate_hz=float((len(timings) - 1) / (timestamps[-1] - timestamps[0])),
+        mean_rate_hz=float(1.0 / np.mean(periods)),
         median_period_s=float(np.median(periods)),
         p95_period_s=float(np.percentile(periods, 95)),
         maximum_period_s=float(np.max(periods)),

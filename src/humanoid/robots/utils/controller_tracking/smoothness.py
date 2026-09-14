@@ -192,19 +192,21 @@ def _build_trace(
     high_frequency_positions = uniform_positions - position_trend
     tool_trend = _local_polynomial_smooth(tool_positions, trend_window)
 
+    # Position is the actual setpoint sent to a position-controlled actuator. Build
+    # derivatives from that trajectory for both controller and measured streams.
+    # The controller's published velocity is retained as a raw trace, but it is a
+    # solver result/speed hint and can diverge from dq/dt when control and publication
+    # periods differ. Differentiating it produced misleading, non-repeatable command
+    # acceleration and acceleration-limit occupancy.
+    velocities = np.gradient(filtered_positions, median_period_s, axis=0)
     supplied_velocities = [sample.joint_velocities_rad_s for sample in unique_samples]
     if all(velocity is not None for velocity in supplied_velocities):
         source_velocities = np.vstack(
             [velocity for velocity in supplied_velocities if velocity is not None]
         )
         raw_velocities = _interpolate_columns(source_times, source_velocities, uniform_times)
-        velocities = raw_velocities
-        if unique_samples[0].stream == "state":
-            # The servo velocity register is too coarsely quantized for derivatives.
-            velocities = np.gradient(filtered_positions, median_period_s, axis=0)
     else:
         source_velocities = None
-        velocities = np.gradient(filtered_positions, median_period_s, axis=0)
         raw_velocities = velocities
     accelerations = np.gradient(velocities, median_period_s, axis=0)
     jerks = np.gradient(accelerations, median_period_s, axis=0)
@@ -212,6 +214,7 @@ def _build_trace(
     receipt_offset_s = unique_samples[0].received_timestamp_s - unique_samples[0].source_timestamp_s
     return MotionTrace(
         segment=unique_samples[0].segment,
+        setting=unique_samples[0].setting,
         window_index=unique_samples[0].window_index,
         stream=unique_samples[0].stream,
         times_s=uniform_times + receipt_offset_s,
@@ -258,7 +261,7 @@ def _joint_statistics(  # noqa: PLR0913 - combines distinct measured/commanded s
     limit_fraction = None
     if command_traces:
         command_accelerations = np.concatenate(
-            [_source_command_acceleration(trace, joint_index) for trace in command_traces]
+            [trace.accelerations_rad_s2[:, joint_index] for trace in command_traces]
         )
         command_acceleration_rms = float(np.sqrt(np.mean(np.square(command_accelerations))))
         command_acceleration_p95 = float(np.percentile(np.abs(command_accelerations), 95))
@@ -280,16 +283,6 @@ def _joint_statistics(  # noqa: PLR0913 - combines distinct measured/commanded s
         settle_peak_to_peak_rad=settle_peak_to_peak,
         dominant_frequency_hz=dominant_frequency,
     )
-
-
-def _source_command_acceleration(
-    trace: MotionTrace,
-    joint_index: int,
-) -> NDArray[np.float64]:
-    """Differentiate the published velocity at its actual source timestamps."""
-    if trace.source_velocities_rad_s is None:
-        return trace.accelerations_rad_s2[:, joint_index]
-    return np.diff(trace.source_velocities_rad_s[:, joint_index]) / np.diff(trace.source_times_s)
 
 
 def _settle_peak_to_peak(joint_index: int, settle_traces: tuple[MotionTrace, ...]) -> float | None:

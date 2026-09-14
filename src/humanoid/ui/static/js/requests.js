@@ -6,8 +6,6 @@ import {
   Runtime,
 } from "./constants.js";
 
-const REAL_RUNTIME_CONFIRMATION =
-  "Switch to the real robot runtime? Starting the stack can command physical hardware.";
 const REAL_STACK_CONFIRMATION =
   "Start the real robot stack now? Confirm the robot workspace is clear.";
 const REAL_REPLAY_CONFIRMATION =
@@ -21,15 +19,13 @@ export function safetyPayload(snapshot, realHardwareAcknowledged = false) {
   };
 }
 
-export function runtimeRequest(snapshot, runtime, confirmHardware) {
+export function runtimeRequest(snapshot, runtime) {
   if (!snapshot || runtime === snapshot.runtime) return null;
-  const selectingReal = runtime === Runtime.REAL;
-  if (selectingReal && !confirmHardware(REAL_RUNTIME_CONFIRMATION)) return null;
   return {
     path: API.RUNTIME,
     payload: {
       [PayloadKey.RUNTIME]: runtime,
-      ...safetyPayload(snapshot, selectingReal),
+      ...safetyPayload(snapshot),
     },
   };
 }

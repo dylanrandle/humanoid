@@ -78,27 +78,20 @@ Run the diagnostic with the main stack in **Idle**:
 uv run python -m humanoid.robots.utils.controller_tracking --robot triskel
 ```
 
-The test commands at 30 Hz and runs three sections:
+The test starts from the current pose and commands a matrix of Cartesian figure-eight
+motions through OSC/IK. It exercises translation, orientation, and optional gripper motion;
+velocity feedforward is enabled by default. The robot returns to Idle when the test exits.
 
-1. Two HOME-to-REST-to-HOME joint-space round trips.
-2. A Cartesian figure eight through OSC/IK, with gripper motion.
-3. The same endpoint motion through joint-space control and Cartesian OSC/IK.
-
-The Cartesian sections use velocity feedforward by default. The gripper trajectory starts
-and finishes at its measured position with zero velocity. The robot returns to Idle when
-the test exits.
-
-Results are written to `logs/tracking/`, including raw CSV data, publication timing,
-machine-readable metrics, and separate SVG reports for each section. Reports contain joint
-tracking and smoothness plots; Cartesian sections also contain tool tracking plots.
+Each run is saved under `logs/tracking/controller_tracking_<robot>_<timestamp>/`. It includes
+one report per trajectory setting plus raw telemetry and metrics that separate OSC error
+(reference tool pose vs command FK) from joint and end-to-end tracking error.
 
 Useful options:
 
 - `--no-velocity-feedforward`: run a pose-only OSC comparison.
 - `--hold-gripper`: disable gripper motion.
-- `--joint-cycles 0`: skip the HOME/REST section.
 - `--label NAME --compare-to PATH`: label a run and compare it with prior results.
-- `--help`: show trajectory, timing, gripper, and convergence options.
+- `--help`: show trajectory, orientation, timing, and gripper options.
 
 For example:
 
@@ -112,15 +105,6 @@ On a deployed Pi, use:
 ```bash
 /opt/humanoid/.venv/bin/python -m humanoid.robots.utils.controller_tracking --robot triskel
 ```
-
-To capture new comparison endpoints, teleoperate the robot into each pose and run:
-
-```bash
-/opt/humanoid/.venv/bin/python -m humanoid.robots.utils.pose_snapshot --robot triskel --label start
-/opt/humanoid/.venv/bin/python -m humanoid.robots.utils.pose_snapshot --robot triskel --label end
-```
-
-Each command prints copyable joint and tool-pose JSON.
 
 ### Deploying to Triskel
 

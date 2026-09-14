@@ -131,11 +131,7 @@ class OrchestratorService:
         return self.application_log_monitor.snapshot(after)
 
     def set_runtime(self, runtime: Runtime, safety: SafetyContext) -> OrchestratorStatus:
-        return self._set_configuration(
-            lambda: self.node_manager.set_runtime(runtime),
-            safety,
-            requires_real_acknowledgement=runtime is Runtime.REAL,
-        )
+        return self._set_configuration(lambda: self.node_manager.set_runtime(runtime), safety)
 
     def set_robot(self, robot: RobotName, safety: SafetyContext) -> OrchestratorStatus:
         return self._set_configuration(lambda: self.node_manager.set_robot(robot), safety)

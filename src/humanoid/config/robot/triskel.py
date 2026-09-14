@@ -35,14 +35,15 @@ GRIPPER_ID = "gripper_1"
 MAX_POSITION_VELOCITY_RAD_S = 2.0
 POSITION_PID_GAINS_BY_ACTUATOR_ID: dict[int, FeetechPIDGains] = {
     1: FeetechPIDGains(p=16, i=0, d=32),
-    2: FeetechPIDGains(p=16, i=4, d=32),
-    3: FeetechPIDGains(p=16, i=4, d=32),
-    4: FeetechPIDGains(p=16, i=4, d=32),
+    2: FeetechPIDGains(p=32, i=1, d=32),
+    3: FeetechPIDGains(p=32, i=1, d=32),
+    4: FeetechPIDGains(p=32, i=1, d=32),
     5: FeetechPIDGains(p=16, i=0, d=32),
     6: FeetechPIDGains(p=16, i=0, d=32),
     7: FeetechPIDGains(p=16, i=0, d=32),
     8: FeetechPIDGains(p=16, i=0, d=32),
 }
+
 
 HOME_POSITION = np.array(
     [
@@ -157,7 +158,7 @@ OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
     collision_safe_displacement_gain=1e-2,
     joint_centering_cost=5e-3,
     damping_cost=0.1,
-    low_acceleration_cost=1e-2,
+    low_acceleration_cost=0.03,
     joint_velocity_limit=1.0,
     joint_acceleration_limit=2.0,
 )

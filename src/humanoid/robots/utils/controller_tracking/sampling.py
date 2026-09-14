@@ -19,13 +19,23 @@ def tracking_statistics(samples: list[TrackingSample]) -> TrackingStatistics:
     """Summarize tool, arm-joint, and gripper errors for non-empty samples."""
     if not samples:
         raise ValueError("Cannot summarize an empty tracking run")
-    position_errors = np.array([np.linalg.norm(sample.position_error_m) for sample in samples])
-    orientation_errors = np.array([sample.orientation_error_rad for sample in samples])
+    osc_position_errors = np.array(
+        [np.linalg.norm(sample.osc_position_error_m) for sample in samples]
+    )
+    end_to_end_position_errors = np.array(
+        [np.linalg.norm(sample.end_to_end_position_error_m) for sample in samples]
+    )
+    osc_orientation_errors = np.array([sample.osc_orientation_error_rad for sample in samples])
+    end_to_end_orientation_errors = np.array(
+        [sample.end_to_end_orientation_error_rad for sample in samples]
+    )
     _, _, arm_joint_errors = _arm_joint_sample_matrices(samples)
     _, _, gripper_errors = _gripper_sample_matrices(samples)
     return TrackingStatistics(
-        position_m=_error_statistics(position_errors),
-        orientation_rad=_error_statistics(orientation_errors),
+        osc_position_m=_error_statistics(osc_position_errors),
+        osc_orientation_rad=_error_statistics(osc_orientation_errors),
+        end_to_end_position_m=_error_statistics(end_to_end_position_errors),
+        end_to_end_orientation_rad=_error_statistics(end_to_end_orientation_errors),
         arm_joint_position_rad=tuple(
             _error_statistics(np.abs(arm_joint_errors[:, index]))
             for index in range(arm_joint_errors.shape[1])
@@ -129,8 +139,9 @@ def _arm_joint_sample_matrices(
 
 def _tracking_sample(  # noqa: PLR0913 - sample fields come from distinct telemetry sources
     segment: Segment,
+    setting: str,
     elapsed_s: float,
-    commanded_pose: pin.SE3,
+    reference_pose: pin.SE3,
     commanded_gripper_positions_rad: NDArray[np.float64] | None,
     feedback: RuntimeFeedback,
     robot: Robot,
@@ -139,9 +150,12 @@ def _tracking_sample(  # noqa: PLR0913 - sample fields come from distinct teleme
 ) -> TrackingSample:
     robot_state = feedback.state
     joint_command = feedback.joint_command
+    osc_pose = robot.get_tool_command_pose(joint_command.joint_positions)
     measured_pose = robot.get_tool_command_pose(robot_state.joint_positions)
-    position_error = commanded_pose.translation - measured_pose.translation
-    orientation_error = pin.log3(measured_pose.rotation.T @ commanded_pose.rotation)
+    osc_position_error = reference_pose.translation - osc_pose.translation
+    end_to_end_position_error = reference_pose.translation - measured_pose.translation
+    osc_orientation_error = pin.log3(osc_pose.rotation.T @ reference_pose.rotation)
+    end_to_end_orientation_error = pin.log3(measured_pose.rotation.T @ reference_pose.rotation)
     gripper_indices = robot.get_gripper_position_indices()
     gripper_velocity_indices = robot.get_joint_velocity_indices(robot.get_gripper_joint_indices())
     gripper_joint_names = (
@@ -198,12 +212,16 @@ def _tracking_sample(  # noqa: PLR0913 - sample fields come from distinct teleme
     ].copy()
     return TrackingSample(
         segment=segment,
+        setting=setting,
         elapsed_s=elapsed_s,
         state_timestamp_s=robot_state.timestamp,
-        commanded_position_m=commanded_pose.translation.copy(),
+        reference_position_m=reference_pose.translation.copy(),
+        osc_position_m=osc_pose.translation.copy(),
         measured_position_m=measured_pose.translation.copy(),
-        position_error_m=position_error,
-        orientation_error_rad=float(np.linalg.norm(orientation_error)),
+        osc_position_error_m=osc_position_error,
+        end_to_end_position_error_m=end_to_end_position_error,
+        osc_orientation_error_rad=float(np.linalg.norm(osc_orientation_error)),
+        end_to_end_orientation_error_rad=float(np.linalg.norm(end_to_end_orientation_error)),
         joint_command_timestamp_s=joint_command.timestamp,
         state_minus_joint_command_s=robot_state.timestamp - joint_command.timestamp,
         arm_joint_names=arm_joint_names,

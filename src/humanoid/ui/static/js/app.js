@@ -90,7 +90,7 @@ async function perform(key, action) {
 els.runtimeButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const runtime = button.dataset.runtime;
-    const request = runtimeRequest(state.snapshot, runtime, window.confirm);
+    const request = runtimeRequest(state.snapshot, runtime);
     if (!request) return;
     perform(BusyKey.RUNTIME, () => post(request.path, request.payload));
   });

@@ -35,13 +35,14 @@ def write_run_metadata(
         "completed": run.completed,
         "failure_reason": run.failure_reason,
         "settings": asdict(settings),
+        "robot_config": robot_config,
         "operational_space_config": robot_config.operational_space_config,
         "actuators": (hardware_actuators.joints if hardware_actuators is not None else {}),
         "git": _git_metadata(),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(_json_ready(payload), indent=2, sort_keys=True, allow_nan=False) + "\n",
+        json.dumps(json_ready(payload), indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
 
@@ -93,7 +94,7 @@ def _resolve_metrics_path(path: Path, *, exclude: Path | None = None) -> Path:
         candidates = sorted(
             (
                 candidate
-                for candidate in path.glob("*_metrics.json")
+                for candidate in path.rglob("metrics.json")
                 if candidate.resolve() != excluded
             ),
             key=lambda item: item.stat().st_mtime,
@@ -139,13 +140,14 @@ def _run_git(root: Path, *arguments: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def _json_ready(value: Any) -> Any:  # noqa: PLR0911 - recursive serializer boundary
+def json_ready(value: Any) -> Any:  # noqa: PLR0911 - recursive serializer boundary
+    """Convert nested configuration and numeric objects to JSON-compatible values."""
     if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: _json_ready(getattr(value, field.name)) for field in fields(value)}
+        return {field.name: json_ready(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, dict):
-        return {str(key): _json_ready(nested) for key, nested in value.items()}
+        return {str(key): json_ready(nested) for key, nested in value.items()}
     if isinstance(value, list | tuple):
-        return [_json_ready(nested) for nested in value]
+        return [json_ready(nested) for nested in value]
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, np.generic):

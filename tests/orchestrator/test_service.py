@@ -290,13 +290,12 @@ def test_configuration_change_rejects_stale_operator_snapshot(safety):
     manager.set_robot.assert_not_called()
 
 
-def test_real_runtime_selection_requires_hardware_acknowledgement():
+def test_real_runtime_selection_does_not_require_hardware_acknowledgement():
     service, manager, _, _ = _make_service()
 
-    with pytest.raises(OrchestratorError, match="acknowledgement is required"):
-        service.set_runtime(Runtime.REAL, _safety_context())
+    service.set_runtime(Runtime.REAL, _safety_context())
 
-    manager.set_runtime.assert_not_called()
+    manager.set_runtime.assert_called_once_with(Runtime.REAL)
 
 
 def test_real_stack_start_requires_current_configuration_and_acknowledgement():

@@ -1,20 +1,25 @@
 """Controller tracking diagnostic package."""
 
-from humanoid.robots.utils.controller_tracking.cli import main
+from humanoid.robots.utils.controller_tracking.cli import (
+    controller_tracking_settings_from_arguments,
+    main,
+    run_controller_tracking_diagnostic,
+)
 from humanoid.robots.utils.controller_tracking.models import (
     DEFAULT_COMMAND_RATE_HZ,
     DEFAULT_DERIVATIVE_SMOOTHING_SECONDS,
     DEFAULT_GRIPPER_LIMIT_MARGIN_FRACTION,
     DEFAULT_GRIPPER_PERIOD_SECONDS,
-    DEFAULT_JOINT_CYCLES,
+    DEFAULT_ORIENTATION_BIAS_RADIANS,
     DEFAULT_SHAKE_CUTOFF_HZ,
+    FIGURE_EIGHT_SETTINGS,
     ControllerTrackingSettings,
+    FigureEightSetting,
     Segment,
     TrackingRun,
     TrackingSample,
 )
 from humanoid.robots.utils.controller_tracking.report import (
-    TrackingPlotPaths,
     write_controller_timing_csv,
     write_native_joint_telemetry_csv,
     write_run_metrics_json,
@@ -27,12 +32,9 @@ from humanoid.robots.utils.controller_tracking.smoothness import analyze_smoothn
 from humanoid.robots.utils.controller_tracking.timing import controller_publication_statistics
 from humanoid.robots.utils.controller_tracking.trajectory import (
     figure_eight_offset,
+    figure_eight_pose,
     figure_eight_velocity,
     gripper_sinusoid,
-    interpolated_cartesian_comparison_pose,
-    interpolated_cartesian_comparison_velocity,
-    joint_space_targets,
-    resolve_tracking_comparison,
 )
 from humanoid.types.controller_tracking import (
     ControllerCommandTiming,
@@ -45,27 +47,27 @@ __all__ = [
     "DEFAULT_DERIVATIVE_SMOOTHING_SECONDS",
     "DEFAULT_GRIPPER_LIMIT_MARGIN_FRACTION",
     "DEFAULT_GRIPPER_PERIOD_SECONDS",
-    "DEFAULT_JOINT_CYCLES",
+    "DEFAULT_ORIENTATION_BIAS_RADIANS",
     "DEFAULT_SHAKE_CUTOFF_HZ",
+    "FIGURE_EIGHT_SETTINGS",
     "ControllerCommandTiming",
     "ControllerPublicationStatistics",
     "ControllerTrackingSettings",
+    "FigureEightSetting",
     "NativeJointSample",
     "Segment",
-    "TrackingPlotPaths",
     "TrackingRun",
     "TrackingSample",
     "analyze_smoothness",
     "controller_publication_statistics",
+    "controller_tracking_settings_from_arguments",
     "figure_eight_offset",
+    "figure_eight_pose",
     "figure_eight_velocity",
     "gripper_sinusoid",
-    "interpolated_cartesian_comparison_pose",
-    "interpolated_cartesian_comparison_velocity",
-    "joint_space_targets",
     "main",
-    "resolve_tracking_comparison",
     "run_controller_tracking",
+    "run_controller_tracking_diagnostic",
     "tracking_statistics",
     "write_controller_timing_csv",
     "write_native_joint_telemetry_csv",

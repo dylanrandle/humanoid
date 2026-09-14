@@ -70,20 +70,21 @@ test("real replay requires confirmation and carries hardware acknowledgement", (
   });
 });
 
-test("real runtime selection requires confirmation and carries acknowledgement", () => {
+test("real runtime selection does not require hardware confirmation", () => {
   const current = snapshot();
-  assert.equal(runtimeRequest(current, Runtime.REAL, () => false), null);
+  let confirmations = 0;
 
-  const request = runtimeRequest(current, Runtime.REAL, () => true);
+  const request = runtimeRequest(current, Runtime.REAL, () => { confirmations += 1; });
   assert.deepEqual(request, {
     path: "/api/runtime",
     payload: {
       runtime: "real",
       expected_runtime: "sim",
       expected_robot: "panda",
-      real_hardware_acknowledged: true,
+      real_hardware_acknowledged: false,
     },
   });
+  assert.equal(confirmations, 0);
 });
 
 test("real stack start requires confirmation and carries the observed configuration", () => {
