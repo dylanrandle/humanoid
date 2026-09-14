@@ -1,3 +1,4 @@
+from typing import cast
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
@@ -14,6 +15,7 @@ from humanoid.types.actuator import (
 from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
+    CartesianVelocity,
     RobotBaseCommand,
     RobotConfig,
     RobotJointCommand,
@@ -121,11 +123,12 @@ def _no_messages(topic, timeout=0):
     return None
 
 
-def _make_tool_cmd(gripper=None):
+def _make_tool_cmd(gripper=None, velocity: CartesianVelocity | None = None):
     return RobotToolCommand(
         timestamp=0.0,
         pose=pin.SE3(np.eye(3), np.array([0.3, 0.0, 0.4])),
         gripper_positions=gripper,
+        velocity=velocity,
     )
 
 
@@ -399,6 +402,42 @@ class TestActiveMode:
 
         assert active_controller.controller.compute_control.call_count == expected_call_count
         assert active_controller.publisher.publish.call_count == expected_call_count
+
+    def test_velocity_feedforward_continues_reference_between_commands(self):
+        now = 1.0
+        controller = _make_controller(clock=lambda: now)
+        _activate(controller)
+        velocity = CartesianVelocity(
+            linear=np.array([0.1, 0.0, 0.0]),
+            angular=np.zeros(3),
+        )
+        tool_cmd = _make_tool_cmd(velocity=velocity)
+        delivered = False
+
+        def receive(topic, timeout=0):
+            nonlocal delivered
+            if topic == Topic.ROBOT_TOOL_COMMAND and not delivered:
+                delivered = True
+                return tool_cmd
+            return None
+
+        subscriber = cast(MagicMock, controller.subscriber)
+        subscriber.receive = Mock(side_effect=receive)
+        controller.step()
+        now += controller._nominal_dt
+        controller.step()
+
+        arm_controller = cast(MagicMock, controller.arm_controller)
+        first_call, second_call = arm_controller.compute_control.call_args_list
+        np.testing.assert_allclose(first_call.args[0].translation, tool_cmd.pose.translation)
+        np.testing.assert_allclose(
+            second_call.args[0].translation,
+            tool_cmd.pose.translation + velocity.linear * controller._nominal_dt,
+        )
+        for call in (first_call, second_call):
+            forwarded_velocity = call.kwargs["target_velocity"]
+            np.testing.assert_allclose(forwarded_velocity.linear, velocity.linear)
+            np.testing.assert_allclose(forwarded_velocity.angular, velocity.angular)
 
     def test_base_command_alone_drives_mobile_base(self, active_mobile_controller):
         base_cmd = _make_base_cmd()

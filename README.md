@@ -62,6 +62,8 @@ uv run start
 The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Use it to select the
 robot and runtime, manage the stack and teleoperation processes, choose a control mode,
 monitor node health and application logs, and record or replay LCM sessions.
+Each data-logger run is stored as `logs/recordings/<timestamp>/`, with the LCM log and
+robot-configuration manifest kept together inside that directory.
 
 Simulation uses MuJoCo and real-hardware mode uses the hardware driver; both expose the
 same LCM interface to the rest of the stack. Hardware actions require explicit operator
@@ -70,59 +72,55 @@ LCM network.
 
 ### Controller Tracking Diagnostic
 
-With the main stack running in **Idle**, measure repeated home-to-rest-to-home joint-space
-trajectories, Cartesian figure-eight tracking through OSC/IK, and a matched endpoint
-comparison between homing-controller joint-space and Cartesian control:
+Run the diagnostic with the main stack in **Idle**:
 
 ```bash
 uv run python -m humanoid.robots.utils.controller_tracking --robot triskel
 ```
 
-The script waits three seconds before motion, acquires the dedicated `SYSTEM` command
-source, and returns the orchestrator to Idle on exit. Its defaults first move home and
-complete two home-to-rest-to-home round trips, ending back at home. It next runs an 80 mm
-by 40 mm figure eight in the XZ plane through Cartesian OSC/IK. Finally, it moves between
-explicit, corresponding joint/task endpoint poses. The joint-space run uses the same
-homing controller as normal HOME/REST motion. After resetting to the supplied start joint
-pose, the Cartesian run uses minimum-jerk SE(3) interpolation from the supplied start tool
-pose to the supplied end tool pose through OSC/IK, with no intermediate waypoints. The
-Cartesian comparison lasts eight seconds by default and can be changed independently with
-`--comparison-duration`; `--cycles` controls only the figure-eight repetitions. Commands
-run at 30 Hz by default. A same-period gripper sinusoid stays 5%
-clear of each URDF joint limit during the figure eight.
+The test commands at 30 Hz and runs three sections:
 
-Raw tracking samples, losslessly captured OSC publication timing, and three standalone
-SVG reports are written under `logs/tracking/`: one each for joint-space home/rest,
-Cartesian figure eight (OSC/IK), and the same-endpoint command-space comparison. The
-timing CSV reports achieved output rate, period jitter, and delayed intervals independently
-of the tracking sampler. Every experiment includes a joint-level error table and
-commanded-versus-measured joint plots for the arm and gripper. The figure-eight and both
-comparison paths also include Cartesian error statistics and plots. Comparing the two
-endpoint subsections helps distinguish actuator/driver tracking from OSC/IK or Cartesian
-trajectory behavior. Use `--help` to change timing, figure-eight dimensions, gripper
-bounds, or home-convergence criteria. Use `--joint-cycles 0` to omit the baseline section
-or `--hold-gripper` to disable the sinusoid. Keep the selected `--robot` consistent with
-the running stack.
-If motion stops after sampling has begun, the utility still writes a report marked as
-partial before exiting with an error, so the data leading up to the failure is retained.
+1. Two HOME-to-REST-to-HOME joint-space round trips.
+2. A Cartesian figure eight through OSC/IK, with gripper motion.
+3. The same endpoint motion through joint-space control and Cartesian OSC/IK.
 
-After deploying, run the installed utility on the Pi with the stack in Idle:
+The Cartesian sections use velocity feedforward by default. The gripper trajectory starts
+and finishes at its measured position with zero velocity. The robot returns to Idle when
+the test exits.
+
+Results are written to `logs/tracking/`, including raw CSV data, publication timing,
+machine-readable metrics, and separate SVG reports for each section. Reports contain joint
+tracking and smoothness plots; Cartesian sections also contain tool tracking plots.
+
+Useful options:
+
+- `--no-velocity-feedforward`: run a pose-only OSC comparison.
+- `--hold-gripper`: disable gripper motion.
+- `--joint-cycles 0`: skip the HOME/REST section.
+- `--label NAME --compare-to PATH`: label a run and compare it with prior results.
+- `--help`: show trajectory, timing, gripper, and convergence options.
+
+For example:
+
+```bash
+uv run python -m humanoid.robots.utils.controller_tracking \
+  --robot triskel --label "P48 arm 2-4" --compare-to logs/tracking
+```
+
+On a deployed Pi, use:
 
 ```bash
 /opt/humanoid/.venv/bin/python -m humanoid.robots.utils.controller_tracking --robot triskel
 ```
 
-To capture measured endpoints for the matched joint/Cartesian comparison, teleoperate the
-robot into each pose and run the read-only snapshot utility:
+To capture new comparison endpoints, teleoperate the robot into each pose and run:
 
 ```bash
 /opt/humanoid/.venv/bin/python -m humanoid.robots.utils.pose_snapshot --robot triskel --label start
 /opt/humanoid/.venv/bin/python -m humanoid.robots.utils.pose_snapshot --robot triskel --label end
 ```
 
-Each invocation waits for a fresh robot-state sample and prints copyable JSON containing
-the named position-controlled joint angles and the configured tool-command pose. For a
-mobile robot such as Triskel, the tool pose is relative to the configured base frame.
+Each command prints copyable joint and tool-pose JSON.
 
 ### Deploying to Triskel
 

@@ -18,7 +18,7 @@ from humanoid.robots.utils.controller_tracking.models import (
 from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.controller_tracking import ControllerTrackingComparisonConfig
 from humanoid.types.homing import HomingPreset
-from humanoid.types.robot import RobotConfig
+from humanoid.types.robot import CartesianVelocity, RobotConfig
 
 
 def figure_eight_offset(
@@ -37,6 +37,36 @@ def figure_eight_offset(
     return offset
 
 
+def figure_eight_velocity(
+    elapsed_s: float,
+    settings: ControllerTrackingSettings,
+) -> CartesianVelocity:
+    """Return the analytic command-frame velocity of the figure eight."""
+    elapsed_s = float(np.clip(elapsed_s, 0.0, settings.duration_s))
+    phase_rate = 2.0 * np.pi / settings.period_s
+    phase = phase_rate * elapsed_s
+    envelope = _trajectory_envelope(elapsed_s, settings.duration_s, settings.ramp_s)
+    envelope_rate = _trajectory_envelope_rate(
+        elapsed_s,
+        settings.duration_s,
+        settings.ramp_s,
+    )
+    first_axis, second_axis = PLANE_AXES[settings.plane]
+
+    linear = np.zeros(3)
+    linear[first_axis] = (
+        settings.width_m
+        * 0.5
+        * (envelope_rate * np.sin(phase) + envelope * phase_rate * np.cos(phase))
+    )
+    linear[second_axis] = (
+        settings.height_m
+        * 0.5
+        * (envelope_rate * np.sin(2.0 * phase) + 2.0 * envelope * phase_rate * np.cos(2.0 * phase))
+    )
+    return CartesianVelocity(linear=linear, angular=np.zeros(3))
+
+
 def gripper_sinusoid(
     elapsed_s: float,
     initial_positions_rad: NDArray[np.float64],
@@ -44,15 +74,26 @@ def gripper_sinusoid(
     upper_bounds_rad: NDArray[np.float64],
     settings: ControllerTrackingSettings,
 ) -> NDArray[np.float64]:
-    """Return a smoothly introduced sinusoid between the gripper bounds."""
+    """Return a bounded whole-cycle sinusoid beginning and ending at rest.
+
+    The sinusoid's phase, rather than its position, follows a minimum-jerk
+    time law. This preserves the sinusoidal reversals while making position
+    and velocity continuous at the measured starting position. Bounds expand
+    to include that starting position so a joint already inside the URDF limit
+    but outside the diagnostic margin is never commanded to jump.
+    """
     elapsed_s = float(np.clip(elapsed_s, 0.0, settings.duration_s))
-    phase = 2.0 * np.pi * elapsed_s / settings.effective_gripper_period_s
-    normalized_position = 0.5 + 0.5 * np.sin(phase)
-    sinusoidal_target = lower_bounds_rad + normalized_position * (
-        upper_bounds_rad - lower_bounds_rad
-    )
-    envelope = _trajectory_envelope(elapsed_s, settings.duration_s, settings.ramp_s)
-    return initial_positions_rad + envelope * (sinusoidal_target - initial_positions_rad)
+    if elapsed_s <= 0.0 or elapsed_s >= settings.duration_s:
+        return initial_positions_rad.copy()
+
+    effective_lower = np.minimum(lower_bounds_rad, initial_positions_rad)
+    effective_upper = np.maximum(upper_bounds_rad, initial_positions_rad)
+    midpoint = 0.5 * (effective_lower + effective_upper)
+    amplitude = 0.5 * (effective_upper - effective_lower)
+    initial_phase = np.arccos(np.clip((initial_positions_rad - midpoint) / amplitude, -1.0, 1.0))
+    cycle_progress = settings.gripper_cycle_count * _smootherstep(elapsed_s / settings.duration_s)
+    phase = initial_phase + 2.0 * np.pi * cycle_progress
+    return midpoint + amplitude * np.cos(phase)
 
 
 def resolve_tracking_comparison(
@@ -124,6 +165,29 @@ def interpolated_cartesian_comparison_pose(
     return pin.SE3(rotation, translation)
 
 
+def interpolated_cartesian_comparison_velocity(
+    start_pose: pin.SE3,
+    end_pose: pin.SE3,
+    elapsed_s: float,
+    duration_s: float,
+) -> CartesianVelocity:
+    """Evaluate the command-frame velocity of the minimum-jerk interpolation."""
+    if not math.isfinite(duration_s) or duration_s <= 0.0:
+        raise ValueError("Cartesian comparison duration must be positive and finite")
+    normalized_time = float(np.clip(elapsed_s / duration_s, 0.0, 1.0))
+    blend_rate = _smootherstep_derivative(normalized_time) / duration_s
+    linear = blend_rate * (end_pose.translation - start_pose.translation)
+    rotation_delta = pin.log3(start_pose.rotation.T @ end_pose.rotation)
+    pose = interpolated_cartesian_comparison_pose(
+        start_pose,
+        end_pose,
+        elapsed_s,
+        duration_s,
+    )
+    angular = pose.rotation @ (blend_rate * rotation_delta)
+    return CartesianVelocity(linear=linear, angular=angular)
+
+
 def _validate_comparison_endpoint(
     robot: Robot,
     label: str,
@@ -181,6 +245,16 @@ def _trajectory_envelope(elapsed_s: float, duration_s: float, ramp_s: float) -> 
     if elapsed_s > duration_s - ramp_s:
         return _smootherstep((duration_s - elapsed_s) / ramp_s)
     return 1.0
+
+
+def _trajectory_envelope_rate(elapsed_s: float, duration_s: float, ramp_s: float) -> float:
+    if ramp_s == 0.0:
+        return 0.0
+    if elapsed_s < ramp_s:
+        return _smootherstep_derivative(elapsed_s / ramp_s) / ramp_s
+    if elapsed_s > duration_s - ramp_s:
+        return -_smootherstep_derivative((duration_s - elapsed_s) / ramp_s) / ramp_s
+    return 0.0
 
 
 def _resolve_gripper_bounds(
@@ -255,3 +329,8 @@ def _joint_command_gripper_positions(
 def _smootherstep(value: float) -> float:
     value = float(np.clip(value, 0.0, 1.0))
     return value**3 * (value * (value * 6.0 - 15.0) + 10.0)
+
+
+def _smootherstep_derivative(value: float) -> float:
+    value = float(np.clip(value, 0.0, 1.0))
+    return 30.0 * value**2 * (value - 1.0) ** 2

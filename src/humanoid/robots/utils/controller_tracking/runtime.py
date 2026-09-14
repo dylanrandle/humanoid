@@ -37,14 +37,22 @@ from humanoid.robots.utils.controller_tracking.trajectory import (
     _resolve_gripper_bounds,
     _smootherstep,
     figure_eight_offset,
+    figure_eight_velocity,
     interpolated_cartesian_comparison_pose,
+    interpolated_cartesian_comparison_velocity,
     joint_space_targets,
     resolve_tracking_comparison,
 )
 from humanoid.types.controller_tracking import ControllerCommandTiming
 from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode
-from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotState, RobotToolCommand
+from humanoid.types.robot import (
+    CartesianVelocity,
+    RobotConfig,
+    RobotJointCommand,
+    RobotState,
+    RobotToolCommand,
+)
 
 logger = get_logger(__name__)
 
@@ -66,13 +74,14 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
     subscriber = Subscriber(
         topics=[Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND, Topic.ORCHESTRATOR_MODE]
     )
-    timing_recorder = ControllerCommandTimingRecorder()
+    timing_recorder = ControllerCommandTimingRecorder(robot=robot)
     orchestrator = OrchestratorClient(publisher=publisher)
     motion_requested = False
     samples: list[TrackingSample] = []
     completed = False
     failure_reason: str | None = None
     controller_command_timings: list[ControllerCommandTiming] = []
+    native_joint_samples = []
 
     try:
         initial_mode = subscriber.receive(
@@ -137,6 +146,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
             feedback,
             baseline_samples,
             start,
+            timing_recorder,
         )
         feedback = _wait_for_home_convergence(
             settings,
@@ -146,6 +156,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
             home_target,
             baseline_samples,
             start,
+            timing_recorder,
         )
 
         gripper_indices = robot.get_gripper_position_indices()
@@ -183,6 +194,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
             feedback,
             comparison_setup_samples,
             start,
+            timing_recorder,
         )
         feedback = _wait_for_joint_convergence(
             settings,
@@ -208,6 +220,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
             feedback,
             samples,
             start,
+            timing_recorder,
         )
         feedback = _wait_for_joint_convergence(
             settings,
@@ -219,6 +232,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
             start,
             segment="joint_comparison_settle",
             target_label="comparison end",
+            timing_recorder=timing_recorder,
         )
 
         logger.info("Returning to the supplied start joint pose before the Cartesian comparison")
@@ -234,6 +248,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
             feedback,
             comparison_reset_samples,
             start,
+            timing_recorder,
         )
         feedback = _wait_for_joint_convergence(
             settings,
@@ -278,6 +293,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
         if motion_requested:
             orchestrator.request_idle()
         controller_command_timings = timing_recorder.close()
+        native_joint_samples = timing_recorder.native_joint_samples
         subscriber.close()
 
     return TrackingRun(
@@ -285,6 +301,7 @@ def run_controller_tracking(  # noqa: PLR0915 - owns the utility's safety lifecy
         completed=completed,
         failure_reason=failure_reason,
         controller_command_timings=controller_command_timings,
+        native_joint_samples=native_joint_samples,
     )
 
 
@@ -297,6 +314,7 @@ def _run_joint_space_trajectories(  # noqa: PLR0913 - owns one diagnostic phase
     feedback: RuntimeFeedback,
     samples: list[TrackingSample],
     run_started_s: float,
+    timing_recorder: ControllerCommandTimingRecorder,
 ) -> RuntimeFeedback:
     """Run named homing trajectories while recording controller output and feedback."""
     logger.info("Starting %d homing-policy transition(s)", len(targets))
@@ -313,6 +331,7 @@ def _run_joint_space_trajectories(  # noqa: PLR0913 - owns one diagnostic phase
             feedback,
             samples,
             run_started_s,
+            timing_recorder,
         )
     return feedback
 
@@ -328,9 +347,12 @@ def _run_homing_target(  # noqa: PLR0913 - owns one homing transition
     feedback: RuntimeFeedback,
     samples: list[TrackingSample],
     run_started_s: float,
+    timing_recorder: ControllerCommandTimingRecorder | None = None,
 ) -> RuntimeFeedback:
     """Run one target through the homing controller, optionally recording it."""
     logger.info("Joint-space homing transition: %s", label)
+    if segment is not None and timing_recorder is not None:
+        timing_recorder.begin(segment)
     requested_at = time.perf_counter()
     orchestrator.request_homing(target)
     _wait_for_mode(subscriber, Mode.HOMING, settings.connection_timeout_s)
@@ -376,6 +398,8 @@ def _run_homing_target(  # noqa: PLR0913 - owns one homing transition
         if feedback.mode is Mode.IDLE:
             break
         next_tick = _sleep_until_next_tick(next_tick, settings.rate_hz)
+    if segment is not None and timing_recorder is not None:
+        timing_recorder.end()
     return feedback
 
 
@@ -401,7 +425,6 @@ def _run_figure_eight(  # noqa: PLR0913 - owns one diagnostic phase
         settings.height_m * 1_000.0,
         settings.duration_s,
     )
-    timing_recorder.begin("figure_eight")
     system_requested_at = time.perf_counter()
     orchestrator.request_system()
     _wait_for_mode(subscriber, Mode.SYSTEM, settings.connection_timeout_s)
@@ -424,6 +447,7 @@ def _run_figure_eight(  # noqa: PLR0913 - owns one diagnostic phase
         last_mode_received_s=feedback_received_at,
     )
 
+    timing_recorder.begin("figure_eight")
     trajectory_started_s = time.monotonic()
     next_tick = trajectory_started_s
     while True:
@@ -444,6 +468,11 @@ def _run_figure_eight(  # noqa: PLR0913 - owns one diagnostic phase
                 gripper_bounds,
                 settings,
             ),
+            velocity=(
+                figure_eight_velocity(trajectory_elapsed_s, settings)
+                if settings.velocity_feedforward
+                else None
+            ),
         )
         publisher.publish(command, topic=Topic.SYSTEM_TOOL_COMMAND)
         samples.append(
@@ -454,12 +483,15 @@ def _run_figure_eight(  # noqa: PLR0913 - owns one diagnostic phase
                 command.gripper_positions,
                 feedback,
                 robot,
+                commanded_velocity=command.velocity,
             )
         )
         if trajectory_elapsed_s >= settings.duration_s:
             break
         next_tick = _sleep_until_next_tick(next_tick, settings.rate_hz)
 
+    timing_recorder.end()
+    timing_recorder.begin("figure_eight_settle")
     settle_end_s = time.monotonic() + settings.settle_s
     while time.monotonic() < settle_end_s:
         feedback = _refresh_runtime_state(subscriber, feedback, settings.feedback_timeout_s)
@@ -467,6 +499,7 @@ def _run_figure_eight(  # noqa: PLR0913 - owns one diagnostic phase
             timestamp=time.perf_counter(),
             pose=anchor_pose,
             gripper_positions=initial_gripper_positions,
+            velocity=CartesianVelocity.zero() if settings.velocity_feedforward else None,
         )
         publisher.publish(command, topic=Topic.SYSTEM_TOOL_COMMAND)
         samples.append(
@@ -477,6 +510,7 @@ def _run_figure_eight(  # noqa: PLR0913 - owns one diagnostic phase
                 command.gripper_positions,
                 feedback,
                 robot,
+                commanded_velocity=command.velocity,
             )
         )
         next_tick = _sleep_until_next_tick(next_tick, settings.rate_hz)
@@ -505,7 +539,6 @@ def _run_cartesian_comparison(  # noqa: PLR0913 - owns one diagnostic phase
         "Running the Cartesian comparison through OSC/IK over %.1f seconds",
         settings.comparison_duration_s,
     )
-    timing_recorder.begin("cartesian_comparison")
     system_requested_at = time.perf_counter()
     orchestrator.request_system()
     _wait_for_mode(subscriber, Mode.SYSTEM, settings.connection_timeout_s)
@@ -528,6 +561,7 @@ def _run_cartesian_comparison(  # noqa: PLR0913 - owns one diagnostic phase
         last_mode_received_s=feedback_received_at,
     )
 
+    timing_recorder.begin("cartesian_comparison")
     trajectory_started_s = time.monotonic()
     next_tick = trajectory_started_s
     start_gripper_positions = _joint_command_gripper_positions(robot, start_joint_positions)
@@ -553,6 +587,16 @@ def _run_cartesian_comparison(  # noqa: PLR0913 - owns one diagnostic phase
                 settings.comparison_duration_s,
             ),
             gripper_positions=commanded_gripper_positions,
+            velocity=(
+                interpolated_cartesian_comparison_velocity(
+                    start_pose,
+                    end_pose,
+                    trajectory_elapsed_s,
+                    settings.comparison_duration_s,
+                )
+                if settings.velocity_feedforward
+                else None
+            ),
         )
         publisher.publish(command, topic=Topic.SYSTEM_TOOL_COMMAND)
         samples.append(
@@ -563,12 +607,15 @@ def _run_cartesian_comparison(  # noqa: PLR0913 - owns one diagnostic phase
                 command.gripper_positions,
                 feedback,
                 robot,
+                commanded_velocity=command.velocity,
             )
         )
         if trajectory_elapsed_s >= settings.comparison_duration_s:
             break
         next_tick = _sleep_until_next_tick(next_tick, settings.rate_hz)
 
+    timing_recorder.end()
+    timing_recorder.begin("cartesian_comparison_settle")
     settle_end_s = time.monotonic() + settings.settle_s
     while time.monotonic() < settle_end_s:
         feedback = _refresh_runtime_state(subscriber, feedback, settings.feedback_timeout_s)
@@ -576,6 +623,7 @@ def _run_cartesian_comparison(  # noqa: PLR0913 - owns one diagnostic phase
             timestamp=time.perf_counter(),
             pose=end_pose,
             gripper_positions=end_gripper_positions,
+            velocity=CartesianVelocity.zero() if settings.velocity_feedforward else None,
         )
         publisher.publish(command, topic=Topic.SYSTEM_TOOL_COMMAND)
         samples.append(
@@ -586,6 +634,7 @@ def _run_cartesian_comparison(  # noqa: PLR0913 - owns one diagnostic phase
                 command.gripper_positions,
                 feedback,
                 robot,
+                commanded_velocity=command.velocity,
             )
         )
         next_tick = _sleep_until_next_tick(next_tick, settings.rate_hz)
@@ -601,6 +650,7 @@ def _wait_for_home_convergence(  # noqa: PLR0913 - records the final settling ph
     home_target: NDArray[np.float64],
     samples: list[TrackingSample],
     run_started_s: float,
+    timing_recorder: ControllerCommandTimingRecorder | None = None,
 ) -> RuntimeFeedback:
     """Wait until measured arm joints remain close to HOME."""
     return _wait_for_joint_convergence(
@@ -611,8 +661,9 @@ def _wait_for_home_convergence(  # noqa: PLR0913 - records the final settling ph
         home_target,
         samples,
         run_started_s,
-        segment="joint_home",
+        segment="joint_home_settle",
         target_label="HOME",
+        timing_recorder=timing_recorder,
     )
 
 
@@ -627,11 +678,14 @@ def _wait_for_joint_convergence(  # noqa: PLR0913 - records target settling
     *,
     segment: Segment,
     target_label: str,
+    timing_recorder: ControllerCommandTimingRecorder | None = None,
 ) -> RuntimeFeedback:
     """Wait until measured arm joints remain close to a requested target."""
     arm_joint_indices = robot.get_arm_joint_indices()
     if not arm_joint_indices:
         return feedback
+    if timing_recorder is not None:
+        timing_recorder.begin(segment)
 
     logger.info(
         "Waiting for measured %s convergence: tolerance %.3f rad for %.1f seconds",
@@ -687,11 +741,15 @@ def _wait_for_joint_convergence(  # noqa: PLR0913 - records target settling
             stable_since = now if stable_since is None else stable_since
             if now - stable_since >= settings.home_stable_s:
                 logger.info("Measured %s target is stable", target_label)
+                if timing_recorder is not None:
+                    timing_recorder.end()
                 return feedback
         else:
             stable_since = None
         next_tick = _sleep_until_next_tick(next_tick, settings.rate_hz)
 
+    if timing_recorder is not None:
+        timing_recorder.end()
     raise RuntimeError(
         f"Timed out waiting for measured {target_label} convergence; maximum arm-joint "
         f"error was {maximum_error_rad:.3f} rad after {settings.home_timeout_s:g} seconds"
@@ -832,7 +890,7 @@ def _log_run_plan(
 ) -> None:
     logger.info(
         "Controller tracking: robot=%s, plane=%s, figure_eight=%.0f x %.0f mm, "
-        "period=%.1f s, cycles=%d, rate=%.1f Hz",
+        "period=%.1f s, cycles=%d, rate=%.1f Hz, velocity_feedforward=%s",
         robot_config.name,
         settings.plane,
         settings.width_m * 1_000.0,
@@ -840,6 +898,7 @@ def _log_run_plan(
         settings.period_s,
         settings.cycles,
         settings.rate_hz,
+        "on" if settings.velocity_feedforward else "off",
     )
     if settings.joint_cycles:
         logger.info(
@@ -857,10 +916,13 @@ def _log_run_plan(
     if gripper_bounds_rad is not None:
         lower, upper = gripper_bounds_rad
         logger.info(
-            "Gripper sinusoid: lower=%s rad, upper=%s rad, period=%.1f s",
+            "Gripper sinusoid: lower=%s rad, upper=%s rad, requested_period=%.1f s, "
+            "effective_period=%.1f s, cycles=%d",
             np.array2string(lower, precision=4),
             np.array2string(upper, precision=4),
+            settings.gripper_period_s,
             settings.effective_gripper_period_s,
+            settings.gripper_cycle_count,
         )
 
 

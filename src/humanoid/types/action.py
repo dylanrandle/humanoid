@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import numpy as np
 import pinocchio as pin
 
+from humanoid.types.robot import CartesianVelocity
+
 
 @dataclass
 class Action:
@@ -12,3 +14,4 @@ class Action:
     tool_pose: pin.SE3 | None = None
     gripper_positions: np.ndarray | None = None
     base_pose: pin.SE3 | None = None
+    tool_velocity: CartesianVelocity | None = None

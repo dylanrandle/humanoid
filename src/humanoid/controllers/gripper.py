@@ -43,7 +43,12 @@ class GripperController(Controller[NDArray[np.float64]]):
         target: NDArray[np.float64],
         dt: float | None = None,
     ) -> ControlResult:
-        """Set one target position for each configured gripper joint."""
+        """Set one target position for each configured gripper joint.
+
+        Gripper actuators are position controlled, so this controller does not
+        synthesize a velocity from successive position targets. The hardware
+        driver applies its configured position-profile speed independently.
+        """
         if self.configuration is None:
             raise RuntimeError(
                 "Controller configuration not initialized. "
@@ -63,16 +68,6 @@ class GripperController(Controller[NDArray[np.float64]]):
             self._lower_position_limits,
             self._upper_position_limits,
         )
-        velocity = np.zeros(self.robot.model.nv)
-        if dt is not None:
-            if not np.isfinite(dt) or dt <= 0.0:
-                raise ValueError("Controller timestep must be positive and finite.")
-            position_delta = bounded_target - q[self.controlled_q_indices]
-            velocity[self.controlled_v_indices] = np.clip(
-                position_delta / dt,
-                -self.robot.model.velocityLimit[self.controlled_v_indices],
-                self.robot.model.velocityLimit[self.controlled_v_indices],
-            )
         self.robot.set_gripper_positions(q, bounded_target)
         self.configuration = q
-        return ControlResult(q=q.copy(), v=velocity)
+        return ControlResult(q=q.copy(), v=np.zeros(self.robot.model.nv))

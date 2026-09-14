@@ -334,7 +334,7 @@ function renderLogging(logging, controlsReady, busy, elements) {
     elements.loggingDetail.textContent = "Data logging is unavailable.";
   } else {
     elements.loggingDetail.textContent =
-      "Logs are written to the project logs directory.";
+      "Recordings are written to the logs/recordings directory.";
   }
 
   const failed = logging.state === LoggingState.FAILED;
@@ -444,7 +444,7 @@ function renderReplay(snapshot, anyRunning, replayActive, busy, elements) {
     elements.replayStatus.textContent = "Ready";
     elements.replayDetail.textContent = selectedRecording
       ? "Ready to replay through the simulator."
-      : "Select a recording from the project logs directory.";
+      : "Select a recording from the logs/recordings directory.";
   }
 
   const failed = !replayActive && replay.outcome === ReplayOutcome.FAILED;

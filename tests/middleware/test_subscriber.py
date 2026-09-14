@@ -109,6 +109,22 @@ class TestSubscriber:
         np.testing.assert_allclose(result.joint_positions, state.joint_positions)
         np.testing.assert_allclose(result.actuator_temperatures, state.actuator_temperatures)
 
+    def test_receive_with_timestamp_returns_local_receipt_time(self, mock_lcm):
+        sub = Subscriber(topics=[Topic.ROBOT_STATE], clock=lambda: 12.5)
+        state = _make_state()
+
+        sub._handle_message(
+            Topic.ROBOT_STATE.value,
+            LCMConverter.robot_state_to_lcm(state).encode(),
+        )
+
+        received = sub.receive_with_timestamp(Topic.ROBOT_STATE, timeout=10)
+        assert received is not None
+        message, received_at_s = received
+        assert isinstance(message, RobotState)
+        assert received_at_s == pytest.approx(12.5)
+        assert message.timestamp == pytest.approx(state.timestamp)
+
     def test_handle_message_decodes_each_supported_type(self, mock_lcm):
         sub = Subscriber(
             topics=[

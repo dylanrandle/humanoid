@@ -14,7 +14,11 @@ from humanoid.constants import Topic
 from humanoid.controllers.base import Controller
 from humanoid.controllers.gripper import GripperController
 from humanoid.controllers.omniwheel_base import OmniwheelBaseController
-from humanoid.controllers.operational_space import OperationalSpaceController
+from humanoid.controllers.operational_space import (
+    OperationalSpaceController,
+    advance_cartesian_pose,
+    clamp_cartesian_velocity,
+)
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
@@ -36,6 +40,7 @@ logger = get_logger(__name__)
 # other mode (HOMING, IDLE) the OSC continuously re-syncs from ROBOT_STATE so
 # that reactivation holds the current pose.
 OSC_ACTIVE_MODES = {Mode.OCULUS, Mode.KEYBOARD, Mode.SYSTEM}
+MAX_FEEDFORWARD_COMMAND_AGE_PERIODS = 1.0
 
 
 class RobotControllerNode(Node):
@@ -82,6 +87,7 @@ class RobotControllerNode(Node):
             raise ValueError("Arm and base controllers must use the same timestep.")
         self.rate_hz = 1 / arm_config.dt
         self._nominal_dt = arm_config.dt
+        self._tool_velocity_limits = robot_config.tool.velocity_limits
         self._clock = clock
         self._last_control_time: float | None = None
 
@@ -98,6 +104,7 @@ class RobotControllerNode(Node):
 
         # Reference for current tool and base commands
         self.current_tool_command: RobotToolCommand | None = None
+        self._tool_command_received_s: float | None = None
         self.current_base_command: RobotBaseCommand | None = None
 
         # Orchestrator gate. Default to IDLE so we re-sync from state until the
@@ -124,6 +131,7 @@ class RobotControllerNode(Node):
             pose=self.robot.get_tool_command_pose(q),
             gripper_positions=gripper_positions,
         )
+        self._tool_command_received_s = None
 
         base_pose = self.robot.get_base_pose(q)
         if base_pose is not None:
@@ -152,6 +160,36 @@ class RobotControllerNode(Node):
         if self.base_controller is not None:
             self.base_controller.update_state(result.q)
         return result
+
+    def _compute_arm_control(self, dt: float) -> ControlResult | None:
+        """Apply bounded velocity preview to the latest tool command."""
+        command = self.current_tool_command
+        if command is None:
+            return None
+
+        target = command.pose
+        velocity = command.velocity
+        if velocity is None:
+            return self.arm_controller.compute_control(target, dt=dt)
+        velocity = clamp_cartesian_velocity(
+            velocity,
+            self._tool_velocity_limits,
+        )
+
+        if self._tool_command_received_s is not None:
+            command_age_s = float(
+                np.clip(
+                    self._clock() - self._tool_command_received_s,
+                    0.0,
+                    MAX_FEEDFORWARD_COMMAND_AGE_PERIODS * self._nominal_dt,
+                )
+            )
+            target = advance_cartesian_pose(target, velocity, command_age_s)
+        return self.arm_controller.compute_control(
+            target,
+            dt=dt,
+            target_velocity=velocity,
+        )
 
     @property
     def is_active(self) -> bool:
@@ -195,6 +233,7 @@ class RobotControllerNode(Node):
         if tool_command is not None:
             logger.debug(f"Received tool command: {tool_command}")
             self.current_tool_command = tool_command
+            self._tool_command_received_s = self._clock()
 
         # Check for new base command (non-blocking)
         base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
@@ -210,11 +249,12 @@ class RobotControllerNode(Node):
         gripper_result = self._apply_gripper_target_to_model_state(dt)
 
         results: list[tuple[Controller[pin.SE3], ControlResult]] = []
-        if self.current_tool_command is not None:
+        arm_result = self._compute_arm_control(dt)
+        if arm_result is not None:
             results.append(
                 (
                     self.arm_controller,
-                    self.arm_controller.compute_control(self.current_tool_command.pose, dt=dt),
+                    arm_result,
                 )
             )
         if self.base_controller is not None and self.current_base_command is not None:

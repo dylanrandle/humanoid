@@ -1,6 +1,7 @@
 """Server-managed LCM recording bundles."""
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime
@@ -17,8 +18,9 @@ from humanoid.utils.paths import find_data_root
 
 logger = get_logger(__name__)
 
-DEFAULT_RECORDING_ROOT = find_data_root(__file__) / "logs"
-RECORDING_DIRECTORY_PREFIX = "recording_"
+DEFAULT_RECORDING_ROOT = find_data_root(__file__) / "logs" / "recordings"
+RECORDING_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S_%f"
+RECORDING_ID_PATTERN = re.compile(r"\d{8}_\d{6}_\d{6}(?:_\d+)?\Z")
 RECORDING_LOG_FILENAME = "recording.lcm"
 RECORDING_MANIFEST_FILENAME = "robot.json"
 RECORDING_SCHEMA_VERSION = 1
@@ -37,7 +39,7 @@ class RecordingCatalog:
     def create(self, robot_config: RobotConfig) -> RecordingBundle:
         self.root.mkdir(parents=True, exist_ok=True)
         created_at = datetime.now(UTC)
-        base_id = f"{RECORDING_DIRECTORY_PREFIX}{created_at.strftime('%Y%m%d_%H%M%S_%f')}"
+        base_id = created_at.strftime(RECORDING_TIMESTAMP_FORMAT)
         for suffix in count():
             recording_id = base_id if suffix == 0 else f"{base_id}_{suffix}"
             directory = self.root / recording_id
@@ -70,7 +72,7 @@ class RecordingCatalog:
             return []
         recordings: list[RecordingSummary] = []
         for directory in directories:
-            if not directory.is_dir() or not directory.name.startswith(RECORDING_DIRECTORY_PREFIX):
+            if not directory.is_dir() or RECORDING_ID_PATTERN.fullmatch(directory.name) is None:
                 continue
             if not (directory / RECORDING_LOG_FILENAME).is_file():
                 continue
@@ -92,7 +94,11 @@ class RecordingCatalog:
         return self._load(recording_id)
 
     def _load(self, recording_id: str, *, require_log: bool = True) -> RecordingBundle:
-        if not recording_id or Path(recording_id).name != recording_id:
+        if (
+            not recording_id
+            or Path(recording_id).name != recording_id
+            or RECORDING_ID_PATTERN.fullmatch(recording_id) is None
+        ):
             raise RecordingError("Select a valid recording.")
         directory = self.root / recording_id
         if not directory.is_dir():

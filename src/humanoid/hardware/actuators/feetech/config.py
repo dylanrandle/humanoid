@@ -43,7 +43,11 @@ def validate_feetech_acceleration(acceleration: int) -> None:
 
 
 def _validate_gain(name: str, value: int) -> None:
-    if not isinstance(value, int) or not FEETECH_GAIN_MIN <= value <= FEETECH_GAIN_MAX:
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not FEETECH_GAIN_MIN <= value <= FEETECH_GAIN_MAX
+    ):
         raise ValueError(
             f"Feetech {name} gain must be between {FEETECH_GAIN_MIN} and "
             f"{FEETECH_GAIN_MAX} and must be an integer."

@@ -28,6 +28,7 @@ from humanoid.types.orchestrator import (
     OrchestratorMode,
 )
 from humanoid.types.robot import (
+    CartesianVelocity,
     RobotBaseCommand,
     RobotJointCommand,
     RobotState,
@@ -221,6 +222,15 @@ class LCMConverter:
         # Quaternion format: [w, x, y, z]
         lcm_command.quaternion = [quat.w, quat.x, quat.y, quat.z]
 
+        if command.velocity is not None:
+            lcm_command.has_velocity = 1
+            lcm_command.linear_velocity = command.velocity.linear.tolist()
+            lcm_command.angular_velocity = command.velocity.angular.tolist()
+        else:
+            lcm_command.has_velocity = 0
+            lcm_command.linear_velocity = [0.0, 0.0, 0.0]
+            lcm_command.angular_velocity = [0.0, 0.0, 0.0]
+
         # Add gripper positions if provided
         if command.gripper_positions is not None:
             lcm_command.num_gripper_joints = len(command.gripper_positions)
@@ -261,10 +271,18 @@ class LCMConverter:
         if lcm_command.num_gripper_joints > 0:
             gripper_positions = np.array(lcm_command.gripper_positions)
 
+        velocity = None
+        if lcm_command.has_velocity:
+            velocity = CartesianVelocity(
+                linear=np.array(lcm_command.linear_velocity),
+                angular=np.array(lcm_command.angular_velocity),
+            )
+
         return RobotToolCommand(
             timestamp=lcm_command.timestamp / 1e9,  # Convert from nanoseconds
             pose=pose,
             gripper_positions=gripper_positions,
+            velocity=velocity,
         )
 
     @staticmethod

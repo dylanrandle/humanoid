@@ -48,6 +48,18 @@ def test_rotation_acceleration_is_bounded_across_ticks():
     np.testing.assert_allclose(limiter.angular_velocity, [0.0, 0.0, 0.2], atol=1e-12)
 
 
+def test_command_velocity_is_expressed_in_pose_frame():
+    limiter = _limiter()
+    limiter.linear_velocity = np.array([0.1, 0.2, 0.3])
+    limiter.angular_velocity = np.array([1.0, 0.0, 0.0])
+    pose = pin.SE3(pin.utils.rotate("z", np.pi / 2.0), np.zeros(3))
+
+    velocity = limiter.command_velocity(pose)
+
+    np.testing.assert_allclose(velocity.linear, limiter.linear_velocity)
+    np.testing.assert_allclose(velocity.angular, [0.0, 1.0, 0.0], atol=1e-12)
+
+
 def test_motion_does_not_overshoot_a_nearby_target():
     limiter = _limiter(linear_acceleration=None, angular_acceleration=None)
     current = pin.SE3.Identity()

@@ -1,4 +1,5 @@
 import csv
+import json
 from dataclasses import replace
 from unittest.mock import MagicMock
 
@@ -11,11 +12,13 @@ import humanoid.robots.utils.controller_tracking.report as report_module
 import humanoid.robots.utils.controller_tracking.runtime as runtime_module
 import humanoid.robots.utils.controller_tracking.sampling as sampling_module
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
+from humanoid.constants import Topic
 from humanoid.controllers.operational_space import OperationalSpaceController
 from humanoid.robots.base import Robot
 from humanoid.robots.utils.controller_tracking import (
     DEFAULT_COMMAND_RATE_HZ,
     DEFAULT_GRIPPER_LIMIT_MARGIN_FRACTION,
+    DEFAULT_GRIPPER_PERIOD_SECONDS,
     DEFAULT_JOINT_CYCLES,
     ControllerCommandTiming,
     ControllerTrackingSettings,
@@ -24,8 +27,10 @@ from humanoid.robots.utils.controller_tracking import (
     TrackingSample,
     controller_publication_statistics,
     figure_eight_offset,
+    figure_eight_velocity,
     gripper_sinusoid,
     interpolated_cartesian_comparison_pose,
+    interpolated_cartesian_comparison_velocity,
     joint_space_targets,
     resolve_tracking_comparison,
     tracking_statistics,
@@ -36,17 +41,23 @@ from humanoid.robots.utils.controller_tracking import (
 from humanoid.robots.utils.controller_tracking.endpoints import (
     TRISKEL_CONTROLLER_TRACKING_COMPARISON,
 )
+from humanoid.robots.utils.controller_tracking.metadata import write_run_comparison
 from humanoid.robots.utils.controller_tracking.models import RuntimeFeedback
+from humanoid.robots.utils.controller_tracking.smoothness import analyze_smoothness
 from humanoid.robots.utils.controller_tracking.timing import ControllerCommandTimingRecorder
+from humanoid.types.controller_tracking import NativeJointSample
 from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode
-from humanoid.types.robot import RobotJointCommand, RobotState
+from humanoid.types.robot import CartesianVelocity, RobotJointCommand, RobotState
 
 EXPECTED_JOINT_PLOTS_PER_SECTION = 3
 EXPECTED_COMPARISON_SUBSECTIONS = 2
-EXPECTED_CSV_REPORTS = 2
+EXPECTED_CSV_REPORTS = 3
 EXPECTED_REPORTS = 3
 EXPECTED_TIMING_COMMAND_COUNT = 4
+EXPECTED_MOTION_WINDOWS = 2
+MINIMUM_ACCELERATION_LIMIT_FRACTION = 0.9
+MAXIMUM_REASONABLE_ACCELERATION_RAD_S2 = 100.0
 
 
 def _sample(  # noqa: PLR0913 - test builder exposes independent sample dimensions
@@ -57,6 +68,7 @@ def _sample(  # noqa: PLR0913 - test builder exposes independent sample dimensio
     segment: Segment = "joint_comparison",
     arm_joint_positions_rad: tuple[np.ndarray, np.ndarray] | None = None,
     gripper_positions_rad: tuple[np.ndarray, np.ndarray] | None = None,
+    commanded_velocity: CartesianVelocity | None = None,
 ) -> TrackingSample:
     commanded = np.array([0.1 + elapsed_s, 0.2, 0.3])
     commanded_gripper_positions_rad, measured_gripper_positions_rad = (
@@ -108,6 +120,12 @@ def _sample(  # noqa: PLR0913 - test builder exposes independent sample dimensio
             if measured_gripper_positions_rad is not None
             else None
         ),
+        commanded_linear_velocity_m_s=(
+            commanded_velocity.linear if commanded_velocity is not None else None
+        ),
+        commanded_angular_velocity_rad_s=(
+            commanded_velocity.angular if commanded_velocity is not None else None
+        ),
     )
 
 
@@ -119,7 +137,47 @@ def test_default_command_rate_matches_controller_rate():
     assert settings.comparison_duration_s == pytest.approx(8.0)
     assert settings.joint_cycles == DEFAULT_JOINT_CYCLES
     assert settings.move_gripper
+    assert settings.gripper_period_s == DEFAULT_GRIPPER_PERIOD_SECONDS == pytest.approx(16.0)
+    assert settings.gripper_cycle_count == 1
+    assert settings.effective_gripper_period_s == pytest.approx(settings.duration_s)
+    assert settings.velocity_feedforward
     assert settings.gripper_limit_margin_fraction == DEFAULT_GRIPPER_LIMIT_MARGIN_FRACTION
+
+
+def test_figure_eight_velocity_matches_position_derivative():
+    settings = ControllerTrackingSettings(period_s=8.0, cycles=1, ramp_s=2.0)
+    elapsed_s = 3.0
+    epsilon = 1e-5
+
+    numerical = (
+        figure_eight_offset(elapsed_s + epsilon, settings)
+        - figure_eight_offset(elapsed_s - epsilon, settings)
+    ) / (2.0 * epsilon)
+
+    np.testing.assert_allclose(
+        figure_eight_velocity(elapsed_s, settings).linear,
+        numerical,
+        atol=1e-8,
+    )
+
+
+def test_comparison_velocity_matches_pose_derivative():
+    start = pin.SE3.Identity()
+    end = pin.SE3(pin.utils.rotate("z", 0.8), np.array([0.2, -0.1, 0.3]))
+    elapsed_s = 2.0
+    duration_s = 5.0
+    epsilon = 1e-5
+    before = interpolated_cartesian_comparison_pose(start, end, elapsed_s - epsilon, duration_s)
+    after = interpolated_cartesian_comparison_pose(start, end, elapsed_s + epsilon, duration_s)
+    velocity = interpolated_cartesian_comparison_velocity(start, end, elapsed_s, duration_s)
+
+    np.testing.assert_allclose(
+        velocity.linear,
+        (after.translation - before.translation) / (2.0 * epsilon),
+        atol=1e-8,
+    )
+    angular_numerical = pin.log3(after.rotation @ before.rotation.T) / (2.0 * epsilon)
+    np.testing.assert_allclose(velocity.angular, angular_numerical, atol=1e-8)
 
 
 def test_controller_publication_statistics_report_rate_jitter_and_delays():
@@ -187,14 +245,33 @@ def test_joint_plot_measurements_use_the_reported_error_branch():
 
 def test_controller_timing_recorder_keeps_every_publication_inside_marked_window():
     subscriber = MagicMock()
-    subscriber.receive.side_effect = [
-        RobotJointCommand(timestamp=0.9, joint_positions=np.empty(0)),
-        RobotJointCommand(timestamp=1.0, joint_positions=np.empty(0)),
-        RobotJointCommand(timestamp=1.03, joint_positions=np.empty(0)),
-        RobotJointCommand(timestamp=1.06, joint_positions=np.empty(0)),
-        RobotJointCommand(timestamp=1.2, joint_positions=np.empty(0)),
-        None,
-    ]
+    messages = {
+        Topic.CONTROLLER_JOINT_COMMAND: iter(
+            (
+                RobotJointCommand(timestamp=source_timestamp, joint_positions=np.empty(0)),
+                received_at_s,
+            )
+            for source_timestamp, received_at_s in (
+                (0.9, 0.95),
+                (1.0, 1.0),
+                (1.03, 1.03),
+                (1.06, 1.06),
+                (1.2, 1.2),
+            )
+        ),
+        Topic.ROBOT_JOINT_COMMAND: iter(
+            (
+                RobotJointCommand(timestamp=source_timestamp, joint_positions=np.empty(0)),
+                received_at_s,
+            )
+            for source_timestamp, received_at_s in (
+                (1.0, 1.01),
+                (1.03, 1.07),
+                (1.2, 1.2),
+            )
+        ),
+    }
+    subscriber.receive_with_timestamp.side_effect = lambda topic: next(messages[topic], None)
     clock = iter((1.0, 1.1))
     recorder = ControllerCommandTimingRecorder(
         subscriber=subscriber,
@@ -205,8 +282,60 @@ def test_controller_timing_recorder_keeps_every_publication_inside_marked_window
     recorder.end()
     timings = recorder.close()
 
-    assert [timing.timestamp_s for timing in timings] == [1.0, 1.03, 1.06]
+    assert [(timing.stream, timing.timestamp_s) for timing in timings] == [
+        ("controller", 1.0),
+        ("robot", 1.01),
+        ("controller", 1.03),
+        ("controller", 1.06),
+        ("robot", 1.07),
+    ]
+    assert [timing.source_timestamp_s for timing in timings] == pytest.approx(
+        [1.0, 1.0, 1.03, 1.06, 1.03]
+    )
     subscriber.close.assert_called_once()
+
+
+def test_controller_timing_recorder_preserves_native_command_and_state_payloads():
+    robot = Robot(TRISKEL_CONFIG)
+    positions = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME]
+    velocities = np.zeros(robot.model.nv)
+    subscriber = MagicMock()
+    messages = {
+        Topic.CONTROLLER_JOINT_COMMAND: iter(
+            [(RobotJointCommand(1.01, positions.copy(), velocities.copy()), 1.01)]
+        ),
+        Topic.ROBOT_JOINT_COMMAND: iter(
+            [(RobotJointCommand(1.01, positions.copy(), velocities.copy()), 1.02)]
+        ),
+        Topic.HOMING_JOINT_COMMAND: iter(
+            [(RobotJointCommand(1.015, positions.copy(), velocities.copy()), 1.015)]
+        ),
+        Topic.ROBOT_STATE: iter(
+            [
+                (
+                    RobotState(1.03, positions.copy(), velocities.copy(), np.empty(0)),
+                    1.04,
+                )
+            ]
+        ),
+    }
+    subscriber.receive_with_timestamp.side_effect = lambda topic: next(messages[topic], None)
+    clock = iter((1.0, 1.1))
+    recorder = ControllerCommandTimingRecorder(
+        subscriber=subscriber,
+        clock=lambda: next(clock),
+        robot=robot,
+    )
+
+    recorder.begin("figure_eight")
+    recorder.end()
+    recorder.close()
+    native_samples = recorder.native_joint_samples
+
+    assert [sample.stream for sample in native_samples] == ["controller", "robot", "state"]
+    assert all(sample.segment == "figure_eight" for sample in native_samples)
+    assert all(sample.joint_names[-1] == "gripper_1" for sample in native_samples)
+    np.testing.assert_allclose(native_samples[-1].joint_positions_rad[-1], positions[-1])
 
 
 def test_controller_timing_csv_preserves_publication_intervals(tmp_path):
@@ -214,6 +343,8 @@ def test_controller_timing_csv_preserves_publication_intervals(tmp_path):
         ControllerCommandTiming(segment="figure_eight", timestamp_s=10.0),
         ControllerCommandTiming(segment="figure_eight", timestamp_s=10.03),
         ControllerCommandTiming(segment="figure_eight", timestamp_s=10.09),
+        ControllerCommandTiming(segment="figure_eight", timestamp_s=10.0, stream="robot"),
+        ControllerCommandTiming(segment="figure_eight", timestamp_s=10.03, stream="robot"),
     ]
     timing_path = tmp_path / "timing.csv"
 
@@ -221,11 +352,17 @@ def test_controller_timing_csv_preserves_publication_intervals(tmp_path):
 
     with timing_path.open(newline="", encoding="utf-8") as input_file:
         rows = list(csv.DictReader(input_file))
-    assert [float(row["segment_elapsed_s"]) for row in rows] == pytest.approx([0.0, 0.03, 0.09])
+    assert [row["stream"] for row in rows] == ["controller"] * 3 + ["robot"] * 2
+    assert float(rows[0]["received_timestamp_s"]) == pytest.approx(10.0)
+    assert [float(row["segment_elapsed_s"]) for row in rows] == pytest.approx(
+        [0.0, 0.03, 0.09, 0.0, 0.03]
+    )
     assert rows[0]["period_s"] == ""
+    assert rows[0]["source_timestamp_s"] == ""
     assert float(rows[1]["instantaneous_rate_hz"]) == pytest.approx(1.0 / 0.03)
     assert rows[1]["delayed_interval"] == "False"
     assert rows[2]["delayed_interval"] == "True"
+    assert rows[3]["period_s"] == ""
 
 
 def test_figure_eight_uses_selected_plane_and_dimensions():
@@ -347,12 +484,38 @@ def test_gripper_sinusoid_cycles_between_bounds_and_returns_to_initial_position(
     lower = np.array([0.1])
     upper = np.array([0.9])
 
-    np.testing.assert_allclose(gripper_sinusoid(0.0, initial, lower, upper, settings), initial)
-    np.testing.assert_allclose(gripper_sinusoid(1.0, initial, lower, upper, settings), upper)
-    np.testing.assert_allclose(gripper_sinusoid(3.0, initial, lower, upper, settings), lower)
-    np.testing.assert_allclose(
-        gripper_sinusoid(settings.duration_s, initial, lower, upper, settings), initial
+    elapsed = np.linspace(0.0, settings.duration_s, 10_001)
+    positions = np.vstack([gripper_sinusoid(t, initial, lower, upper, settings) for t in elapsed])
+
+    np.testing.assert_allclose(positions[0], initial)
+    np.testing.assert_allclose(positions[-1], initial)
+    assert positions[:, 0].min() == pytest.approx(lower[0], abs=1e-6)
+    assert positions[:, 0].max() == pytest.approx(upper[0], abs=1e-6)
+    boundary_dt = elapsed[1] - elapsed[0]
+    np.testing.assert_allclose((positions[1] - positions[0]) / boundary_dt, 0.0, atol=1e-5)
+    np.testing.assert_allclose((positions[-1] - positions[-2]) / boundary_dt, 0.0, atol=1e-5)
+
+
+def test_gripper_sinusoid_does_not_jump_to_diagnostic_margin():
+    settings = ControllerTrackingSettings(period_s=4.0, cycles=1, gripper_period_s=4.0)
+    initial = np.array([0.0])
+    lower = np.array([0.1])
+    upper = np.array([0.9])
+    epsilon_s = 1e-4
+
+    start = gripper_sinusoid(0.0, initial, lower, upper, settings)
+    just_after_start = gripper_sinusoid(epsilon_s, initial, lower, upper, settings)
+
+    np.testing.assert_allclose(start, initial)
+    np.testing.assert_allclose((just_after_start - start) / epsilon_s, 0.0, atol=1e-5)
+    samples = np.vstack(
+        [
+            gripper_sinusoid(t, initial, lower, upper, settings)
+            for t in np.linspace(0.0, settings.duration_s, 1_001)
+        ]
     )
+    assert samples[:, 0].min() >= initial[0]
+    assert samples[:, 0].max() <= upper[0]
 
 
 def test_joint_space_targets_start_and_end_home_with_requested_round_trips():
@@ -637,11 +800,13 @@ def test_triskel_tuning_tracks_supplied_cartesian_comparison_with_low_rms():
         {"home_position_tolerance_rad": 0.0},
         {"home_stable_s": 0.0},
         {"home_timeout_s": 0.0},
+        {"shake_cutoff_hz": 15.0},
+        {"derivative_smoothing_s": 0.0},
         {"gripper_min_rad": 0.1},
         {"gripper_min_rad": 0.2, "gripper_max_rad": 0.1},
         {"gripper_period_s": 0.0},
         {"gripper_limit_margin_fraction": 0.5},
-        {"move_gripper": False, "gripper_period_s": 1.0},
+        {"move_gripper": False, "gripper_min_rad": 0.1, "gripper_max_rad": 0.2},
     ],
 )
 def test_settings_reject_invalid_motion_parameters(settings):
@@ -682,9 +847,168 @@ def test_tracking_statistics_rejects_empty_samples():
         tracking_statistics([])
 
 
+def test_smoothness_analysis_localizes_motion_shake_without_bridging_windows():
+    sample_rate_hz = 50.0
+    times = np.arange(0.0, 2.0 + 1.0 / sample_rate_hz, 1.0 / sample_rate_hz)
+    samples = []
+    for window_index, time_offset in enumerate((0.0, 10.0)):
+        for elapsed_s in times:
+            slow_position = 0.2 * np.sin(2.0 * np.pi * 0.25 * elapsed_s)
+            shake = 0.01 * np.sin(2.0 * np.pi * 8.0 * elapsed_s)
+            positions = np.array(
+                [slow_position + shake + window_index, slow_position - window_index]
+            )
+            source_timestamp_s = time_offset + elapsed_s
+            samples.append(
+                NativeJointSample(
+                    segment="figure_eight",
+                    window_index=window_index,
+                    stream="state",
+                    received_timestamp_s=source_timestamp_s + 0.002,
+                    source_timestamp_s=source_timestamp_s,
+                    joint_names=("arm_1", "arm_2"),
+                    joint_positions_rad=positions,
+                    joint_velocities_rad_s=np.zeros(2),
+                    tool_position_m=np.array([shake, 0.0, 0.0]),
+                )
+            )
+            samples.append(
+                NativeJointSample(
+                    segment="figure_eight",
+                    window_index=window_index,
+                    stream="controller",
+                    received_timestamp_s=source_timestamp_s + 0.001,
+                    source_timestamp_s=source_timestamp_s,
+                    joint_names=("arm_1", "arm_2"),
+                    joint_positions_rad=np.zeros(2),
+                    joint_velocities_rad_s=np.array([2.0 * elapsed_s, 0.0]),
+                    tool_position_m=np.zeros(3),
+                )
+            )
+
+    analysis = analyze_smoothness(
+        samples,
+        motion_segments=("figure_eight",),
+        settings=ControllerTrackingSettings(),
+        acceleration_limits_rad_s2={"arm_1": 2.0, "arm_2": 2.0},
+    )
+
+    assert analysis is not None
+    assert len(analysis.state_traces) == EXPECTED_MOTION_WINDOWS
+    arm_1, arm_2 = analysis.statistics
+    assert arm_1.high_frequency_rms_rad > 5.0 * arm_2.high_frequency_rms_rad
+    assert arm_1.dominant_frequency_hz == pytest.approx(8.0, abs=0.5)
+    assert arm_1.acceleration_limit_fraction is not None
+    assert arm_1.acceleration_limit_fraction > MINIMUM_ACCELERATION_LIMIT_FRACTION
+    assert arm_1.acceleration_p95_rad_s2 < MAXIMUM_REASONABLE_ACCELERATION_RAD_S2
+    assert arm_1.command_acceleration_rms_rad_s2 == pytest.approx(2.0, rel=0.05)
+    assert arm_1.command_acceleration_p95_rad_s2 == pytest.approx(2.0, rel=0.05)
+    assert arm_2.command_acceleration_rms_rad_s2 == pytest.approx(0.0)
+    assert arm_2.command_acceleration_p95_rad_s2 == pytest.approx(0.0)
+
+
+def test_native_smoothness_report_exposes_motion_bursts_limits_and_spectrum(tmp_path):
+    joint_names = ("arm_1", "arm_2", "test_gripper_1")
+    native_samples = []
+    for index, elapsed_s in enumerate(np.linspace(0.0, 2.0, 101)):
+        shake = 0.006 * np.sin(2.0 * np.pi * 7.0 * elapsed_s)
+        positions = np.array([0.1 * elapsed_s + shake, -0.05 * elapsed_s, 0.0])
+        velocity = np.array([0.1 + shake, -0.05, 0.0])
+        for stream, received_offset_s in (("state", 0.002), ("controller", 0.001)):
+            native_samples.append(
+                NativeJointSample(
+                    segment="figure_eight",
+                    window_index=0,
+                    stream=stream,
+                    received_timestamp_s=elapsed_s + received_offset_s,
+                    source_timestamp_s=elapsed_s,
+                    joint_names=joint_names,
+                    joint_positions_rad=positions,
+                    joint_velocities_rad_s=velocity,
+                    tool_position_m=np.array([shake, 0.0, 0.0]),
+                )
+            )
+        if index:
+            native_samples.append(
+                NativeJointSample(
+                    segment="figure_eight_settle",
+                    window_index=1,
+                    stream="state",
+                    received_timestamp_s=3.0 + elapsed_s,
+                    source_timestamp_s=3.0 + elapsed_s,
+                    joint_names=joint_names,
+                    joint_positions_rad=np.array([shake, 0.0, 0.0]),
+                    joint_velocities_rad_s=np.zeros(3),
+                    tool_position_m=np.array([shake, 0.0, 0.0]),
+                )
+            )
+    samples = [
+        _sample(
+            0.0,
+            np.zeros(3),
+            0.0,
+            segment="figure_eight",
+            arm_joint_positions_rad=(np.zeros(2), np.zeros(2)),
+            gripper_positions_rad=(np.zeros(1), np.zeros(1)),
+        ),
+        _sample(
+            2.0,
+            np.zeros(3),
+            0.0,
+            segment="figure_eight_settle",
+            arm_joint_positions_rad=(np.zeros(2), np.zeros(2)),
+            gripper_positions_rad=(np.zeros(1), np.zeros(1)),
+        ),
+    ]
+    settings = ControllerTrackingSettings()
+    report_path = tmp_path / "smoothness.svg"
+
+    report_module.write_figure_eight_plot(
+        report_path,
+        samples,
+        settings,
+        "test",
+        native_joint_samples=native_samples,
+        acceleration_limits_rad_s2={"arm_1": 2.0, "arm_2": 2.0},
+    )
+
+    svg = report_path.read_text(encoding="utf-8")
+    assert "Motion smoothness" in svg
+    assert "Motion-localized high-frequency position residual" in svg
+    assert "Raw servo vs filtered position-derived velocity" in svg
+    assert "Commanded vs filtered measured acceleration" in svg
+    assert "Vibration spectrum during motion" in svg
+    assert "HOLD PK-PK" in svg
+    assert 'class="acceleration-limit"' in svg
+
+
+def test_run_comparison_uses_previous_metrics_when_output_directory_is_baseline(tmp_path):
+    baseline_path = tmp_path / "older_metrics.json"
+    current_path = tmp_path / "current_metrics.json"
+    baseline_path.write_text(
+        json.dumps({"smoothness": {"joint": {"jerk_rms_rad_s3": 10.0}}}),
+        encoding="utf-8",
+    )
+    current_path.write_text(
+        json.dumps({"smoothness": {"joint": {"jerk_rms_rad_s3": 8.0}}}),
+        encoding="utf-8",
+    )
+    comparison_path = tmp_path / "comparison.md"
+
+    selected_baseline = write_run_comparison(comparison_path, current_path, tmp_path)
+
+    assert selected_baseline == baseline_path
+    report = comparison_path.read_text(encoding="utf-8")
+    assert "-20.0%" in report
+
+
 def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies all reports
     tmp_path,
 ):
+    feedforward = CartesianVelocity(
+        linear=np.array([0.01, -0.02, 0.03]),
+        angular=np.array([0.1, -0.2, 0.3]),
+    )
     samples = [
         _sample(
             0.0,
@@ -717,6 +1041,7 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
             segment="figure_eight",
             arm_joint_positions_rad=(np.array([0.2, -0.1]), np.array([0.19, -0.08])),
             gripper_positions_rad=(np.array([0.2]), np.array([0.18])),
+            commanded_velocity=feedforward,
         ),
         _sample(
             4.0,
@@ -725,6 +1050,7 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
             segment="figure_eight",
             arm_joint_positions_rad=(np.array([0.4, -0.2]), np.array([0.35, -0.18])),
             gripper_positions_rad=(np.array([0.4]), np.array([0.35])),
+            commanded_velocity=feedforward,
         ),
         _sample(
             5.0,
@@ -733,6 +1059,7 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
             segment="figure_eight_settle",
             arm_joint_positions_rad=(np.array([0.2, -0.1]), np.array([0.19, -0.09])),
             gripper_positions_rad=(np.array([0.2]), np.array([0.19])),
+            commanded_velocity=CartesianVelocity.zero(),
         ),
         _sample(
             6.0,
@@ -757,6 +1084,7 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
             segment="cartesian_comparison",
             arm_joint_positions_rad=(np.array([0.2, -0.1]), np.array([0.18, -0.09])),
             gripper_positions_rad=(np.array([0.2]), np.array([0.17])),
+            commanded_velocity=feedforward,
         ),
         _sample(
             9.0,
@@ -765,6 +1093,7 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
             segment="cartesian_comparison_settle",
             arm_joint_positions_rad=(np.array([0.2, -0.1]), np.array([0.19, -0.09])),
             gripper_positions_rad=(np.array([0.2]), np.array([0.19])),
+            commanded_velocity=CartesianVelocity.zero(),
         ),
     ]
     settings = ControllerTrackingSettings(period_s=1.0, cycles=1, ramp_s=0.0, settle_s=1.0)
@@ -792,6 +1121,8 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
     assert float(rows[4]["arm_1_controller_command_rad_s"]) == pytest.approx(0.2)
     assert float(rows[4]["arm_1_measured_rad_s"]) == pytest.approx(0.0)
     assert float(rows[4]["position_error_m"]) == pytest.approx(0.002)
+    assert float(rows[4]["feedforward_vx_m_s"]) == pytest.approx(feedforward.linear[0])
+    assert float(rows[4]["feedforward_wz_rad_s"]) == pytest.approx(feedforward.angular[2])
     assert float(rows[4]["test_gripper_1_error_rad"]) == pytest.approx(0.05)
 
     assert plot_paths.home_rest.name == "tracking_home_rest.svg"
@@ -826,6 +1157,7 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
     assert figure_eight_svg.count("Joint tracking error") == 1
     assert figure_eight_svg.count("Cartesian tracking error") == 1
     assert figure_eight_svg.count("Cartesian tracking plots") == 1
+    assert figure_eight_svg.count("Cartesian velocity feedforward") == 1
     assert figure_eight_svg.count('class="joint-command"') == 2 * (
         EXPECTED_JOINT_PLOTS_PER_SECTION + 1
     )
@@ -839,6 +1171,7 @@ def test_csv_and_separate_svg_reports_are_written(  # noqa: PLR0915 - verifies a
     assert comparison_svg.count("Joint tracking error") == EXPECTED_COMPARISON_SUBSECTIONS
     assert comparison_svg.count("Cartesian tracking error") == EXPECTED_COMPARISON_SUBSECTIONS
     assert comparison_svg.count("Cartesian tracking plots") == EXPECTED_COMPARISON_SUBSECTIONS
+    assert comparison_svg.count("Cartesian velocity feedforward") == 1
     assert comparison_svg.count('class="joint-command"') == (
         2 * EXPECTED_COMPARISON_SUBSECTIONS * (EXPECTED_JOINT_PLOTS_PER_SECTION + 1)
     )
@@ -927,6 +1260,10 @@ def test_main_writes_partial_run_before_exiting_with_failure(monkeypatch, tmp_pa
     svg_paths = list(tmp_path.glob("*.svg"))
     assert len(csv_paths) == EXPECTED_CSV_REPORTS
     assert len(svg_paths) == EXPECTED_REPORTS
+    metadata_path = next(tmp_path.glob("*_metadata.json"))
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["completed"] is False
+    assert metadata["failure_reason"] == "HOME convergence timed out"
     for svg_path in svg_paths:
         svg = svg_path.read_text(encoding="utf-8")
         assert "Partial run" in svg

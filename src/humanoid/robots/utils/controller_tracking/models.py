@@ -11,6 +11,7 @@ from numpy.typing import NDArray
 from humanoid.types.controller_tracking import (
     ControllerCommandTiming,
     ControllerTrackingSegment,
+    NativeJointSample,
 )
 from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode
@@ -21,7 +22,7 @@ Segment = ControllerTrackingSegment
 GripperBounds = tuple[NDArray[np.float64], NDArray[np.float64]]
 JointTarget = tuple[HomingPreset, NDArray[np.float64]]
 
-JOINT_HOME_REST_SEGMENTS = frozenset({"joint_home", "joint_rest"})
+JOINT_HOME_REST_SEGMENTS = frozenset({"joint_home", "joint_rest", "joint_home_settle"})
 FIGURE_EIGHT_SEGMENTS = frozenset({"figure_eight", "figure_eight_settle"})
 JOINT_COMPARISON_SEGMENTS = frozenset({"joint_comparison", "joint_comparison_settle"})
 CARTESIAN_COMPARISON_SEGMENTS = frozenset({"cartesian_comparison", "cartesian_comparison_settle"})
@@ -48,6 +49,7 @@ DEFAULT_FEEDBACK_TIMEOUT_SECONDS = 1.0
 DEFAULT_HOME_POSITION_TOLERANCE_RAD = 0.03
 DEFAULT_HOME_STABLE_SECONDS = 0.3
 DEFAULT_HOME_TIMEOUT_SECONDS = 8.0
+DEFAULT_GRIPPER_PERIOD_SECONDS = 16.0
 DEFAULT_GRIPPER_LIMIT_MARGIN_FRACTION = 0.05
 MAX_GRIPPER_LIMIT_MARGIN_FRACTION = 0.5
 MAX_PLOT_POINTS = 2_000
@@ -56,6 +58,9 @@ PLOT_PADDING_FRACTION = 0.08
 MIN_PLOT_PADDING = 1e-3
 MIN_JOINT_PLOT_SPAN_RAD = float(np.deg2rad(10.0))
 MIN_JOINT_VELOCITY_PLOT_SPAN_RAD_S = float(np.deg2rad(20.0))
+DEFAULT_SHAKE_CUTOFF_HZ = 2.0
+DEFAULT_DERIVATIVE_SMOOTHING_SECONDS = 0.25
+DEFAULT_MAXIMUM_SPECTRUM_HZ = 15.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -81,8 +86,11 @@ class ControllerTrackingSettings:
     move_gripper: bool = True
     gripper_min_rad: float | None = None
     gripper_max_rad: float | None = None
-    gripper_period_s: float | None = None
+    gripper_period_s: float = DEFAULT_GRIPPER_PERIOD_SECONDS
     gripper_limit_margin_fraction: float = DEFAULT_GRIPPER_LIMIT_MARGIN_FRACTION
+    velocity_feedforward: bool = True
+    shake_cutoff_hz: float = DEFAULT_SHAKE_CUTOFF_HZ
+    derivative_smoothing_s: float = DEFAULT_DERIVATIVE_SMOOTHING_SECONDS
 
     def __post_init__(self) -> None:
         positive_values = {
@@ -96,6 +104,8 @@ class ControllerTrackingSettings:
             "home position tolerance": self.home_position_tolerance_rad,
             "home stable duration": self.home_stable_s,
             "home timeout": self.home_timeout_s,
+            "shake cutoff": self.shake_cutoff_hz,
+            "derivative smoothing duration": self.derivative_smoothing_s,
         }
         for label, value in positive_values.items():
             if not math.isfinite(value) or value <= 0.0:
@@ -111,6 +121,8 @@ class ControllerTrackingSettings:
         }.items():
             if not math.isfinite(value) or value < 0.0:
                 raise ValueError(f"{label} must be non-negative and finite")
+        if self.shake_cutoff_hz >= DEFAULT_MAXIMUM_SPECTRUM_HZ:
+            raise ValueError(f"shake cutoff must be below {DEFAULT_MAXIMUM_SPECTRUM_HZ:g} Hz")
         if self.ramp_s > self.duration_s / 2.0:
             raise ValueError("ramp must not exceed half of the trajectory duration")
         self._validate_gripper_settings()
@@ -124,28 +136,29 @@ class ControllerTrackingSettings:
                 raise ValueError("gripper min and max must be finite")
             if self.gripper_min_rad >= self.gripper_max_rad:
                 raise ValueError("gripper min must be less than gripper max")
-        if self.gripper_period_s is not None and (
-            not math.isfinite(self.gripper_period_s) or self.gripper_period_s <= 0.0
-        ):
+        if not math.isfinite(self.gripper_period_s) or self.gripper_period_s <= 0.0:
             raise ValueError("gripper period must be positive and finite")
         if (
             not math.isfinite(self.gripper_limit_margin_fraction)
             or not 0.0 <= self.gripper_limit_margin_fraction < MAX_GRIPPER_LIMIT_MARGIN_FRACTION
         ):
             raise ValueError("gripper limit margin must be finite and in [0, 0.5)")
-        if not self.move_gripper and (
-            self.gripper_min_rad is not None or self.gripper_period_s is not None
-        ):
-            raise ValueError("gripper motion options cannot be used with hold gripper")
+        if not self.move_gripper and self.gripper_min_rad is not None:
+            raise ValueError("gripper position bounds cannot be used with hold gripper")
 
     @property
     def duration_s(self) -> float:
         return self.period_s * self.cycles
 
     @property
+    def gripper_cycle_count(self) -> int:
+        """Fit at least one whole gripper cycle near the requested average rate."""
+        return max(1, math.floor(self.duration_s / self.gripper_period_s + BOUNDS_EPSILON))
+
+    @property
     def effective_gripper_period_s(self) -> float:
-        """Use one gripper cycle per figure-eight cycle unless explicitly overridden."""
-        return self.period_s if self.gripper_period_s is None else self.gripper_period_s
+        """Stretch whole gripper cycles to fill the figure-eight duration."""
+        return self.duration_s / self.gripper_cycle_count
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -173,6 +186,8 @@ class TrackingSample:
     gripper_position_errors_rad: NDArray[np.float64] | None = None
     commanded_gripper_velocities_rad_s: NDArray[np.float64] | None = None
     measured_gripper_velocities_rad_s: NDArray[np.float64] | None = None
+    commanded_linear_velocity_m_s: NDArray[np.float64] | None = None
+    commanded_angular_velocity_rad_s: NDArray[np.float64] | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -200,6 +215,7 @@ class TrackingRun:
     completed: bool
     failure_reason: str | None = None
     controller_command_timings: list[ControllerCommandTiming] = field(default_factory=list)
+    native_joint_samples: list[NativeJointSample] = field(default_factory=list)
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pinocchio as pin
 
-from humanoid.types.robot import CartesianVelocityLimits
+from humanoid.types.robot import CartesianVelocity, CartesianVelocityLimits
 
 ZERO_DISTANCE_TOLERANCE = 1e-12
 
@@ -29,6 +29,18 @@ class CartesianPoseLimiter:
         """Forget velocity history, as when a dead-man switch disengages."""
         self.linear_velocity.fill(0.0)
         self.angular_velocity.fill(0.0)
+
+    def command_velocity(self, pose: pin.SE3) -> CartesianVelocity:
+        """Return the current velocity in the pose's command frame.
+
+        Translation is integrated directly in the command frame. Rotation is
+        integrated in the tool-local frame, so rotate its angular velocity
+        into the command frame before publishing it.
+        """
+        return CartesianVelocity(
+            linear=self.linear_velocity,
+            angular=pose.rotation @ self.angular_velocity,
+        )
 
     def step(self, current: pin.SE3, target: pin.SE3, dt: float) -> pin.SE3:
         """Advance ``current`` toward ``target`` within configured limits."""

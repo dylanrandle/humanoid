@@ -63,6 +63,28 @@ DEFAULT_CARTESIAN_VELOCITY_LIMITS = CartesianVelocityLimits(linear=1.0, angular=
 
 
 @dataclass(frozen=True, kw_only=True)
+class CartesianVelocity:
+    """Linear and angular tool velocity expressed in its command frame."""
+
+    linear: np.ndarray
+    angular: np.ndarray
+
+    def __post_init__(self) -> None:
+        for name, value in (("linear", self.linear), ("angular", self.angular)):
+            array = np.asarray(value, dtype=float)
+            if array.shape != (3,):
+                raise ValueError(f"Cartesian {name} velocity must have shape (3,).")
+            if not np.isfinite(array).all():
+                raise ValueError(f"Cartesian {name} velocity must be finite.")
+            object.__setattr__(self, name, array.copy())
+
+    @classmethod
+    def zero(cls) -> "CartesianVelocity":
+        """Return a stationary Cartesian velocity."""
+        return cls(linear=np.zeros(3), angular=np.zeros(3))
+
+
+@dataclass(frozen=True, kw_only=True)
 class RobotToolConfig:
     """Kinematic frame and motion limits for a robot tool."""
 
@@ -131,6 +153,7 @@ class RobotToolCommand:
     timestamp: float
     pose: pin.SE3
     gripper_positions: np.ndarray | None = None
+    velocity: CartesianVelocity | None = None
 
 
 @dataclass

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import pytest
 
@@ -8,6 +9,7 @@ from humanoid.recording import (
     RECORDING_LOG_FILENAME,
     RECORDING_MANIFEST_FILENAME,
     RECORDING_SCHEMA_VERSION,
+    RECORDING_TIMESTAMP_FORMAT,
     RecordingCatalog,
     RecordingError,
     serialize_robot_config,
@@ -19,7 +21,7 @@ EXPECTED_GRIPPER_ACTUATOR_ID = 8
 
 
 def test_default_recording_root_is_anchored_to_repository():
-    assert find_repo_root(__file__) / "logs" == DEFAULT_RECORDING_ROOT
+    assert find_repo_root(__file__) / "logs" / "recordings" == DEFAULT_RECORDING_ROOT
 
 
 def test_create_writes_robot_config_beside_exact_log_path(tmp_path):
@@ -29,6 +31,7 @@ def test_create_writes_robot_config_beside_exact_log_path(tmp_path):
     recording = catalog.create(config)
 
     assert recording.directory.parent == tmp_path
+    assert recording.directory.name == recording.id
     assert recording.log_path == recording.directory / RECORDING_LOG_FILENAME
     assert recording.manifest_path == recording.directory / RECORDING_MANIFEST_FILENAME
     manifest = json.loads(recording.manifest_path.read_text())
@@ -36,6 +39,9 @@ def test_create_writes_robot_config_beside_exact_log_path(tmp_path):
     assert manifest["schema_version"] == RECORDING_SCHEMA_VERSION
     assert manifest["robot"] == RobotName.PANDA
     assert manifest["robot_config"] == serialize_robot_config(config)
+    assert recording.id == datetime.fromisoformat(manifest["created_at"]).strftime(
+        RECORDING_TIMESTAMP_FORMAT
+    )
 
 
 def test_list_returns_only_complete_managed_recordings(tmp_path):

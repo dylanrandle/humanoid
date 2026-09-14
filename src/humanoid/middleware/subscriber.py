@@ -1,6 +1,8 @@
 import contextlib
 import queue
 import threading
+import time
+from collections.abc import Callable
 from typing import Literal, overload
 
 import lcm
@@ -45,15 +47,17 @@ class Subscriber:
         topics: list[Topic],
         url: str = DEFAULT_LCM_URL,
         queue_size: int | None = 1,
+        clock: Callable[[], float] = time.perf_counter,
     ):
         self.lc = lcm.LCM(url)
         self.url = url
         self.topics = topics
         self.queue_size = queue_size
+        self._clock = clock
         self._subscriptions: list[lcm.LCMSubscription] = []
 
         maxsize = queue_size if queue_size is not None else 0
-        self._message_queues: dict[Topic, queue.Queue[AcceptedTypes]] = {
+        self._message_queues: dict[Topic, queue.Queue[tuple[AcceptedTypes, float]]] = {
             topic: queue.Queue(maxsize=maxsize) for topic in topics
         }
 
@@ -77,6 +81,7 @@ class Subscriber:
         channel: str,
         data: bytes,
     ) -> None:
+        received_at_s = self._clock()
         try:
             topic = Topic(channel)
             expected_type = TOPIC_TO_TYPE.get(topic)
@@ -118,7 +123,7 @@ class Subscriber:
             if q.full():
                 with contextlib.suppress(queue.Empty):
                     q.get_nowait()
-            q.put_nowait(decoded_data)
+            q.put_nowait((decoded_data, received_at_s))
         except Exception as e:
             logger.error(f"Error decoding message on channel {channel}: {e}")
 
@@ -201,6 +206,15 @@ class Subscriber:
             topic: Which channel to read from.
             timeout: Milliseconds to wait. 0 returns immediately; None blocks forever.
         """
+        received = self.receive_with_timestamp(topic, timeout)
+        return None if received is None else received[0]
+
+    def receive_with_timestamp(
+        self,
+        topic: Topic,
+        timeout: int | None = 0,
+    ) -> tuple[AcceptedTypes, float] | None:
+        """Retrieve a message and its local monotonic receipt timestamp."""
         try:
             if timeout is None:
                 return self._message_queues[topic].get(block=True)

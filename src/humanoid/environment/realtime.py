@@ -191,6 +191,7 @@ class RealtimeEnvironment(Environment):
                     timestamp=timestamp,
                     pose=action.tool_pose,
                     gripper_positions=action.gripper_positions,
+                    velocity=action.tool_velocity,
                 ),
                 topic=self.action_topics.tool,
             )

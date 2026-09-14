@@ -459,6 +459,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 self.commanded_tool_pose.rotation,
                 self.commanded_tool_pose.translation,
             )
+            target_velocity = self.tool_motion_limiter.command_velocity(target_pose)
             # Copy gripper positions if available
             gripper_positions_copy = (
                 self.gripper_positions.copy() if self.gripper_positions is not None else None
@@ -471,6 +472,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
         return Action(
             tool_pose=target_pose,
+            tool_velocity=target_velocity,
             gripper_positions=gripper_positions_copy,
             base_pose=base_pose_copy,
         )

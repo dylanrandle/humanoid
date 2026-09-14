@@ -11,6 +11,7 @@ from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.controllers import OmniwheelBaseConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
+    CartesianVelocity,
     CartesianVelocityLimits,
     RobotBaseConfig,
     RobotConfig,
@@ -18,6 +19,30 @@ from humanoid.types.robot import (
     RobotName,
     RobotToolConfig,
 )
+
+
+def test_cartesian_velocity_copies_valid_vectors():
+    linear = np.array([0.1, 0.2, 0.3])
+    angular = np.array([0.4, 0.5, 0.6])
+
+    velocity = CartesianVelocity(linear=linear, angular=angular)
+    linear[0] = 99.0
+
+    np.testing.assert_allclose(velocity.linear, [0.1, 0.2, 0.3])
+    np.testing.assert_allclose(velocity.angular, angular)
+
+
+@pytest.mark.parametrize(
+    ("linear", "angular"),
+    [
+        (np.zeros(2), np.zeros(3)),
+        (np.zeros(3), np.zeros(4)),
+        (np.array([np.nan, 0.0, 0.0]), np.zeros(3)),
+    ],
+)
+def test_cartesian_velocity_rejects_invalid_vectors(linear, angular):
+    with pytest.raises(ValueError, match="Cartesian"):
+        CartesianVelocity(linear=linear, angular=angular)
 
 
 @pytest.mark.parametrize(

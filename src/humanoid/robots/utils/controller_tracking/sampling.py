@@ -12,6 +12,7 @@ from humanoid.robots.utils.controller_tracking.models import (
     TrackingSample,
     TrackingStatistics,
 )
+from humanoid.types.robot import CartesianVelocity
 
 
 def tracking_statistics(samples: list[TrackingSample]) -> TrackingStatistics:
@@ -133,6 +134,8 @@ def _tracking_sample(  # noqa: PLR0913 - sample fields come from distinct teleme
     commanded_gripper_positions_rad: NDArray[np.float64] | None,
     feedback: RuntimeFeedback,
     robot: Robot,
+    *,
+    commanded_velocity: CartesianVelocity | None = None,
 ) -> TrackingSample:
     robot_state = feedback.state
     joint_command = feedback.joint_command
@@ -219,4 +222,10 @@ def _tracking_sample(  # noqa: PLR0913 - sample fields come from distinct teleme
         gripper_position_errors_rad=gripper_position_errors_rad,
         commanded_gripper_velocities_rad_s=commanded_gripper_velocities_rad_s,
         measured_gripper_velocities_rad_s=measured_gripper_velocities_rad_s,
+        commanded_linear_velocity_m_s=(
+            commanded_velocity.linear.copy() if commanded_velocity is not None else None
+        ),
+        commanded_angular_velocity_rad_s=(
+            commanded_velocity.angular.copy() if commanded_velocity is not None else None
+        ),
     )

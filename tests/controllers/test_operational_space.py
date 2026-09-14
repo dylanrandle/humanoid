@@ -11,9 +11,11 @@ from humanoid.controllers.operational_space import (
     OperationalSpaceConfig,
     OperationalSpaceController,
     TaskName,
+    clamp_cartesian_velocity,
 )
 from humanoid.robots.base import Robot
 from humanoid.types.homing import HomingPreset
+from humanoid.types.robot import CartesianVelocity, CartesianVelocityLimits
 
 
 @pytest.fixture(scope="module")
@@ -92,6 +94,20 @@ class TestConstruction:
         bad_robot._config = bad_config
         with pytest.raises(ValueError, match="not found in URDF"):
             OperationalSpaceController(robot=bad_robot)
+
+    def test_cartesian_feedforward_is_clamped_by_vector_norm(self):
+        velocity = CartesianVelocity(
+            linear=np.array([3.0, 4.0, 0.0]),
+            angular=np.array([0.0, 0.0, -2.0]),
+        )
+
+        bounded = clamp_cartesian_velocity(
+            velocity,
+            CartesianVelocityLimits(linear=1.0, angular=0.5),
+        )
+
+        np.testing.assert_allclose(bounded.linear, [0.6, 0.8, 0.0])
+        np.testing.assert_allclose(bounded.angular, [0.0, 0.0, -0.5])
 
     def test_configuration_is_none_initially(self, panda_osc):
         """configuration is deferred until first update_state call."""
@@ -252,6 +268,29 @@ class TestComputeControl:
 
         actual_target = panda_osc.tasks[TaskName.TOOL].transform_target_to_world
         np.testing.assert_allclose(actual_target.translation, target.translation, atol=1e-9)
+
+    def test_velocity_feedforward_previews_the_tool_target(self, panda_osc, panda_robot):
+        panda_osc.update_state(panda_robot.config.homing_presets[HomingPreset.HOME])
+        target = panda_robot.get_tool_command_pose(
+            panda_robot.config.homing_presets[HomingPreset.HOME]
+        )
+        velocity = CartesianVelocity(
+            linear=np.array([0.1, -0.2, 0.3]),
+            angular=np.array([0.0, 0.0, 0.4]),
+        )
+        dt = 0.05
+
+        panda_osc.compute_control(target, dt=dt, target_velocity=velocity)
+
+        actual_target = panda_osc.tasks[TaskName.TOOL].transform_target_to_world
+        np.testing.assert_allclose(
+            actual_target.translation,
+            target.translation + velocity.linear * dt,
+        )
+        np.testing.assert_allclose(
+            actual_target.rotation,
+            pin.exp3(velocity.angular * dt) @ target.rotation,
+        )
 
     def test_mobile_tool_target_is_relative_to_base(self, mobile_osc, mobile_robot):
         mobile_osc.update_state(mobile_robot.config.homing_presets[HomingPreset.HOME])

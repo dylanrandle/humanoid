@@ -444,6 +444,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             self._initialize_reference_poses(right_controller_pose, observation)
 
         target_pose = self._compute_tool_pose(right_controller_pose)
+        target_velocity = self.tool_motion_limiter.command_velocity(target_pose)
 
         gripper_positions = self._compute_gripper_positions(buttons, observation)
 
@@ -486,6 +487,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
         return Action(
             tool_pose=target_pose,
+            tool_velocity=target_velocity,
             gripper_positions=gripper_positions,
             base_pose=base_pose_command,
         )

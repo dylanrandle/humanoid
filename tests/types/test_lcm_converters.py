@@ -4,7 +4,13 @@ import pinocchio as pin
 from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.node import NodeRateSample
-from humanoid.types.robot import RobotBaseCommand, RobotJointCommand, RobotState, RobotToolCommand
+from humanoid.types.robot import (
+    CartesianVelocity,
+    RobotBaseCommand,
+    RobotJointCommand,
+    RobotState,
+    RobotToolCommand,
+)
 
 
 def test_actuator_health_report_encode_decode():
@@ -202,6 +208,7 @@ def test_robot_tool_command_conversion():
     # Assert quaternion is normalized
     quat_norm = np.linalg.norm(lcm_cmd.quaternion)
     assert np.isclose(quat_norm, 1.0, atol=1e-9)
+    assert not lcm_cmd.has_velocity
 
     # Convert back from LCM
     cmd_recovered = LCMConverter.robot_tool_command_from_lcm(lcm_cmd)
@@ -214,6 +221,7 @@ def test_robot_tool_command_conversion():
 
     # Assert rotation is recovered correctly
     np.testing.assert_allclose(cmd_recovered.pose.rotation, rotation, atol=1e-9)
+    assert cmd_recovered.velocity is None
 
 
 def test_robot_tool_command_with_gripper():
@@ -224,7 +232,16 @@ def test_robot_tool_command_with_gripper():
     gripper_positions = np.array([0.01, 0.02])
     timestamp = 42.123
 
-    cmd = RobotToolCommand(timestamp=timestamp, pose=pose, gripper_positions=gripper_positions)
+    velocity = CartesianVelocity(
+        linear=np.array([0.1, -0.2, 0.3]),
+        angular=np.array([-0.4, 0.5, -0.6]),
+    )
+    cmd = RobotToolCommand(
+        timestamp=timestamp,
+        pose=pose,
+        gripper_positions=gripper_positions,
+        velocity=velocity,
+    )
 
     # Convert to LCM
     lcm_cmd = LCMConverter.robot_tool_command_to_lcm(cmd)
@@ -232,6 +249,9 @@ def test_robot_tool_command_with_gripper():
     # Check gripper data
     assert lcm_cmd.num_gripper_joints == len(gripper_positions)
     np.testing.assert_allclose(lcm_cmd.gripper_positions, gripper_positions, atol=1e-9)
+    assert lcm_cmd.has_velocity
+    np.testing.assert_allclose(lcm_cmd.linear_velocity, velocity.linear)
+    np.testing.assert_allclose(lcm_cmd.angular_velocity, velocity.angular)
 
     # Convert back
     cmd_recovered = LCMConverter.robot_tool_command_from_lcm(lcm_cmd)
@@ -239,6 +259,9 @@ def test_robot_tool_command_with_gripper():
     # Verify gripper positions are recovered
     assert cmd_recovered.gripper_positions is not None
     np.testing.assert_allclose(cmd_recovered.gripper_positions, gripper_positions, atol=1e-9)
+    assert cmd_recovered.velocity is not None
+    np.testing.assert_allclose(cmd_recovered.velocity.linear, velocity.linear)
+    np.testing.assert_allclose(cmd_recovered.velocity.angular, velocity.angular)
 
 
 def test_robot_base_command_conversion():

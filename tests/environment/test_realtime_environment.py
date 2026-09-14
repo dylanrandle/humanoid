@@ -10,6 +10,7 @@ from humanoid.types.action import Action
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
+    CartesianVelocity,
     RobotBaseCommand,
     RobotJointCommand,
     RobotState,
@@ -187,7 +188,15 @@ class TestStep:
         env.subscriber.receive = MagicMock(side_effect=_state_only_receive(_make_state()))
         tool_pose = pin.SE3(np.eye(3), np.array([0.3, 0.0, 0.4]))
         gripper = np.array([0.01])
-        action = Action(tool_pose=tool_pose, gripper_positions=gripper)
+        tool_velocity = CartesianVelocity(
+            linear=np.array([0.1, 0.0, 0.0]),
+            angular=np.array([0.0, 0.0, 0.2]),
+        )
+        action = Action(
+            tool_pose=tool_pose,
+            tool_velocity=tool_velocity,
+            gripper_positions=gripper,
+        )
 
         env.step(action)
 
@@ -197,6 +206,7 @@ class TestStep:
         assert isinstance(cmd, RobotToolCommand)
         np.testing.assert_allclose(cmd.pose.translation, tool_pose.translation)
         np.testing.assert_allclose(cmd.gripper_positions, gripper)
+        assert cmd.velocity is tool_velocity
         assert published[0].kwargs["topic"] is Topic.OCULUS_TOOL_COMMAND
 
     def test_publishes_base_command_to_configured_topic(self, env):

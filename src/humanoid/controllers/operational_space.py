@@ -10,6 +10,7 @@ from enum import StrEnum
 import numpy as np
 import pink
 import pinocchio as pin
+from numpy.typing import NDArray
 from pink.barriers import SelfCollisionBarrier
 from pink.limits import AccelerationLimit, ConfigurationLimit, Limit, VelocityLimit
 from pink.tasks import (
@@ -27,8 +28,39 @@ from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
 from humanoid.types.controllers import ControlResult, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
+from humanoid.types.robot import CartesianVelocity, CartesianVelocityLimits
 
 logger = get_logger(__name__)
+
+
+def advance_cartesian_pose(
+    pose: pin.SE3,
+    velocity: CartesianVelocity,
+    duration_s: float,
+) -> pin.SE3:
+    """Advance a pose using command-frame linear and angular velocity."""
+    if not np.isfinite(duration_s) or duration_s < 0.0:
+        raise ValueError("Cartesian feedforward duration must be finite and non-negative.")
+    return pin.SE3(
+        pin.exp3(velocity.angular * duration_s) @ pose.rotation,
+        pose.translation + velocity.linear * duration_s,
+    )
+
+
+def clamp_cartesian_velocity(
+    velocity: CartesianVelocity,
+    limits: CartesianVelocityLimits,
+) -> CartesianVelocity:
+    """Clamp linear and angular vector norms to configured tool limits."""
+
+    def clamp_norm(vector: NDArray[np.float64], limit: float) -> NDArray[np.float64]:
+        norm = float(np.linalg.norm(vector))
+        return vector if norm <= limit else vector * (limit / norm)
+
+    return CartesianVelocity(
+        linear=clamp_norm(velocity.linear, limits.linear),
+        angular=clamp_norm(velocity.angular, limits.angular),
+    )
 
 
 class TaskName(StrEnum):
@@ -252,6 +284,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
         self,
         target: pin.SE3,
         dt: float | None = None,
+        target_velocity: CartesianVelocity | None = None,
     ) -> ControlResult:
         """Compute arm motion to achieve a target tool pose.
 
@@ -262,6 +295,10 @@ class OperationalSpaceController(Controller[pin.SE3]):
 
         Args:
             target: Target 6-DOF pose (SE3) for the end-effector.
+            dt: Controller integration period. Defaults to the configured period.
+            target_velocity: Optional command-frame Cartesian reference velocity. The
+                velocity is clamped to the tool limits and applied as a one-step pose
+                preview, which supplies feedforward to Pink's pose task.
 
         Returns:
             Full-model result in which only arm coordinates can change.
@@ -278,6 +315,16 @@ class OperationalSpaceController(Controller[pin.SE3]):
         dt = self.config.dt if dt is None else dt
         if not np.isfinite(dt) or dt <= 0.0:
             raise ValueError("Controller timestep must be positive and finite.")
+
+        # Pink's pose task closes its target error over this integration step.
+        # Previewing a moving reference by one step is therefore equivalent to
+        # adding its Cartesian velocity as feedforward to the task objective.
+        if target_velocity is not None:
+            target_velocity = clamp_cartesian_velocity(
+                target_velocity,
+                self.robot.config.tool.velocity_limits,
+            )
+            target = advance_cartesian_pose(target, target_velocity, dt)
 
         # Set the target for the end-effector task
         self.tasks[TaskName.TOOL].set_target(target)
