@@ -15,11 +15,21 @@ class TaskName(StrEnum):
 
 
 @dataclass
+class IKDiagnostics:
+    """Outcome of one IK attempt, including failures returned as a hold command."""
+
+    succeeded: bool
+    duration_s: float
+    error: str | None = None
+
+
+@dataclass
 class ControlResult:
     """Full-model position and velocity output from one controller."""
 
     q: NDArray[np.float64]
     v: NDArray[np.float64]
+    diagnostics: IKDiagnostics | None = None
 
 
 @dataclass

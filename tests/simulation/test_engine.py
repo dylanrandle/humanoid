@@ -63,6 +63,27 @@ def test_position_command_effort_preserves_direction(offset):
     )
 
 
+def test_reset_to_arbitrary_mobile_configuration_clears_motion():
+    reset_hold_tolerance = 0.01
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
+    initial = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    root = engine.robot.get_root_q_slice()
+    assert root is not None
+    initial[root] = [0.1, -0.2, math.cos(0.3), math.sin(0.3)]
+    arm = engine.robot.get_joint_position_indices(engine.robot.get_arm_joint_indices())
+    initial[arm[0]] = 0.2
+    engine.step(20)
+
+    engine.reset(initial_q=initial)
+
+    state = engine.read_robot_state(0.0)
+    np.testing.assert_allclose(state.joint_positions, initial)
+    np.testing.assert_array_equal(state.joint_velocities, 0.0)
+    assert engine.data.time == 0.0
+    engine.step(20)
+    assert abs(engine.read_robot_state(0.0).joint_positions[arm[0]] - 0.2) < reset_hold_tolerance
+
+
 @pytest.mark.parametrize("robot_config", ROBOT_CONFIGS.values(), ids=lambda config: config.name)
 def test_home_state_remains_stable_under_physics(robot_config: RobotConfig):
     engine = NativeMujocoEngine(robot_config)

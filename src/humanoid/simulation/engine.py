@@ -51,11 +51,17 @@ class NativeMujocoEngine:
     def physics_timestep(self) -> float:
         return float(self.model.opt.timestep)
 
-    def reset(self) -> None:
-        """Reset physics and actuator targets to the configured home state."""
+    def reset(self, initial_q: np.ndarray | None = None) -> None:
+        """Reset physics and actuator targets to home or a supplied model configuration."""
 
+        home = (
+            self.robot.config.homing_presets[HomingPreset.HOME]
+            if initial_q is None
+            else np.asarray(initial_q, dtype=float)
+        )
+        if home.shape != (self.robot.model.nq,) or not np.isfinite(home).all():
+            raise ValueError("Initial configuration must be finite and match model.nq.")
         mujoco.mj_resetData(self.model, self.data)
-        home = self.robot.config.homing_presets[HomingPreset.HOME]
         for joint in self.binding.joints:
             robot_joint_idx = self.robot.joint_name_to_idx(joint.name)
             position = self.robot.joint_position_from_q(home, robot_joint_idx)

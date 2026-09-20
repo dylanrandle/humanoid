@@ -421,9 +421,26 @@ class TestComputeControl:
         previous = np.zeros(mobile_robot.model.nv)
         for dt in [0.035, 0.035, 0.03] * 10:
             result = osc.compute_control(target, dt=dt)
+            assert result.diagnostics is not None and result.diagnostics.succeeded
             acceleration = (result.v - previous)[osc.controlled_v_indices] / dt
             assert np.abs(acceleration).max() <= config.joint_acceleration_limit + 1e-6
             previous = result.v
+
+    def test_solve_failure_is_explicit_in_result(self, panda_osc, panda_robot, monkeypatch):
+        q = panda_robot.config.homing_presets[HomingPreset.HOME].copy()
+        panda_osc.update_state(q)
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("injected infeasible QP")
+
+        monkeypatch.setattr("pink.solve_ik", fail)
+        result = panda_osc.compute_control(panda_robot.get_tool_command_pose(q))
+        assert result.diagnostics is not None
+        assert not result.diagnostics.succeeded
+        assert result.diagnostics.error == "injected infeasible QP"
+        assert result.diagnostics.duration_s >= 0.0
+        np.testing.assert_array_equal(result.q, q)
+        np.testing.assert_array_equal(result.v, 0.0)
 
     def test_configured_joint_velocity_limit_is_enforced(self, panda_robot):
         velocity_limit = 0.1

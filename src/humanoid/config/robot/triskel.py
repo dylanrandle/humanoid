@@ -165,6 +165,7 @@ OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
     avoid_collisions=True,
     min_collision_distance=5e-3,
     collision_safe_displacement_gain=1e-2,
+    # Simulation tuning and transfer limits are recorded in OSC_TUNING_REPORT.md.
     manipulability_cost=0.03,
     damping_cost=0.3,
     low_acceleration_cost=0.0,

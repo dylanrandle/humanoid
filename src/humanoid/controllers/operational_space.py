@@ -5,6 +5,8 @@ the Pink inverse kinematics library. Mobile-base, wheel, and gripper coordinates
 are hard-locked and owned by separate controllers.
 """
 
+import time
+
 import numpy as np
 import pink
 import pinocchio as pin
@@ -28,7 +30,12 @@ from humanoid.controllers.constraints import (
 from humanoid.controllers.manipulability import ManipulabilityTask
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
-from humanoid.types.controllers import ControlResult, OperationalSpaceConfig, TaskName
+from humanoid.types.controllers import (
+    ControlResult,
+    IKDiagnostics,
+    OperationalSpaceConfig,
+    TaskName,
+)
 from humanoid.types.robot import CartesianVelocity, CartesianVelocityLimits
 
 logger = get_logger(__name__)
@@ -336,6 +343,8 @@ class OperationalSpaceController(Controller[pin.SE3]):
         # jitter cannot change the implied velocity or defeat acceleration limits.
         self._set_previous_velocity(self._previous_velocity, dt)
         velocity = np.zeros(self.robot.model.nv)
+        started_s = time.perf_counter()
+        error = None
         try:
             solved_velocity = pink.solve_ik(
                 self.configuration,
@@ -352,9 +361,18 @@ class OperationalSpaceController(Controller[pin.SE3]):
         except Exception as e:
             # TODO: try to get unstuck if we are at limits
             logger.error(f"Encountered exception: {e}")
+            error = str(e)
             self._set_previous_velocity(velocity, dt)
 
-        return ControlResult(q=self.configuration.q.copy(), v=velocity)
+        return ControlResult(
+            q=self.configuration.q.copy(),
+            v=velocity,
+            diagnostics=IKDiagnostics(
+                succeeded=error is None,
+                duration_s=time.perf_counter() - started_s,
+                error=error,
+            ),
+        )
 
     def reset_motion(self) -> None:
         """Reset stateful velocity smoothing when control is disengaged."""

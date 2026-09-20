@@ -60,6 +60,17 @@ def test_default_rate_is_one_hundred_hz(node):
     assert node.rate_hz == DEFAULT_RATE_HZ
 
 
+def test_isolated_transport_is_passed_to_both_endpoints():
+    url = "udpm://239.255.77.219:43129?ttl=0"
+    with (
+        patch("humanoid.nodes.orchestrator.Publisher") as publisher,
+        patch("humanoid.nodes.orchestrator.Subscriber") as subscriber,
+    ):
+        OrchestratorNode(lcm_url=url)
+    publisher.assert_called_once_with(url=url)
+    assert subscriber.call_args.kwargs["url"] == url
+
+
 class TestTransitions:
     def test_request_oculus_from_idle(self, node):
         node._handle_event(_event(EventKind.REQUEST_OCULUS))

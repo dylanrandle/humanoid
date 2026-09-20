@@ -51,6 +51,19 @@ NODE_GROUPS = {
         ),
     )
 }
+
+# Nodes whose constructors consume the selected robot's full configuration. Keep
+# this list explicit so process composition does not rely on signature inspection.
+ROBOT_CONFIG_NODES = (
+    HomingNode,
+    KeyboardTeleopNode,
+    MujocoSimulationNode,
+    OculusTeleopNode,
+    RobotControllerNode,
+    RobotDriverNode,
+    RobotLoggerNode,
+    RobotVisualizerNode,
+)
 PROCESS_ORDER = tuple(NODE_GROUPS)
 PROCESS_STOP_ORDER = (
     ProcessName.KEYBOARD,

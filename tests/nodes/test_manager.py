@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.constants import (
     DEFAULT_HUMANOID_ROBOT,
     DEFAULT_HUMANOID_RUNTIME,
@@ -146,6 +147,37 @@ def test_node_processes_receive_the_parent_log_queue(monkeypatch):
     assert context.Process.call_args.kwargs["args"] == (KeyboardTeleopNode, log_queue)
 
 
+def test_explicit_robot_config_is_passed_only_to_robot_aware_nodes(monkeypatch):
+    processes: list[MagicMock] = []
+    context = _fake_context(processes)
+    _use_process_context(monkeypatch, context)
+    manager = NodeManager(runtime=Runtime.REAL, robot_config=TRISKEL_CONFIG)
+    monkeypatch.setattr(manager, "_wait_for_robot_state", MagicMock(return_value=True))
+
+    manager.start(ProcessName.STACK)
+    _join_stack_startup(manager)
+
+    arguments_by_node = {
+        entry.kwargs["args"][0]: entry.kwargs["args"] for entry in context.Process.call_args_list
+    }
+    for node in (
+        RobotDriverNode,
+        RobotControllerNode,
+        RobotVisualizerNode,
+        RobotLoggerNode,
+        HomingNode,
+    ):
+        assert arguments_by_node[node][2] == {"robot_config": TRISKEL_CONFIG}
+    assert arguments_by_node[OrchestratorNode] == (OrchestratorNode, None)
+
+
+def test_explicit_robot_config_must_match_selected_robot(monkeypatch):
+    _use_process_context(monkeypatch)
+
+    with pytest.raises(ValueError, match="does not match"):
+        NodeManager(robot=RobotName.PANDA, robot_config=TRISKEL_CONFIG)
+
+
 def test_spawned_node_routes_logging_before_running(monkeypatch):
     log_queue = MagicMock()
     node_main = MagicMock()
@@ -157,6 +189,19 @@ def test_spawned_node_routes_logging_before_running(monkeypatch):
 
     setup_queue_logging.assert_called_once_with(log_queue)
     node_main.assert_called_once_with()
+
+
+def test_spawned_node_receives_explicit_constructor_arguments(monkeypatch):
+    node_main = MagicMock()
+    monkeypatch.setattr(RobotControllerNode, "main", node_main)
+
+    _run_node(
+        RobotControllerNode,
+        None,
+        {"robot_config": TRISKEL_CONFIG},
+    )
+
+    node_main.assert_called_once_with(robot_config=TRISKEL_CONFIG)
 
 
 def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch):

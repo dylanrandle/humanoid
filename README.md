@@ -86,6 +86,10 @@ Each run is saved under `logs/tracking/controller_tracking_<robot>_<timestamp>/`
 one report per trajectory setting plus raw telemetry and metrics that separate OSC error
 (reference tool pose vs command FK) from joint and end-to-end tracking error.
 
+Use the [OSC tuning procedure](OSC_TUNING.md) to select parameters in simulation
+for smooth teleoperation with bounded tracking error. The [Triskel simulation report](OSC_TUNING_REPORT.md)
+records the selected configuration, measurements, and hardware validation limits.
+
 Useful options:
 
 - `--no-velocity-feedforward`: run a pose-only OSC comparison.

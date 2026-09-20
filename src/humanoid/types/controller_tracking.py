@@ -11,6 +11,7 @@ from humanoid.types.actuator import ActuatorEffortSource, ActuatorEffortUnit
 ControllerTrackingSegment = Literal[
     "figure_eight",
     "figure_eight_settle",
+    "osc_tuning",
 ]
 JointCommandStream = Literal["controller", "robot"]
 JointTelemetryStream = Literal["controller", "robot", "state"]

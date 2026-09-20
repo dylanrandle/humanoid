@@ -10,7 +10,7 @@ import pinocchio as pin
 from numpy.typing import NDArray
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.controllers.base import Controller
 from humanoid.controllers.gripper import GripperController
 from humanoid.controllers.omniwheel_base import OmniwheelBaseController
@@ -50,6 +50,7 @@ class RobotControllerNode(Node):
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
         clock: Callable[[], float] = time.perf_counter,
+        lcm_url: str = DEFAULT_LCM_URL,
     ):
         """Initialize the robot controller node.
 
@@ -99,8 +100,9 @@ class RobotControllerNode(Node):
                 Topic.ROBOT_STATE,
                 Topic.ORCHESTRATOR_MODE,
             ],
+            url=lcm_url,
         )
-        self.publisher = Publisher()
+        self.publisher = Publisher(url=lcm_url)
 
         # Reference for current tool and base commands
         self.current_tool_command: RobotToolCommand | None = None

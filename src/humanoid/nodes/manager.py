@@ -6,7 +6,7 @@ import os
 import signal
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
 from multiprocessing.queues import Queue
@@ -25,10 +25,11 @@ from humanoid.nodes.groups import (
     NODE_GROUPS,
     PROCESS_ORDER,
     PROCESS_STOP_ORDER,
+    ROBOT_CONFIG_NODES,
 )
 from humanoid.types.node import ManagedNodeGroup, NodeGroup, ProcessContext
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
-from humanoid.types.robot import RobotName
+from humanoid.types.robot import RobotConfig, RobotName
 
 logger = get_logger(__name__)
 
@@ -46,16 +47,27 @@ class NodeManagerError(Exception):
 class NodeManager:
     """Starts, monitors, and stops imported node classes as logical groups."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - lifecycle and injectable process settings are independent
         self,
         runtime: Runtime | None = None,
         robot: RobotName | None = None,
+        robot_config: RobotConfig | None = None,
         state_timeout_seconds: float = DEFAULT_STATE_TIMEOUT_SECONDS,
         state_poll_interval_seconds: float = DEFAULT_STATE_POLL_INTERVAL_SECONDS,
         log_queue: Queue[logging.LogRecord] | None = None,
     ):
         self.runtime = runtime if runtime is not None else Runtime.from_environment()
-        self.robot = robot if robot is not None else RobotName.from_environment()
+        if robot_config is not None and robot is not None and robot is not robot_config.name:
+            raise ValueError(
+                f"Robot selection {robot.value!r} does not match the supplied "
+                f"configuration {robot_config.name.value!r}."
+            )
+        self.robot_config = robot_config
+        self.robot = (
+            robot_config.name
+            if robot_config is not None
+            else (robot if robot is not None else RobotName.from_environment())
+        )
         self.state_timeout_seconds = state_timeout_seconds
         self.state_poll_interval_seconds = state_poll_interval_seconds
         self._process_context = cast(ProcessContext, get_context(PROCESS_START_METHOD))
@@ -71,6 +83,11 @@ class NodeManager:
     def set_robot(self, robot: RobotName) -> None:
         with self._lock:
             self._require_configuration_change_allowed_locked()
+            if self.robot_config is not None and robot is not self.robot_config.name:
+                raise NodeManagerError(
+                    "The selected robot cannot differ from the explicitly supplied "
+                    "RobotConfig. Create a new node manager for the other robot."
+                )
             self.robot = robot
 
     def start(self, name: ProcessName) -> ProcessStatus:
@@ -172,10 +189,13 @@ class NodeManager:
         nodes: Sequence[type[Node]],
     ) -> None:
         for node in nodes:
+            node_arguments: tuple[object, ...] = (node, self._log_queue)
+            if self.robot_config is not None and node in ROBOT_CONFIG_NODES:
+                node_arguments += ({"robot_config": self.robot_config},)
             process = self._process_context.Process(
                 target=_run_node,
                 name=node.__name__,
-                args=(node, self._log_queue),
+                args=node_arguments,
             )
             with _node_environment(group.runtime, group.robot):
                 process.start()
@@ -346,10 +366,11 @@ def _stopped_status() -> ProcessStatus:
 def _run_node(
     node: type[Node],
     log_queue: Queue[logging.LogRecord] | None,
+    node_kwargs: Mapping[str, object] | None = None,
 ) -> None:
     if log_queue is not None:
         setup_queue_logging(log_queue)
-    node.main()
+    node.main(**(node_kwargs or {}))
 
 
 @contextlib.contextmanager

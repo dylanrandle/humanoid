@@ -14,7 +14,7 @@ saves the previous mode and pops back to it when the homing policy sends a
 import argparse
 import time
 
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
@@ -70,7 +70,12 @@ def _all_source_topics() -> list[Topic]:
 class OrchestratorNode(Node):
     """Event-driven node that selects a mode and routes per-source topics."""
 
-    def __init__(self, mode: Mode = Mode.IDLE, rate_hz: float = DEFAULT_RATE_HZ):
+    def __init__(
+        self,
+        mode: Mode = Mode.IDLE,
+        rate_hz: float = DEFAULT_RATE_HZ,
+        lcm_url: str = DEFAULT_LCM_URL,
+    ):
         self.rate_hz = rate_hz
         self.mode = mode
         # Where to return after HOMING completes. None outside of HOMING.
@@ -79,8 +84,9 @@ class OrchestratorNode(Node):
         self._source_topics = _all_source_topics()
         self.subscriber = Subscriber(
             topics=[*self._source_topics, Topic.ORCHESTRATOR_EVENT],
+            url=lcm_url,
         )
-        self.publisher = Publisher()
+        self.publisher = Publisher(url=lcm_url)
 
     def setup(self) -> None:
         logger.info(f"Orchestrator starting in mode: {self.mode}")
