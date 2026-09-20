@@ -2,7 +2,8 @@
 
 import numpy as np
 import pink
-from pink.limits import Limit
+import pinocchio as pin
+from pink.limits import AccelerationLimit, Limit
 from pink.tasks import Task
 
 
@@ -56,4 +57,44 @@ class SelectedVelocityLimit(Limit):
         matrix = np.vstack((self._projection, -self._projection))
         displacement_limits = dt * self._velocity_limits
         vector = np.concatenate((displacement_limits, displacement_limits))
+        return matrix, vector
+
+
+class BrakingAccelerationLimit(AccelerationLimit):
+    """Leave room for this integration step and subsequent maximum braking.
+
+    For distance d to a joint bound, require v*dt + v**2/(2*a) <= d.
+    Pink's continuous stopping bound omits the first displacement, which can
+    leave the next QP unable to satisfy both position and acceleration limits.
+    The nonnegative root below preserves a feasible braking step even when dt
+    changes. A margin keeps position targets away from physical joint stops.
+    """
+
+    def __init__(
+        self, model: pin.Model, acceleration_limit: np.ndarray, position_margin: float = 0.0
+    ) -> None:
+        super().__init__(model, acceleration_limit)
+        self.position_margin = position_margin
+
+    def compute_qp_inequalities(
+        self, configuration: pink.Configuration, dt: float
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        if self.projection_matrix is None:
+            return None
+        upper = pin.difference(self.model, configuration.q, self.model.upperPositionLimit)
+        lower = pin.difference(self.model, self.model.lowerPositionLimit, configuration.q)
+
+        def speed_bound(distance: np.ndarray) -> np.ndarray:
+            distance = np.maximum(distance[self.indices] - self.position_margin, 0.0)
+            a_dt = self.a_max * dt
+            return np.sqrt(a_dt**2 + 2 * self.a_max * distance) - a_dt
+
+        acceleration_step = self.a_max * dt**2
+        matrix = np.vstack((self.projection_matrix, -self.projection_matrix))
+        vector = np.concatenate(
+            (
+                np.minimum(acceleration_step + self.Delta_q_prev, dt * speed_bound(upper)),
+                np.minimum(acceleration_step - self.Delta_q_prev, dt * speed_bound(lower)),
+            )
+        )
         return matrix, vector

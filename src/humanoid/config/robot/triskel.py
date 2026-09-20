@@ -161,14 +161,16 @@ HOMING_PRESETS = {
 OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
     dt=CONTROLLER_DT,
     tool_position_cost=5.0,
+    tool_orientation_cost=0.72,
     avoid_collisions=True,
     min_collision_distance=5e-3,
     collision_safe_displacement_gain=1e-2,
-    joint_centering_cost=5e-3,
-    damping_cost=0.1,
-    low_acceleration_cost=0.03,
+    manipulability_cost=0.03,
+    damping_cost=0.3,
+    low_acceleration_cost=0.0,
     joint_velocity_limit=1.0,
     joint_acceleration_limit=2.0,
+    joint_position_margin=5e-3,
 )
 OMNIWHEEL_BASE_CONFIG = OmniwheelBaseConfig(dt=CONTROLLER_DT)
 TRISKEL_CONFIG = RobotConfig(

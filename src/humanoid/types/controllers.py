@@ -1,7 +1,17 @@
 from dataclasses import dataclass
+from enum import StrEnum
 
 import numpy as np
 from numpy.typing import NDArray
+
+
+class TaskName(StrEnum):
+    """Task names used in the operational-space controller."""
+
+    TOOL = "tool"
+    MANIPULABILITY = "manipulability"
+    DAMPING = "damping"
+    LOW_ACCELERATION = "low_acceleration"
 
 
 @dataclass
@@ -24,9 +34,13 @@ class OperationalSpaceConfig:
             task in the IK QP.
         dt: Controller integration timestep in seconds; also sets the rate
             at which this controller is expected to be ticked.
-        joint_centering_cost: Scalar weight on the posture (joint-centering)
-            null-space task that pulls joints toward the home position.
-            Multiplied element-wise with ``joint_centering_mask``.
+        manipulability_cost: Scalar weight on the soft objective that increases
+            the regularized log-volume of the arm's tool Jacobian. This favors
+            Cartesian dexterity and competes with tool tracking and damping.
+            Zero disables the task.
+        manipulability_regularization: Positive diagonal added to the arm
+            Jacobian Gram matrix before evaluating log manipulability. Keeps
+            the measure and gradient finite near singular configurations.
         damping_cost: Scalar weight on the velocity-damping regularizer that
             penalizes joint velocities. Multiplied element-wise with
             ``damping_mask``.
@@ -39,6 +53,9 @@ class OperationalSpaceConfig:
         joint_acceleration_limit: Maximum arm-joint acceleration in rad/s^2.
             A scalar applies to every arm joint and an array specifies one
             value per arm velocity. ``None`` disables the hard limit.
+        joint_position_margin: Distance inside joint position bounds reserved by
+            the braking constraint (radians for revolute joints). Requires a
+            joint acceleration limit. This bounds commands, not physical overshoot.
         solver: Name of the QP solver backend passed to Pink (e.g.
             ``"quadprog"``).
         avoid_collisions: Whether to enable self-collision avoidance
@@ -48,38 +65,47 @@ class OperationalSpaceConfig:
         collision_safe_displacement_gain: Weight on the self-collision barrier's
             safe-displacement regularizer. This regularizer favors zero joint
             displacement but does not set the hard minimum-distance constraint.
-        joint_centering_mask: Per-joint multiplier on
-            ``joint_centering_cost``. A scalar applies the same weight to
-            all arm joints; an array can selectively center individual joints.
-            Non-arm coordinates are always excluded by the controller.
-        damping_mask: Per-joint multiplier on ``damping_cost``, with the
-            same scalar/array semantics as ``joint_centering_mask``.
+        damping_mask: Per-joint multiplier on ``damping_cost``. A scalar applies
+            to all arm joints; an array specifies one value per arm velocity or
+            per non-root velocity. Non-arm coordinates are always excluded.
         low_acceleration_mask: Per-joint multiplier on
             ``low_acceleration_cost``, with the same scalar/array semantics as
-            ``joint_centering_mask``.
+            ``damping_mask``.
     """
 
     tool_position_cost: float = 1.0
     tool_orientation_cost: float = 1.0
     dt: float = 0.005
-    joint_centering_cost: float = 1e-3
+    manipulability_cost: float = 1e-3
+    manipulability_regularization: float = 1e-6
     damping_cost: float = 1e-1
     low_acceleration_cost: float = 0.0
     joint_velocity_limit: np.ndarray | float | None = None
     joint_acceleration_limit: np.ndarray | float | None = None
+    joint_position_margin: float = 0.0
     solver: str = "quadprog"
     avoid_collisions: bool = False
     min_collision_distance: float = 0.02
     collision_safe_displacement_gain: float = 1.0
-    joint_centering_mask: np.ndarray | float = 1.0
     damping_mask: np.ndarray | float = 1.0
     low_acceleration_mask: np.ndarray | float = 1.0
 
     def __post_init__(self) -> None:
         if not np.isfinite(self.dt) or self.dt <= 0.0:
             raise ValueError("Operational-space timestep must be positive and finite.")
+        if not np.isfinite(self.manipulability_cost) or self.manipulability_cost < 0.0:
+            raise ValueError("Manipulability cost must be finite and non-negative.")
+        if (
+            not np.isfinite(self.manipulability_regularization)
+            or self.manipulability_regularization <= 0.0
+        ):
+            raise ValueError("Manipulability regularization must be positive and finite.")
         if not np.isfinite(self.low_acceleration_cost) or self.low_acceleration_cost < 0.0:
             raise ValueError("Low-acceleration cost must be finite and non-negative.")
+        if not np.isfinite(self.joint_position_margin) or self.joint_position_margin < 0.0:
+            raise ValueError("Joint position margin must be finite and non-negative.")
+        if self.joint_position_margin > 0.0 and self.joint_acceleration_limit is None:
+            raise ValueError("Joint position margin requires a joint acceleration limit.")
         if (
             not np.isfinite(self.collision_safe_displacement_gain)
             or self.collision_safe_displacement_gain < 0.0

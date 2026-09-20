@@ -6,14 +6,13 @@ import pytest
 from pink.tasks import FrameTask, LowAccelerationTask, RelativeFrameTask
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.controllers.manipulability import ManipulabilityTask
 from humanoid.controllers.operational_space import (
-    ControlResult,
-    OperationalSpaceConfig,
     OperationalSpaceController,
-    TaskName,
     clamp_cartesian_velocity,
 )
 from humanoid.robots.base import Robot
+from humanoid.types.controllers import ControlResult, OperationalSpaceConfig, TaskName
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import CartesianVelocity, CartesianVelocityLimits
 
@@ -54,11 +53,11 @@ class TestConstruction:
         """A fixed robot gets a world-frame tool task and no base task."""
         assert isinstance(panda_osc.tasks[TaskName.TOOL], FrameTask)
         assert TaskName.TOOL in panda_osc.tasks
-        assert TaskName.JOINT_CENTERING in panda_osc.tasks
+        assert TaskName.MANIPULABILITY in panda_osc.tasks
         assert TaskName.DAMPING in panda_osc.tasks
         assert set(panda_osc.tasks) == {
             TaskName.TOOL,
-            TaskName.JOINT_CENTERING,
+            TaskName.MANIPULABILITY,
             TaskName.DAMPING,
         }
 
@@ -67,7 +66,7 @@ class TestConstruction:
         assert isinstance(mobile_osc.tasks[TaskName.TOOL], RelativeFrameTask)
         assert set(mobile_osc.tasks) == {
             TaskName.TOOL,
-            TaskName.JOINT_CENTERING,
+            TaskName.MANIPULABILITY,
             TaskName.DAMPING,
         }
         controlled_names = [
@@ -113,6 +112,36 @@ class TestConstruction:
         """configuration is deferred until first update_state call."""
         assert panda_osc.configuration is None
 
+    def test_manipulability_configuration_is_used(self, panda_robot):
+        config = OperationalSpaceConfig(
+            manipulability_cost=0.02,
+            manipulability_regularization=1e-4,
+        )
+
+        osc = OperationalSpaceController(robot=panda_robot, config=config)
+
+        task = osc.tasks[TaskName.MANIPULABILITY]
+        assert isinstance(task, ManipulabilityTask)
+        assert task.cost == config.manipulability_cost
+        assert task.regularization == config.manipulability_regularization
+
+    def test_zero_manipulability_cost_disables_task(self, panda_robot):
+        osc = OperationalSpaceController(
+            robot=panda_robot, config=OperationalSpaceConfig(manipulability_cost=0.0)
+        )
+
+        assert TaskName.MANIPULABILITY not in osc.tasks
+
+    @pytest.mark.parametrize("cost", [-1.0, np.inf, np.nan])
+    def test_invalid_manipulability_cost_is_rejected(self, cost):
+        with pytest.raises(ValueError, match="Manipulability cost"):
+            OperationalSpaceConfig(manipulability_cost=cost)
+
+    @pytest.mark.parametrize("regularization", [0.0, -1.0, np.inf, np.nan])
+    def test_invalid_manipulability_regularization_is_rejected(self, regularization):
+        with pytest.raises(ValueError, match="Manipulability regularization"):
+            OperationalSpaceConfig(manipulability_regularization=regularization)
+
     def test_optional_low_acceleration_task_is_enabled(self, panda_robot):
         config = OperationalSpaceConfig(low_acceleration_cost=0.1)
 
@@ -142,13 +171,12 @@ class TestConstruction:
             expected_low_acceleration_cost,
         )
 
-    def test_triskel_smoothing_config_constructs_for_mobile_model(self, mobile_robot):
+    def test_triskel_motion_limits_construct_for_mobile_model(self, mobile_robot):
         config = mobile_robot.config.operational_space_config
         assert config is not None
 
         osc = OperationalSpaceController(robot=mobile_robot, config=config)
 
-        assert TaskName.LOW_ACCELERATION in osc.tasks
         assert osc._acceleration_limit is not None
 
         q = mobile_robot.config.homing_presets[HomingPreset.HOME].copy()
@@ -206,6 +234,29 @@ class TestUpdateState:
 
 
 class TestComputeControl:
+    @pytest.mark.parametrize("robot_fixture", ["panda_robot", "mobile_robot"])
+    def test_holding_tool_pose_increases_manipulability(self, request, robot_fixture):
+        minimum_arm_speed = 1e-6
+        tool_error_tolerance = 1e-4
+        robot = request.getfixturevalue(robot_fixture)
+        osc = OperationalSpaceController(robot=robot)
+        q = robot.config.homing_presets[HomingPreset.HOME].copy()
+        # Break symmetric home postures so the redundant arm motion has a
+        # nonzero manipulability gradient while the tool holds its pose.
+        q[osc.controlled_q_indices[2]] += 0.2
+        osc.update_state(q)
+        target = robot.get_tool_command_pose(q)
+        task = osc.tasks[TaskName.MANIPULABILITY]
+        before = task.compute_log_manipulability(osc.configuration)
+
+        for _ in range(20):
+            result = osc.compute_control(target)
+
+        assert np.linalg.norm(result.v[osc.controlled_v_indices]) > minimum_arm_speed
+        assert task.compute_log_manipulability(osc.configuration) > before
+        tool_error = osc.tasks[TaskName.TOOL].compute_error(osc.configuration)
+        assert np.linalg.norm(tool_error) < tool_error_tolerance
+
     def test_raises_when_not_initialized(self, panda_osc):
         target = pin.SE3.Identity()
         with pytest.raises(RuntimeError, match="not initialized"):
@@ -359,6 +410,20 @@ class TestComputeControl:
         assert np.max(np.abs(second.v[arm_v_indices] - first.v[arm_v_indices])) <= (
             max_velocity_change
         )
+
+    def test_acceleration_limit_with_changing_control_period(self, mobile_robot):
+        config = replace(mobile_robot.config.operational_space_config, manipulability_cost=0.0)
+        osc = OperationalSpaceController(mobile_robot, config)
+        q = mobile_robot.config.homing_presets[HomingPreset.HOME].copy()
+        osc.update_state(q)
+        target = mobile_robot.get_tool_command_pose(q).copy()
+        target.translation[0] += 0.05
+        previous = np.zeros(mobile_robot.model.nv)
+        for dt in [0.035, 0.035, 0.03] * 10:
+            result = osc.compute_control(target, dt=dt)
+            acceleration = (result.v - previous)[osc.controlled_v_indices] / dt
+            assert np.abs(acceleration).max() <= config.joint_acceleration_limit + 1e-6
+            previous = result.v
 
     def test_configured_joint_velocity_limit_is_enforced(self, panda_robot):
         velocity_limit = 0.1

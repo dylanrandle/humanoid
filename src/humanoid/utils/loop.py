@@ -1,6 +1,18 @@
 import time
 from collections.abc import Callable
 
+FINAL_SLEEP_SECONDS = 0.002
+
+
+def _sleep_until(deadline: float) -> None:
+    """Approach a deadline with short sleeps to limit timer-coalescing jitter.
+
+    One long sleep can wake several milliseconds late even on an idle host.
+    Rechecking the clock between sleeps reduces that error without busy waiting.
+    """
+    while (remaining := deadline - time.perf_counter()) > 0.0:
+        time.sleep(remaining / 2 if remaining > FINAL_SLEEP_SECONDS else remaining)
+
 
 def _next_deadline(previous_deadline: float, period: float, now: float) -> float:
     """Advance one period, skipping deadlines that have already elapsed."""
@@ -38,6 +50,4 @@ def loop_at_rate(
 
         current_time = time.perf_counter()
         next_call_time = _next_deadline(next_call_time, period, current_time)
-        sleep_time = next_call_time - current_time
-
-        time.sleep(sleep_time)
+        _sleep_until(next_call_time)

@@ -5,29 +5,30 @@ the Pink inverse kinematics library. Mobile-base, wheel, and gripper coordinates
 are hard-locked and owned by separate controllers.
 """
 
-from enum import StrEnum
-
 import numpy as np
 import pink
 import pinocchio as pin
 from numpy.typing import NDArray
 from pink.barriers import SelfCollisionBarrier
-from pink.limits import AccelerationLimit, ConfigurationLimit, Limit, VelocityLimit
+from pink.limits import ConfigurationLimit, Limit, VelocityLimit
 from pink.tasks import (
     DampingTask,
     FrameTask,
     LowAccelerationTask,
-    PostureTask,
     RelativeFrameTask,
 )
 from pink.utils import process_collision_pairs
 
 from humanoid.controllers.base import Controller
-from humanoid.controllers.constraints import SelectedVelocityLimit, lock_uncontrolled_velocities
+from humanoid.controllers.constraints import (
+    BrakingAccelerationLimit,
+    SelectedVelocityLimit,
+    lock_uncontrolled_velocities,
+)
+from humanoid.controllers.manipulability import ManipulabilityTask
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
-from humanoid.types.controllers import ControlResult, OperationalSpaceConfig
-from humanoid.types.homing import HomingPreset
+from humanoid.types.controllers import ControlResult, OperationalSpaceConfig, TaskName
 from humanoid.types.robot import CartesianVelocity, CartesianVelocityLimits
 
 logger = get_logger(__name__)
@@ -63,15 +64,6 @@ def clamp_cartesian_velocity(
     )
 
 
-class TaskName(StrEnum):
-    """Enum for task names used in the operational space controller."""
-
-    TOOL = "tool"
-    JOINT_CENTERING = "joint_centering"
-    DAMPING = "damping"
-    LOW_ACCELERATION = "low_acceleration"
-
-
 class OperationalSpaceController(Controller[pin.SE3]):
     """Control only the arm joints for a 6-DOF tool-space target."""
 
@@ -89,6 +81,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
         self.config = config or OperationalSpaceConfig()
         self.robot = robot
         self._data = robot.model.createData()
+        self._previous_velocity = np.zeros(robot.model.nv)
 
         # Defer configuration initialization until first state update
         self.configuration: pink.Configuration | None = None
@@ -125,7 +118,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
         )
         self._constraints = lock_uncontrolled_velocities(robot.model.nv, self.controlled_v_indices)
 
-        # Pink posture and damping tasks omit floating-root coordinates but include
+        # Pink damping and low-acceleration tasks omit floating-root coordinates but include
         # every other model joint. Mask wheel and gripper joints automatically so
         # operational-space configuration only tunes arm behavior.
         root_v_slice = robot.get_root_v_slice()
@@ -188,15 +181,14 @@ class OperationalSpaceController(Controller[pin.SE3]):
         )
 
     def _configure_regularization_tasks(self) -> None:
-        self.tasks[TaskName.JOINT_CENTERING] = PostureTask(
-            cost=(
-                self.config.joint_centering_cost
-                * self._arm_cost_mask(self.config.joint_centering_mask, "joint_centering_mask")
-            )  # ty:ignore[invalid-argument-type]
-        )
-        self.tasks[TaskName.JOINT_CENTERING].set_target(
-            self.robot.config.homing_presets[HomingPreset.HOME]
-        )
+        if self.config.manipulability_cost > 0.0:
+            self.tasks[TaskName.MANIPULABILITY] = ManipulabilityTask(
+                model=self.robot.model,
+                frame=self.robot.config.tool.frame,
+                controlled_v_indices=self.controlled_v_indices,
+                cost=self.config.manipulability_cost,
+                regularization=self.config.manipulability_regularization,
+            )
         self.tasks[TaskName.DAMPING] = DampingTask(
             cost=(
                 self.config.damping_cost
@@ -225,7 +217,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
         self.tasks[TaskName.LOW_ACCELERATION] = self._low_acceleration_task
 
     def _configure_motion_limits(self) -> None:
-        self._acceleration_limit: AccelerationLimit | None = None
+        self._acceleration_limit: BrakingAccelerationLimit | None = None
         additional_limits: list[Limit] = []
         if self.config.joint_velocity_limit is not None:
             additional_limits.append(
@@ -244,16 +236,23 @@ class OperationalSpaceController(Controller[pin.SE3]):
                 self.config.joint_acceleration_limit,
                 "joint_acceleration_limit",
             )
-            self._acceleration_limit = AccelerationLimit(
+            self._acceleration_limit = BrakingAccelerationLimit(
                 self.robot.model,
                 acceleration_limits,
+                position_margin=self.config.joint_position_margin,
             )
             additional_limits.append(self._acceleration_limit)
 
         self._limits = None
         if additional_limits:
             self._limits = [
-                ConfigurationLimit(self.robot.model),
+                # The braking envelope already steers away from position limits.
+                # Pink's default 0.5 gain can demand a faster stop than the hard
+                # acceleration bound allows. Keep only the full-step position bound.
+                ConfigurationLimit(
+                    self.robot.model,
+                    config_limit_gain=1.0 if self._acceleration_limit is not None else 0.5,
+                ),
                 VelocityLimit(self.robot.model),
                 *additional_limits,
             ]
@@ -289,9 +288,11 @@ class OperationalSpaceController(Controller[pin.SE3]):
         """Compute arm motion to achieve a target tool pose.
 
         Uses Pink's differential inverse kinematics solver with:
-        1. Primary task: Achieve target pose in task space (with optional masking via costs)
-        2. Secondary task (null space): Move joints toward center positions (posture task)
-        3. Tertiary task: Minimize joint velocities (damping task)
+        1. Track the target pose in task space (with optional masking via costs).
+        2. Increase arm manipulability with a lower-weight soft objective.
+        3. Minimize joint velocities and optionally changes in velocity.
+
+        These objectives are weighted together rather than strictly prioritized.
 
         Args:
             target: Target 6-DOF pose (SE3) for the end-effector.
@@ -330,6 +331,10 @@ class OperationalSpaceController(Controller[pin.SE3]):
         self.tasks[TaskName.TOOL].set_target(target)
 
         # Solve inverse kinematics using Pink
+        # Pink stores a previous displacement and interprets it using this solve's
+        # dt. Re-express the last velocity over the current period so scheduling
+        # jitter cannot change the implied velocity or defeat acceleration limits.
+        self._set_previous_velocity(self._previous_velocity, dt)
         velocity = np.zeros(self.robot.model.nv)
         try:
             solved_velocity = pink.solve_ik(
@@ -356,6 +361,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
         self._set_previous_velocity(np.zeros(self.robot.model.nv), self.config.dt)
 
     def _set_previous_velocity(self, velocity: np.ndarray, dt: float) -> None:
+        self._previous_velocity = velocity.copy()
         if self._acceleration_limit is not None:
             self._acceleration_limit.set_last_integration(velocity, dt)
         if self._low_acceleration_task is not None:
