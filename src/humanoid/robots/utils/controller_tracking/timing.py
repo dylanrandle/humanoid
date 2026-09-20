@@ -162,7 +162,13 @@ def _native_joint_sample(  # noqa: PLR0913 - preserves one complete source messa
         joint_names=joint_names,
         joint_positions_rad=positions,
         joint_velocities_rad_s=velocities,
+        joint_efforts=(
+            message.joint_efforts[velocity_indices].copy()
+            if isinstance(message, RobotState) and message.joint_efforts is not None
+            else None
+        ),
         tool_position_m=robot.get_tool_command_pose(message.joint_positions).translation.copy(),
+        effort_source=message.effort_source if isinstance(message, RobotState) else None,
     )
 
 

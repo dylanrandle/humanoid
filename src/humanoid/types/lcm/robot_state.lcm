@@ -5,7 +5,10 @@ struct robot_state_t {
     int32_t num_joints;
     int32_t num_positions;
     int32_t num_velocities;
+    string effort_source;
+    int32_t num_efforts;
     double joint_positions[num_positions];
     double joint_velocities[num_velocities];
+    double joint_efforts[num_efforts];
     double actuator_temperatures[num_joints];
 }

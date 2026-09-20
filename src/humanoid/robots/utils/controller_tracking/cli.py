@@ -11,6 +11,10 @@ import numpy as np
 from humanoid.config import ROBOT_CONFIG, ROBOT_CONFIGS
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
+from humanoid.robots.utils.controller_tracking.effort import (
+    actuator_effort_limits,
+    build_effort_traces,
+)
 from humanoid.robots.utils.controller_tracking.metadata import (
     write_run_comparison,
     write_run_metadata,
@@ -338,6 +342,8 @@ def run_controller_tracking_diagnostic(
         robot_config.name.value,
         native_joint_samples=run.native_joint_samples,
         acceleration_limits_rad_s2=acceleration_limits,
+        effort_traces=build_effort_traces(run.native_joint_samples, robot_config),
+        effort_limits=actuator_effort_limits(robot_config),
         completed=run.completed,
         failure_reason=run.failure_reason,
     )

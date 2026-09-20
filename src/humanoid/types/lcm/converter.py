@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pinocchio as pin
 
-from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
+from humanoid.types.actuator import ActuatorEffortSource, ActuatorHealth, ActuatorHealthReport
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     actuator_health_report_t,
@@ -176,6 +176,14 @@ class LCMConverter:
         lcm_state.joint_positions = state.joint_positions.tolist()
         lcm_state.joint_velocities = state.joint_velocities.tolist()
         lcm_state.actuator_temperatures = state.actuator_temperatures.tolist()
+        efforts = state.joint_efforts
+        if efforts is not None and efforts.shape != state.joint_velocities.shape:
+            raise ValueError("Joint efforts must match the joint velocity shape.")
+        lcm_state.joint_efforts = efforts.tolist() if efforts is not None else []
+        lcm_state.num_efforts = len(lcm_state.joint_efforts)
+        lcm_state.effort_source = (
+            state.effort_source.value if state.effort_source is not None else ""
+        )
 
         return lcm_state
 
@@ -192,12 +200,18 @@ class LCMConverter:
         joint_positions = np.array(lcm_state.joint_positions)
         joint_velocities = np.array(lcm_state.joint_velocities)
         actuator_temperatures = np.array(lcm_state.actuator_temperatures)
+        if lcm_state.num_efforts not in (0, lcm_state.num_velocities):
+            raise ValueError("Joint efforts must match the joint velocity shape.")
 
         return RobotState(
             timestamp=lcm_state.timestamp / 1e9,  # Convert from nanoseconds
             joint_positions=joint_positions,
             joint_velocities=joint_velocities,
+            joint_efforts=(np.array(lcm_state.joint_efforts) if lcm_state.num_efforts else None),
             actuator_temperatures=actuator_temperatures,
+            effort_source=(
+                ActuatorEffortSource(lcm_state.effort_source) if lcm_state.effort_source else None
+            ),
         )
 
     @staticmethod

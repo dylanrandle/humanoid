@@ -40,7 +40,9 @@ from humanoid.robots.utils.controller_tracking.smoothness import (
     analyze_smoothness,
     smoothness_metrics,
 )
+from humanoid.types.actuator import ActuatorEffortLimits
 from humanoid.types.controller_tracking import (
+    ActuatorEffortTrace,
     ControllerCommandTiming,
     JointSmoothnessStatistics,
     MotionTrace,
@@ -260,6 +262,8 @@ def write_native_joint_telemetry_csv(path: Path, samples: list[NativeJointSample
                 "tool_x_m",
                 "tool_y_m",
                 "tool_z_m",
+                "effort_si",
+                "effort_source",
             ]
         )
         for sample in samples:
@@ -281,6 +285,13 @@ def write_native_joint_telemetry_csv(path: Path, samples: list[NativeJointSample
                         sample.joint_positions_rad[joint_index],
                         velocity,
                         *sample.tool_position_m,
+                        (
+                            ""
+                            if sample.joint_efforts is None
+                            or not np.isfinite(sample.joint_efforts[joint_index])
+                            else sample.joint_efforts[joint_index]
+                        ),
+                        "" if sample.effort_source is None else sample.effort_source.value,
                     ]
                 )
 
@@ -372,6 +383,8 @@ def write_tracking_plots(  # noqa: PLR0913 - output and report inputs are indepe
     *,
     native_joint_samples: list[NativeJointSample] | None = None,
     acceleration_limits_rad_s2: dict[str, float] | None = None,
+    effort_traces: dict[str, ActuatorEffortTrace] | None = None,
+    effort_limits: dict[str, ActuatorEffortLimits] | None = None,
     completed: bool = True,
     failure_reason: str | None = None,
 ) -> tuple[Path, ...]:
@@ -395,6 +408,8 @@ def write_tracking_plots(  # noqa: PLR0913 - output and report inputs are indepe
                 sample for sample in (native_joint_samples or []) if sample.setting == setting.name
             ],
             acceleration_limits_rad_s2=acceleration_limits_rad_s2,
+            effort_trace=(effort_traces or {}).get(setting.name),
+            effort_limits=effort_limits or {},
             completed=completed,
             failure_reason=failure_reason,
         )
@@ -411,6 +426,8 @@ def _write_tracking_plot(  # noqa: PLR0913 - output and report inputs are indepe
     *,
     native_joint_samples: list[NativeJointSample],
     acceleration_limits_rad_s2: dict[str, float] | None,
+    effort_trace: ActuatorEffortTrace | None,
+    effort_limits: dict[str, ActuatorEffortLimits],
     completed: bool,
     failure_reason: str | None,
 ) -> None:
@@ -453,6 +470,8 @@ def _write_tracking_plot(  # noqa: PLR0913 - output and report inputs are indepe
             separator_note="Dashed lines mark the transition to the settle interval.",
             smoothness=smoothness,
             acceleration_limits_rad_s2=acceleration_limits_rad_s2,
+            effort_trace=effort_trace,
+            effort_limits=effort_limits,
         )
     else:
         content_bottom = _append_empty_tracking_phase(
@@ -531,6 +550,9 @@ def _write_svg_document(  # noqa: PLR0913 - document metadata is independent
         ".acceleration-command{fill:none;stroke:#2667d8;stroke-width:1.8}",
         ".acceleration-measured{fill:none;stroke:#e07a2d;stroke-width:1.7}",
         ".acceleration-limit{stroke:#c33;stroke-width:1;stroke-dasharray:5 4}",
+        ".effort{fill:none;stroke:#2667d8;stroke-width:1.8}",
+        ".effort-stall{stroke:#c33;stroke-width:1.5;stroke-dasharray:7 4}",
+        ".effort-rated{stroke:#b77915;stroke-width:1.5;stroke-dasharray:3 3}",
         ".spectrum{fill:none;stroke:#5b55b7;stroke-width:1.6}",
         ".separator{stroke:#8b95a6;stroke-width:1;stroke-dasharray:5 5}",
         "</style>",
@@ -561,6 +583,8 @@ def _append_joint_tracking_block(  # noqa: PLR0913 - report inputs are independe
     separator_note: str,
     smoothness: SmoothnessAnalysis | None = None,
     acceleration_limits_rad_s2: dict[str, float] | None = None,
+    effort_trace: ActuatorEffortTrace | None = None,
+    effort_limits: dict[str, ActuatorEffortLimits] | None = None,
 ) -> float:
     """Append a joint error table and position/velocity plots for one phase."""
     stats = tracking_statistics(summary_samples)
@@ -620,14 +644,133 @@ def _append_joint_tracking_block(  # noqa: PLR0913 - report inputs are independe
         minimum_span=MIN_JOINT_VELOCITY_PLOT_SPAN_RAD_S,
         include_zero=True,
     )
+    effort_bottom = _append_actuator_effort_grid(
+        elements,
+        trace=effort_trace,
+        limits=effort_limits or {},
+        heading_y=velocity_bottom + 35.0,
+    )
     if smoothness is None:
-        return velocity_bottom
+        return effort_bottom
     return _append_smoothness_block(
         elements,
         analysis=smoothness,
-        heading_y=velocity_bottom + 35.0,
+        heading_y=effort_bottom + 35.0,
         acceleration_limits_rad_s2=acceleration_limits_rad_s2 or {},
     )
+
+
+def _append_actuator_effort_grid(
+    elements: list[str],
+    *,
+    trace: ActuatorEffortTrace | None,
+    limits: dict[str, ActuatorEffortLimits],
+    heading_y: float,
+) -> float:
+    """Compare effort magnitudes with each actuator's output ratings."""
+    elements.append(
+        f'<text class="subsection-title" x="75" y="{heading_y:.2f}">Actuator effort</text>'
+    )
+    if trace is None or not len(trace.times_s) or not trace.joint_names:
+        elements.append(
+            f'<text class="section-note" x="75" y="{heading_y + 23:.2f}">'
+            "Effort data unavailable for this run.</text>"
+        )
+        return heading_y + 45.0
+    elements.append(
+        f'<text class="section-note" x="75" y="{heading_y + 23:.2f}">'
+        f"{html.escape(trace.source)} · Magnitude shown for comparison with ratings.</text>"
+    )
+    times = trace.times_s - trace.times_s[0]
+    time_bounds = _padded_bounds(times, include_zero=True)
+    plots_top = heading_y + 65.0
+    for index, name in enumerate(trace.joint_names):
+        panel = (75.0 if index % 2 == 0 else 690.0, plots_top + index // 2 * 280, 515.0, 145.0)
+        ratings = limits.get(name)
+        unit = trace.units[index]
+        if ratings is not None and ratings.unit != unit:
+            raise ValueError(f"Effort ratings and feedback units must match for {name}.")
+        values = np.abs(trace.efforts[:, index])
+        finite_indices = np.flatnonzero(np.isfinite(values))
+        references = [] if ratings is None else [("stall", "Maximum (stall)", ratings.stall)]
+        if ratings is not None and ratings.rated is not None:
+            references.append(("rated", "Rated", ratings.rated))
+        value_bounds = _padded_bounds(
+            np.concatenate((values[finite_indices], [0.0], [value for _, _, value in references])),
+            include_zero=True,
+        )
+        _append_axes(
+            elements,
+            panel,
+            time_bounds,
+            value_bounds,
+            "elapsed time (s)",
+            f"effort magnitude ({unit})",
+            name,
+        )
+        for boundary in trace.segment_boundaries_s:
+            x = _map_x(boundary - trace.times_s[0], panel, time_bounds)
+            elements.append(
+                f'<line class="separator" x1="{x:.2f}" y1="{panel[1]:.2f}" '
+                f'x2="{x:.2f}" y2="{panel[1] + panel[3]:.2f}"/>'
+            )
+        # Draw separate runs so missing feedback never becomes a line across a gap.
+        for indices in np.split(finite_indices, np.flatnonzero(np.diff(finite_indices) > 1) + 1):
+            if not len(indices):
+                continue
+            if len(indices) == 1:
+                sample = indices[0]
+                elements.append(
+                    f'<circle fill="#2667d8" r="2" '
+                    f'cx="{_map_x(float(times[sample]), panel, time_bounds):.2f}" '
+                    f'cy="{_map_y(float(values[sample]), panel, value_bounds):.2f}"/>'
+                )
+            else:
+                elements.append(
+                    _polyline(
+                        np.column_stack((times[indices], values[indices])),
+                        panel,
+                        time_bounds,
+                        value_bounds,
+                        "effort",
+                    )
+                )
+        _append_effort_references(elements, panel, value_bounds, references, unit)
+        note = "Effort data unavailable." if not len(finite_indices) else ""
+        if ratings is None:
+            note += " Effort ratings unavailable."
+        elif ratings.rated is None:
+            note += " Rated effort unavailable."
+        if note:
+            elements.append(
+                f'<text class="section-note" x="{panel[0]:.2f}" '
+                f'y="{panel[1] + panel[3] + 85:.2f}">{note.strip()}</text>'
+            )
+    return plots_top + (math.ceil(len(trace.joint_names) / 2) - 1) * 280 + 250.0
+
+
+def _append_effort_references(
+    elements: list[str],
+    panel: tuple[float, float, float, float],
+    value_bounds: tuple[float, float],
+    references: list[tuple[str, str, float]],
+    unit: str,
+) -> None:
+    """Draw rating lines and their labeled legend below one actuator plot."""
+    for index, (css_class, label, value) in enumerate(references):
+        y = _map_y(value, panel, value_bounds)
+        legend_x = panel[0] + index * 285.0
+        legend_y = panel[1] + panel[3] + 65.0
+        elements.extend(
+            [
+                f'<line class="effort-{css_class}" x1="{panel[0]:.2f}" y1="{y:.2f}" '
+                f'x2="{panel[0] + panel[2]:.2f}" y2="{y:.2f}"/>',
+                f'<line class="effort-{css_class}" x1="{legend_x:.2f}" y1="{legend_y:.2f}" '
+                f'x2="{legend_x + 25:.2f}" y2="{legend_y:.2f}"/>',
+                f'<text class="section-note" x="{legend_x + 32:.2f}" y="{legend_y + 4:.2f}">'
+                f"{label}: {value:.3g} {unit}</text>",
+            ]
+        )
 
 
 def _append_joint_curve_grid(  # noqa: PLR0913 - plot data and presentation are independent

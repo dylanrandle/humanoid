@@ -9,11 +9,11 @@ import struct
 
 class robot_state_t(object):
 
-    __slots__ = ["timestamp", "num_joints", "num_positions", "num_velocities", "joint_positions", "joint_velocities", "actuator_temperatures"]
+    __slots__ = ["timestamp", "num_joints", "num_positions", "num_velocities", "effort_source", "num_efforts", "joint_positions", "joint_velocities", "joint_efforts", "actuator_temperatures"]
 
-    __typenames__ = ["int64_t", "int32_t", "int32_t", "int32_t", "double", "double", "double"]
+    __typenames__ = ["int64_t", "int32_t", "int32_t", "int32_t", "string", "int32_t", "double", "double", "double", "double"]
 
-    __dimensions__ = [None, None, None, None, ["num_positions"], ["num_velocities"], ["num_joints"]]
+    __dimensions__ = [None, None, None, None, None, None, ["num_positions"], ["num_velocities"], ["num_efforts"], ["num_joints"]]
 
     def __init__(self):
         self.timestamp = 0
@@ -24,10 +24,16 @@ class robot_state_t(object):
         """ LCM Type: int32_t """
         self.num_velocities = 0
         """ LCM Type: int32_t """
+        self.effort_source = ""
+        """ LCM Type: string """
+        self.num_efforts = 0
+        """ LCM Type: int32_t """
         self.joint_positions = []
         """ LCM Type: double[num_positions] """
         self.joint_velocities = []
         """ LCM Type: double[num_velocities] """
+        self.joint_efforts = []
+        """ LCM Type: double[num_efforts] """
         self.actuator_temperatures = []
         """ LCM Type: double[num_joints] """
 
@@ -39,8 +45,14 @@ class robot_state_t(object):
 
     def _encode_one(self, buf):
         buf.write(struct.pack(">qiii", self.timestamp, self.num_joints, self.num_positions, self.num_velocities))
+        __effort_source_encoded = self.effort_source.encode('utf-8')
+        buf.write(struct.pack('>I', len(__effort_source_encoded)+1))
+        buf.write(__effort_source_encoded)
+        buf.write(b"\0")
+        buf.write(struct.pack(">i", self.num_efforts))
         buf.write(struct.pack('>%dd' % self.num_positions, *self.joint_positions[:self.num_positions]))
         buf.write(struct.pack('>%dd' % self.num_velocities, *self.joint_velocities[:self.num_velocities]))
+        buf.write(struct.pack('>%dd' % self.num_efforts, *self.joint_efforts[:self.num_efforts]))
         buf.write(struct.pack('>%dd' % self.num_joints, *self.actuator_temperatures[:self.num_joints]))
 
     @staticmethod
@@ -57,15 +69,19 @@ class robot_state_t(object):
     def _decode_one(buf):
         self = robot_state_t()
         self.timestamp, self.num_joints, self.num_positions, self.num_velocities = struct.unpack(">qiii", buf.read(20))
+        __effort_source_len = struct.unpack('>I', buf.read(4))[0]
+        self.effort_source = buf.read(__effort_source_len)[:-1].decode('utf-8', 'replace')
+        self.num_efforts = struct.unpack(">i", buf.read(4))[0]
         self.joint_positions = struct.unpack('>%dd' % self.num_positions, buf.read(self.num_positions * 8))
         self.joint_velocities = struct.unpack('>%dd' % self.num_velocities, buf.read(self.num_velocities * 8))
+        self.joint_efforts = struct.unpack('>%dd' % self.num_efforts, buf.read(self.num_efforts * 8))
         self.actuator_temperatures = struct.unpack('>%dd' % self.num_joints, buf.read(self.num_joints * 8))
         return self
 
     @staticmethod
     def _get_hash_recursive(parents):
         if robot_state_t in parents: return 0
-        tmphash = (0xa3aaa9aee14cb817) & 0xffffffffffffffff
+        tmphash = (0xfc643c1b79d5b24f) & 0xffffffffffffffff
         tmphash  = (((tmphash<<1)&0xffffffffffffffff) + (tmphash>>63)) & 0xffffffffffffffff
         return tmphash
     _packed_fingerprint = None

@@ -14,6 +14,7 @@ class ActuatorState:
     position: float | None = None
     velocity: float | None = None
     temperature: float | None = None
+    effort: float | None = None
 
 
 class ActuatorSystem(ABC):
@@ -130,16 +131,22 @@ class CompositeActuatorSystem(ActuatorSystem):
     def read_states(self) -> dict[str, ActuatorState]:
         states: dict[str, ActuatorState] = {}
         for controller, driver in self.drivers.items():
-            positions, velocities, temperatures = driver.read_all_feedback()
-            actuator_ids = positions.keys() | velocities.keys() | temperatures.keys()
+            feedback = driver.read_all_feedback()
+            actuator_ids = (
+                feedback.positions.keys()
+                | feedback.velocities.keys()
+                | feedback.temperatures.keys()
+                | feedback.efforts.keys()
+            )
             for actuator_id in actuator_ids:
                 joint_name = self._joint_by_address.get((controller, actuator_id))
                 if joint_name is None:
                     continue
                 states[joint_name] = ActuatorState(
-                    position=positions.get(actuator_id),
-                    velocity=velocities.get(actuator_id),
-                    temperature=temperatures.get(actuator_id),
+                    position=feedback.positions.get(actuator_id),
+                    velocity=feedback.velocities.get(actuator_id),
+                    temperature=feedback.temperatures.get(actuator_id),
+                    effort=feedback.efforts.get(actuator_id),
                 )
         return states
 

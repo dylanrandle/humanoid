@@ -33,7 +33,8 @@ from humanoid.robots.utils.controller_tracking.models import (
     FigureEightSetting,
 )
 from humanoid.robots.utils.controller_tracking.smoothness import analyze_smoothness
-from humanoid.types.controller_tracking import NativeJointSample
+from humanoid.types.actuator import ActuatorEffortLimits
+from humanoid.types.controller_tracking import ActuatorEffortTrace, NativeJointSample
 from humanoid.types.robot import CartesianVelocity
 
 EXPECTED_TIMING_COMMAND_COUNT = 4
@@ -400,6 +401,19 @@ def test_csv_and_per_setting_svg_report_are_written(tmp_path):
         samples,
         ControllerTrackingSettings(),
         "triskel",
+        effort_traces={
+            "xz_1x": ActuatorEffortTrace(
+                joint_names=("arm_1", "arm_2", "gripper_1"),
+                times_s=np.array([0.0, 1.0, 2.0]),
+                efforts=np.array([[0.1, 0.2, 0.3], [0.9, 0.1, 0.2], [0.1, 0.1, 0.1]]),
+                units=("N·m", "N·m", "N·m"),
+                source="Current-based torque estimate",
+            )
+        },
+        effort_limits={
+            name: ActuatorEffortLimits(stall=2.942, rated=0.981)
+            for name in ("arm_1", "arm_2", "gripper_1")
+        },
     )
 
     with csv_path.open(newline="", encoding="utf-8") as source:
@@ -431,6 +445,10 @@ def test_csv_and_per_setting_svg_report_are_written(tmp_path):
     assert "Measured FK vs reference (end-to-end)" in svg
     assert "Cartesian tracking error summary" in svg
     assert "Joint tracking error" in svg
+    assert "Actuator effort" in svg
+    assert "Current-based torque estimate" in svg
+    assert "Maximum (stall): 2.94 N·m" in svg
+    assert "Rated: 0.981 N·m" in svg
     assert "Cartesian velocity feedforward" in svg
     assert svg.index("Cartesian path comparisons") < svg.index("Joint tracking error")
 

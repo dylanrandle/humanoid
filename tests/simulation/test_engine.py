@@ -10,6 +10,7 @@ from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.robot.so101 import SO101_CONFIG
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.simulation.engine import NativeMujocoEngine
+from humanoid.types.actuator import ActuatorEffortSource
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import RobotConfig, RobotJointCommand
 
@@ -30,6 +31,36 @@ def test_reset_publishes_the_configured_home_state(robot_config: RobotConfig):
     assert state.joint_positions == pytest.approx(robot_config.homing_presets[HomingPreset.HOME])
     assert state.joint_velocities == pytest.approx(np.zeros(engine.robot.model.nv))
     assert state.actuator_temperatures.shape == (len(engine.binding.joints),)
+    assert state.effort_source is ActuatorEffortSource.SIMULATION
+    assert state.joint_efforts is not None
+    assert state.joint_efforts.shape == (engine.robot.model.nv,)
+    for joint in engine.binding.joints:
+        joint_index = engine.robot.joint_name_to_idx(joint.name)
+        effort_index = engine.robot.joint_idx_to_velocity_idx(joint_index)
+        assert state.joint_efforts[effort_index] == pytest.approx(
+            engine.data.qfrc_actuator[joint.qvel_address]
+        )
+
+
+@pytest.mark.parametrize("offset", [-0.1, 0.1])
+def test_position_command_effort_preserves_direction(offset):
+    engine = NativeMujocoEngine(SO101_CONFIG)
+    joint = engine.binding.joints[0]
+    joint_index = engine.robot.joint_name_to_idx(joint.name)
+    position_index = engine.robot.joint_idx_to_position_idx(joint_index)
+    effort_index = engine.robot.joint_idx_to_velocity_idx(joint_index)
+    target = SO101_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    target[position_index] += offset
+
+    engine.apply_joint_command(RobotJointCommand(timestamp=0.0, joint_positions=target))
+    mujoco.mj_forward(engine.model, engine.data)
+    state = engine.read_robot_state(timestamp=TEST_TIMESTAMP)
+
+    assert state.joint_efforts is not None
+    assert state.joint_efforts[effort_index] * offset > 0.0
+    assert state.joint_efforts[effort_index] == pytest.approx(
+        engine.data.qfrc_actuator[joint.qvel_address]
+    )
 
 
 @pytest.mark.parametrize("robot_config", ROBOT_CONFIGS.values(), ids=lambda config: config.name)

@@ -25,6 +25,7 @@ from humanoid.state_estimation.root.factory import create_root_state_estimator
 from humanoid.types.actuator import (
     ActuatorConfig,
     ActuatorControlMode,
+    ActuatorEffortSource,
     ActuatorHealth,
     ActuatorHealthReport,
 )
@@ -218,6 +219,13 @@ class RobotDriverNode(Node):
 
         q = self.robot.joint_positions_to_q(joint_idx_to_position)
         v = self.robot.joint_velocities_to_v(joint_idx_to_velocity)
+        efforts = np.full(self.robot.model.nv, np.nan)
+        for joint_name, state in actuator_states.items():
+            if state.effort is not None:
+                velocity_index = self.robot.joint_idx_to_velocity_idx(
+                    self.joint_indices[joint_name]
+                )
+                efforts[velocity_index] = state.effort
         if (
             self.root_state_estimator is not None
             and self._root_q_slice is not None
@@ -231,7 +239,9 @@ class RobotDriverNode(Node):
             timestamp=time.perf_counter(),
             joint_positions=q,
             joint_velocities=v,
+            joint_efforts=efforts,
             actuator_temperatures=actuator_temperatures,
+            effort_source=ActuatorEffortSource.CURRENT_ESTIMATE,
         )
         logger.debug("Measured state: %s", robot_state)
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)

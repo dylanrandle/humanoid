@@ -16,6 +16,7 @@ from humanoid.state_estimation.root.wheel_dead_reckoning import (
 )
 from humanoid.types.actuator import (
     ActuatorControlMode,
+    ActuatorEffortSource,
     ActuatorHealthReport,
 )
 from humanoid.types.homing import HomingPreset
@@ -125,6 +126,7 @@ def _make_driver(
         mock_robot.model.lowerPositionLimit = np.full(number_of_joints, -3.0)
         mock_robot.model.upperPositionLimit = np.full(number_of_joints, 3.0)
         mock_robot.model.velocityLimit = velocity_limit
+        mock_robot.model.nv = len(velocity_limit)
         mock_robot.joint_name_to_idx.side_effect = joint_names.index
         mock_robot.joint_idx_to_position_idx.side_effect = lambda index: index
         mock_robot.joint_idx_to_velocity_idx.side_effect = lambda index: index
@@ -506,8 +508,9 @@ def test_mobile_driver_uses_root_state_estimator():
         joint_name: ActuatorState(
             position=0.0,
             velocity=measured_wheel_velocities.get(joint_name, 0.0),
+            effort=-0.1 * index if index % 2 else None,
         )
-        for joint_name in driver.actuator_joint_names
+        for index, joint_name in enumerate(driver.actuator_joint_names)
     }
 
     driver.publish()
@@ -520,6 +523,14 @@ def test_mobile_driver_uses_root_state_estimator():
         )
     assert measured_q.shape == (driver.robot.model.nq,)
     published = driver.publisher.publish.call_args.args[0]  # ty: ignore[unresolved-attribute]
+    assert published.effort_source is ActuatorEffortSource.CURRENT_ESTIMATE
+    assert np.isnan(published.joint_efforts[driver._root_v_slice]).all()
+    for name, state in actuator_system.states.items():
+        effort_index = driver.robot.joint_idx_to_velocity_idx(driver.joint_indices[name])
+        if state.effort is None:
+            assert np.isnan(published.joint_efforts[effort_index])
+        else:
+            assert published.joint_efforts[effort_index] == state.effort
     np.testing.assert_allclose(
         published.joint_positions[driver._root_q_slice], estimated_root.position
     )

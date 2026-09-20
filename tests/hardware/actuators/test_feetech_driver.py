@@ -1,9 +1,12 @@
+from dataclasses import replace
 from unittest.mock import Mock, call, patch
 
 import numpy as np
 import pytest
+from scservo_sdk import sms_sts
 from vassar_feetech_servo_sdk import ServoController
 
+from humanoid.config.actuator import STS3215_12V_CURRENT_CALIBRATION
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACCELERATION_MAX,
     FEETECH_ACCELERATION_MIN,
@@ -18,10 +21,12 @@ from humanoid.hardware.actuators.feetech.driver import (
     ADDR_I_GAIN,
     ADDR_OPERATING_MODE,
     ADDR_P_GAIN,
+    ADDR_PRESENT_CURRENT,
     ADDR_PRESENT_POSITION,
     ADDR_PRESENT_SPEED,
     ADDR_TEMPERATURE,
     ADDR_TORQUE_ENABLE,
+    CURRENT_DATA_LENGTH,
     POSITION_DATA_LENGTH,
     PRESENT_FEEDBACK_DATA_LENGTH,
     SPEED_DATA_LENGTH,
@@ -383,8 +388,15 @@ def test_velocity_reads_use_sdk_signed_value(raw_velocity, inverted, expected_un
     assert driver.read_velocity(1) == pytest.approx(expected_units * SPEED_UNIT_RAD_S)
 
 
-def test_feedback_uses_one_group_read_for_all_actuators_and_fields():
-    driver = _driver([_actuator(1), _actuator(2, inverted=True)])
+@pytest.mark.parametrize("include_current", [False, True])
+def test_feedback_uses_one_group_read_for_all_actuators_and_fields(include_current):
+    calibration = STS3215_12V_CURRENT_CALIBRATION if include_current else None
+    driver = _driver(
+        [
+            replace(_actuator(1), current_calibration=calibration),
+            replace(_actuator(2, inverted=True), current_calibration=calibration),
+        ]
+    )
     driver.packet_handler = Mock()
     driver.packet_handler.scs_tohost.side_effect = lambda value, bit: (
         -(value & ~(1 << bit)) if value & (1 << bit) else value
@@ -396,6 +408,8 @@ def test_feedback_uses_one_group_read_for_all_actuators_and_fields():
         (2, ADDR_PRESENT_POSITION, POSITION_DATA_LENGTH): 1024,
         (2, ADDR_PRESENT_SPEED, SPEED_DATA_LENGTH): 0x8002,
         (2, ADDR_TEMPERATURE, TEMPERATURE_DATA_LENGTH): 32,
+        (1, ADDR_PRESENT_CURRENT, CURRENT_DATA_LENGTH): 100,
+        (2, ADDR_PRESENT_CURRENT, CURRENT_DATA_LENGTH): 200,
     }
     group_read = Mock()
     group_read.addParam.return_value = True
@@ -409,18 +423,22 @@ def test_feedback_uses_one_group_read_for_all_actuators_and_fields():
         "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
         return_value=group_read,
     ) as group_read_type:
-        positions, velocities, temperatures = driver.read_all_feedback()
+        feedback = driver.read_all_feedback()
+        positions = feedback.positions
+        velocities = feedback.velocities
+        temperatures = feedback.temperatures
 
+    expected_data_length = 15 if include_current else PRESENT_FEEDBACK_DATA_LENGTH
     group_read_type.assert_called_once_with(
         driver.packet_handler,
         ADDR_PRESENT_POSITION,
-        PRESENT_FEEDBACK_DATA_LENGTH,
+        expected_data_length,
     )
     assert group_read.addParam.call_args_list == [call(1), call(2)]
     assert group_read.txRxPacket.call_count == 1
     assert group_read.isAvailable.call_args_list == [
-        call(1, ADDR_PRESENT_POSITION, PRESENT_FEEDBACK_DATA_LENGTH),
-        call(2, ADDR_PRESENT_POSITION, PRESENT_FEEDBACK_DATA_LENGTH),
+        call(1, ADDR_PRESENT_POSITION, expected_data_length),
+        call(2, ADDR_PRESENT_POSITION, expected_data_length),
     ]
     assert positions == {
         1: pytest.approx(driver.position_to_angle(MID_POSITION, 1)),
@@ -431,8 +449,70 @@ def test_feedback_uses_one_group_read_for_all_actuators_and_fields():
         2: pytest.approx(2 * SPEED_UNIT_RAD_S),
     }
     assert temperatures == {1: 31.0, 2: 32.0}
+    assert feedback.efforts == (
+        {1: pytest.approx(0.701175475), 2: pytest.approx(-1.40235095)} if include_current else {}
+    )
     assert driver._last_positions == positions
     group_read.clearParam.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("raw_current", "inverted", "expected_effort"),
+    [
+        (0x0000, False, 0.0),
+        (0x8000, False, 0.0),
+        (0x0064, False, 0.701175475),
+        (0x8064, False, -0.701175475),
+        (0x0000, True, 0.0),
+        (0x8000, True, 0.0),
+        (0x0064, True, -0.701175475),
+        (0x8064, True, 0.701175475),
+    ],
+)
+def test_effort_feedback_decodes_signed_current_in_joint_coordinates(
+    raw_current, inverted, expected_effort
+):
+    driver = _driver(
+        [
+            replace(
+                _actuator(inverted=inverted),
+                current_calibration=STS3215_12V_CURRENT_CALIBRATION,
+            )
+        ]
+    )
+    driver.packet_handler = sms_sts(Mock())
+    with patch.object(
+        driver,
+        "_sync_read",
+        return_value={1: (MID_POSITION, 0, 31, raw_current)},
+    ):
+        feedback = driver.read_all_feedback()
+
+    assert feedback.efforts == {1: pytest.approx(expected_effort)}
+
+
+def test_effort_feedback_omits_uncalibrated_and_missing_actuators():
+    driver = _driver(
+        [
+            replace(_actuator(1), current_calibration=STS3215_12V_CURRENT_CALIBRATION),
+            _actuator(2),
+        ]
+    )
+    driver.packet_handler = sms_sts(Mock())
+    with patch.object(
+        driver,
+        "_sync_read",
+        return_value={
+            1: (MID_POSITION, 0, 31, 100),
+            2: (MID_POSITION, 0, 32, 200),
+        },
+    ):
+        first = driver.read_all_feedback()
+    with patch.object(driver, "_sync_read", return_value={2: (MID_POSITION, 0, 32, 200)}):
+        missing = driver.read_all_feedback()
+
+    assert first.efforts == {1: pytest.approx(0.701175475)}
+    assert missing.efforts == {}
 
 
 @pytest.mark.parametrize(
@@ -517,7 +597,10 @@ def test_feedback_group_read_recovers_from_transient_communication_failure():
         "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
         return_value=group_read,
     ) as group_read_type:
-        positions, velocities, temperatures = driver.read_all_feedback()
+        feedback = driver.read_all_feedback()
+        positions = feedback.positions
+        velocities = feedback.velocities
+        temperatures = feedback.temperatures
 
     assert group_read_type.call_count == EXPECTED_TRANSIENT_FEEDBACK_READ_ATTEMPTS
     assert positions == {1: pytest.approx(driver.position_to_angle(MID_POSITION, 1))}
@@ -544,7 +627,10 @@ def test_feedback_group_read_recovers_from_transient_missing_response():
         "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
         side_effect=[missing_read, recovered_read],
     ) as group_read_type:
-        positions, velocities, temperatures = driver.read_all_feedback()
+        feedback = driver.read_all_feedback()
+        positions = feedback.positions
+        velocities = feedback.velocities
+        temperatures = feedback.temperatures
 
     assert group_read_type.call_count == EXPECTED_TRANSIENT_FEEDBACK_READ_ATTEMPTS
     assert positions == {1: pytest.approx(driver.position_to_angle(MID_POSITION, 1))}
@@ -567,7 +653,10 @@ def test_feedback_group_read_reports_missing_response_after_retries_are_exhauste
         "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
         return_value=group_read,
     ) as group_read_type:
-        positions, velocities, temperatures = driver.read_all_feedback()
+        feedback = driver.read_all_feedback()
+        positions = feedback.positions
+        velocities = feedback.velocities
+        temperatures = feedback.temperatures
 
     assert group_read_type.call_count == EXPECTED_FEEDBACK_READ_ATTEMPTS
     assert positions == {}
@@ -589,7 +678,10 @@ def test_feedback_group_read_retains_motor_reported_issue():
         "humanoid.hardware.actuators.feetech.driver.scs.GroupSyncRead",
         return_value=group_read,
     ) as group_read_type:
-        positions, velocities, temperatures = driver.read_all_feedback()
+        feedback = driver.read_all_feedback()
+        positions = feedback.positions
+        velocities = feedback.velocities
+        temperatures = feedback.temperatures
 
     assert positions == {}
     assert velocities == {}

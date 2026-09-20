@@ -19,7 +19,7 @@ from humanoid.hardware.actuators.feetech.config import (
     validate_feetech_acceleration,
 )
 from humanoid.logger import get_logger
-from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.actuator import ActuatorControlMode, ActuatorFeedback
 
 logger = get_logger(__name__)
 
@@ -29,6 +29,7 @@ POS_MID = (POS_MAX + POS_MIN) / 2
 ADDR_TEMPERATURE = 63
 ADDR_PRESENT_POSITION = 56
 ADDR_PRESENT_SPEED = 58
+ADDR_PRESENT_CURRENT = 69
 ADDR_GOAL_POSITION = 42
 ADDR_GOAL_SPEED = 46
 ADDR_OPERATING_MODE = 33
@@ -55,6 +56,7 @@ POSITION_DATA_LENGTH = 2
 SPEED_DATA_LENGTH = 2
 TEMPERATURE_DATA_LENGTH = 1
 PRESENT_FEEDBACK_DATA_LENGTH = 8
+CURRENT_DATA_LENGTH = 2
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -569,18 +571,23 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             for actuator_id, values in raw_velocities.items()
         }
 
-    def read_all_feedback(
-        self,
-    ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+    def read_all_feedback(self) -> ActuatorFeedback:
         """Read every actuator's present-state register block in one transaction."""
+        fields = (
+            (ADDR_PRESENT_POSITION, POSITION_DATA_LENGTH),
+            (ADDR_PRESENT_SPEED, SPEED_DATA_LENGTH),
+            (ADDR_TEMPERATURE, TEMPERATURE_DATA_LENGTH),
+        )
+        data_length = PRESENT_FEEDBACK_DATA_LENGTH
+        if any(
+            actuator.current_calibration is not None for actuator in self.actuator_configs.values()
+        ):
+            fields = (*fields, (ADDR_PRESENT_CURRENT, CURRENT_DATA_LENGTH))
+            data_length = ADDR_PRESENT_CURRENT + CURRENT_DATA_LENGTH - ADDR_PRESENT_POSITION
         raw_feedback = self._sync_read(
             ADDR_PRESENT_POSITION,
-            PRESENT_FEEDBACK_DATA_LENGTH,
-            (
-                (ADDR_PRESENT_POSITION, POSITION_DATA_LENGTH),
-                (ADDR_PRESENT_SPEED, SPEED_DATA_LENGTH),
-                (ADDR_TEMPERATURE, TEMPERATURE_DATA_LENGTH),
-            ),
+            data_length,
+            fields,
             label="feedback",
         )
         positions = {
@@ -595,7 +602,23 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         temperatures = {
             actuator_id: float(values[2]) for actuator_id, values in raw_feedback.items()
         }
-        return positions, velocities, temperatures
+        efforts = {}
+        for actuator_id, values in raw_feedback.items():
+            actuator = self.actuator_configs[actuator_id]
+            calibration = actuator.current_calibration
+            if calibration is not None:
+                assert self.packet_handler, "Not connected"
+                signed_current = self.packet_handler.scs_tohost(values[3], 15)
+                effort = (
+                    signed_current * calibration.amperes_per_unit * calibration.effort_per_ampere
+                )
+                efforts[actuator_id] = -effort if actuator.inverted else effort
+        return ActuatorFeedback(
+            positions=positions,
+            velocities=velocities,
+            temperatures=temperatures,
+            efforts=efforts,
+        )
 
     def health_issues(self) -> dict[int, str]:
         """Return the latest read or command issues keyed by actuator ID."""

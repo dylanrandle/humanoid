@@ -7,6 +7,7 @@ from enum import StrEnum
 from humanoid.types.actuator import (
     ActuatorConfig,
     ActuatorControllerConfig,
+    ActuatorCurrentCalibration,
 )
 
 # The register uses 8.7 degrees/s^2 per unit. A conservative value of 15
@@ -105,6 +106,7 @@ class FeetechActuatorConfig(ActuatorConfig):
     max_position_velocity: float = DEFAULT_MAX_POSITION_VELOCITY
     position_tracking_error_gain: float = DEFAULT_POSITION_TRACKING_ERROR_GAIN
     position_pid: FeetechPIDGains | None = None
+    current_calibration: ActuatorCurrentCalibration | None = None
 
     def __post_init__(self) -> None:
         if not FEETECH_ACTUATOR_ID_MIN <= self.actuator_id <= FEETECH_ACTUATOR_ID_MAX:

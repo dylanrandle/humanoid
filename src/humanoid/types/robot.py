@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 import numpy as np
@@ -7,7 +7,7 @@ import pinocchio as pin
 
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.state_estimation.config import RobotStateEstimationConfig
-from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.actuator import ActuatorControlMode, ActuatorEffortSource
 from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 
@@ -143,7 +143,10 @@ class RobotState:
     timestamp: float
     joint_positions: np.ndarray
     joint_velocities: np.ndarray
+    # Signed SI efforts, indexed and oriented like joint_velocities; NaN means unavailable.
+    joint_efforts: np.ndarray | None = field(default=None, kw_only=True)
     actuator_temperatures: np.ndarray
+    effort_source: ActuatorEffortSource | None = None
 
 
 @dataclass

@@ -2,6 +2,8 @@
 
 from abc import ABC, abstractmethod
 
+from humanoid.types.actuator import ActuatorFeedback
+
 
 class ActuatorDriver(ABC):
     """Driver for a homogeneous set of actuators on one controller."""
@@ -57,18 +59,16 @@ class ActuatorDriver(ABC):
     def read_all_velocities(self) -> dict[int, float]:
         """Read velocities in rad/s, keyed by actuator ID."""
 
-    def read_all_feedback(
-        self,
-    ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+    def read_all_feedback(self) -> ActuatorFeedback:
         """Read position, velocity, and temperature feedback.
 
         Drivers can override this method when their transport supports reading
         multiple feedback fields in one transaction.
         """
-        return (
-            self.read_all_positions(),
-            self.read_all_velocities(),
-            self.read_all_temperatures(),
+        return ActuatorFeedback(
+            positions=self.read_all_positions(),
+            velocities=self.read_all_velocities(),
+            temperatures=self.read_all_temperatures(),
         )
 
     def health_issues(self) -> dict[int, str]:

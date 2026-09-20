@@ -2,6 +2,10 @@
 
 import numpy as np
 
+from humanoid.config.actuator import (
+    STS3215_12V_CURRENT_CALIBRATION,
+    STS3215_12V_EFFORT_LIMITS,
+)
 from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
@@ -117,6 +121,8 @@ ACTUATOR_CONFIGS = {
             actuator_id=actuator_id,
             max_position_velocity=MAX_POSITION_VELOCITY_RAD_S,
             position_pid=POSITION_PID_GAINS_BY_ACTUATOR_ID[actuator_id],
+            effort_limits=STS3215_12V_EFFORT_LIMITS,
+            current_calibration=STS3215_12V_CURRENT_CALIBRATION,
         )
         for actuator_id, joint_id in enumerate(JOINT_IDS, start=1)
     },
@@ -126,6 +132,8 @@ ACTUATOR_CONFIGS = {
         inverted=True,
         max_position_velocity=MAX_POSITION_VELOCITY_RAD_S,
         position_pid=POSITION_PID_GAINS_BY_ACTUATOR_ID[8],
+        effort_limits=STS3215_12V_EFFORT_LIMITS,
+        current_calibration=STS3215_12V_CURRENT_CALIBRATION,
     ),
 }
 HARDWARE_CONFIG = RobotHardwareConfig(

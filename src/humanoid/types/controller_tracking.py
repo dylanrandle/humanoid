@@ -6,12 +6,37 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
+from humanoid.types.actuator import ActuatorEffortSource, ActuatorEffortUnit
+
 ControllerTrackingSegment = Literal[
     "figure_eight",
     "figure_eight_settle",
 ]
 JointCommandStream = Literal["controller", "robot"]
 JointTelemetryStream = Literal["controller", "robot", "state"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ActuatorEffortTrace:
+    """One diagnostic setting's signed effort samples in joint order and SI units."""
+
+    joint_names: tuple[str, ...]
+    times_s: NDArray[np.float64]
+    efforts: NDArray[np.float64]
+    units: tuple[ActuatorEffortUnit, ...]
+    source: str
+    segment_boundaries_s: tuple[float, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.times_s.ndim != 1 or self.efforts.shape != (
+            len(self.times_s),
+            len(self.joint_names),
+        ):
+            raise ValueError("Effort values must match the timestamps and joint names.")
+        if len(self.units) != len(self.joint_names):
+            raise ValueError("Effort units must match the joint names.")
+        if not np.isfinite(self.times_s).all() or np.any(np.diff(self.times_s) < 0.0):
+            raise ValueError("Effort timestamps must be finite and ordered.")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,7 +64,9 @@ class NativeJointSample:
     joint_names: tuple[str, ...]
     joint_positions_rad: NDArray[np.float64]
     joint_velocities_rad_s: NDArray[np.float64] | None
+    joint_efforts: NDArray[np.float64] | None = None
     tool_position_m: NDArray[np.float64]
+    effort_source: ActuatorEffortSource | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

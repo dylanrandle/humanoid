@@ -15,7 +15,7 @@ from humanoid.simulation.binding import (
     resolve_mujoco_robot_binding,
 )
 from humanoid.simulation.model import build_mujoco_spec
-from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.actuator import ActuatorControlMode, ActuatorEffortSource
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     NormalizedRobotJointCommand,
@@ -130,10 +130,13 @@ class NativeMujocoEngine:
     def read_robot_state(self, timestamp: float) -> RobotState:
         joint_idx_to_position: dict[int, float] = {}
         joint_idx_to_velocity: dict[int, float] = {}
+        efforts = np.full(self.robot.model.nv, np.nan)
         for joint in self.binding.joints:
             robot_joint_idx = self.robot.joint_name_to_idx(joint.name)
             joint_idx_to_position[robot_joint_idx] = float(self.data.qpos[joint.qpos_address])
             joint_idx_to_velocity[robot_joint_idx] = float(self.data.qvel[joint.qvel_address])
+            velocity_index = self.robot.joint_idx_to_velocity_idx(robot_joint_idx)
+            efforts[velocity_index] = float(self.data.qfrc_actuator[joint.qvel_address])
 
         q = self.robot.joint_positions_to_q(joint_idx_to_position)
         v = self.robot.joint_velocities_to_v(joint_idx_to_velocity)
@@ -156,8 +159,10 @@ class NativeMujocoEngine:
             timestamp=timestamp,
             joint_positions=q,
             joint_velocities=v,
+            joint_efforts=efforts,
             actuator_temperatures=np.full(
                 len(self.binding.joints),
                 SIMULATED_ACTUATOR_TEMPERATURE,
             ),
+            effort_source=ActuatorEffortSource.SIMULATION,
         )

@@ -1,7 +1,8 @@
 import numpy as np
 import pinocchio as pin
+import pytest
 
-from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
+from humanoid.types.actuator import ActuatorEffortSource, ActuatorHealth, ActuatorHealthReport
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.node import NodeRateSample
 from humanoid.types.robot import (
@@ -151,14 +152,20 @@ def test_robot_state_conversion():
     np.testing.assert_allclose(state_recovered.actuator_temperatures, temps)
 
 
-def test_robot_state_encode_decode():
+@pytest.mark.parametrize("efforts", [None, np.array([0.0, -0.25, np.nan, 3.5])])
+def test_robot_state_encode_decode(efforts):
     """RobotState survives a full binary encode/decode cycle with distinct sizes."""
     q = np.array([1.0, 0.0, 1.0, 2.0, 3.0])  # nq=5
     v = np.array([0.1, 0.2, 0.3, 0.4])  # nv=4
     temps = np.array([30.0, 31.0, 32.0])  # n_joints=3
 
     state = RobotState(
-        timestamp=0.5, joint_positions=q, joint_velocities=v, actuator_temperatures=temps
+        timestamp=0.5,
+        joint_positions=q,
+        joint_velocities=v,
+        joint_efforts=efforts,
+        actuator_temperatures=temps,
+        effort_source=ActuatorEffortSource.CURRENT_ESTIMATE if efforts is not None else None,
     )
     lcm_state = LCMConverter.robot_state_to_lcm(state)
 
@@ -167,6 +174,12 @@ def test_robot_state_encode_decode():
     np.testing.assert_allclose(recovered.joint_positions, q)
     np.testing.assert_allclose(recovered.joint_velocities, v)
     np.testing.assert_allclose(recovered.actuator_temperatures, temps)
+    assert recovered.effort_source == state.effort_source
+    if efforts is None:
+        assert recovered.joint_efforts is None
+    else:
+        assert recovered.joint_efforts is not None
+        np.testing.assert_allclose(recovered.joint_efforts, efforts)
 
 
 def test_robot_tool_command_conversion():
