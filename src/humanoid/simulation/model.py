@@ -11,8 +11,10 @@ import numpy as np
 
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.robots.base import Robot
+from humanoid.simulation.robots.triskel import configure_triskel_gripper
 from humanoid.types.actuator import ActuatorControlMode
-from humanoid.types.simulation import MujocoSimulationConfig
+from humanoid.types.robot import RobotName
+from humanoid.types.simulation import MujocoIntegrator, MujocoSimulationConfig
 
 ROOT_X_JOINT = "simulation_root_x"
 ROOT_Y_JOINT = "simulation_root_y"
@@ -20,6 +22,7 @@ ROOT_YAW_JOINT = "simulation_root_yaw"
 ROOT_JOINT_NAMES = (ROOT_X_JOINT, ROOT_Y_JOINT, ROOT_YAW_JOINT)
 
 _PACKAGE_URI_PATTERN = re.compile(r"package://([^/]+)/([^\"']+)")
+_OBJ_GROUP_LINE = re.compile(r"^[ \t]*[og](?:[ \t].*)?$", re.MULTILINE)
 _ROBOT_CONTACT_TYPE = 1
 _EXTERNAL_CONTACT_TYPE = 2
 
@@ -40,12 +43,21 @@ def build_mujoco_spec(
     root_link_name = _find_root_link_name(urdf_xml)
     resolved_xml = _resolve_package_uris(urdf_xml, robot.urdf_path)
     spec = mujoco.MjSpec.from_string(resolved_xml)
+    _merge_obj_groups(spec)
 
+    # URDF defaults to discarding non-contact geometry at compilation. The
+    # original finger meshes become visual-only when we add their contact pads.
+    spec.compiler.discardvisual = False
     spec.compiler.boundmass = config.minimum_body_mass
     spec.compiler.boundinertia = config.minimum_body_inertia
     spec.compiler.balanceinertia = True
     spec.option.timestep = config.physics_timestep
-    spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+    spec.option.integrator = {
+        MujocoIntegrator.EULER: mujoco.mjtIntegrator.mjINT_EULER,
+        MujocoIntegrator.RK4: mujoco.mjtIntegrator.mjINT_RK4,
+        MujocoIntegrator.IMPLICIT: mujoco.mjtIntegrator.mjINT_IMPLICIT,
+        MujocoIntegrator.IMPLICIT_FAST: mujoco.mjtIntegrator.mjINT_IMPLICITFAST,
+    }[config.integrator]
 
     # Some generated OBJ/STL meshes are open shells. MuJoCo can still compute a
     # physically useful inertia from their surface instead of rejecting them as
@@ -64,7 +76,24 @@ def build_mujoco_spec(
         _add_ideal_planar_root(spec, root_link_name, robot, config)
     _add_robot_actuators(spec, robot, config)
     _add_mimic_constraints(spec, urdf_xml)
+    if robot.config.name is RobotName.TRISKEL:
+        gripper = robot.config.gripper
+        configure_triskel_gripper(spec, urdf_xml, gripper.simulation if gripper else None)
     return spec
+
+
+def _merge_obj_groups(spec: mujoco.MjSpec) -> None:
+    """Keep every OBJ surface in MuJoCo's single-shape mesh importer.
+
+    CAD exports split one link into many OBJ objects/groups. MuJoCo 3.10 loads
+    all vertices but only the first shape's faces. Remove those boundaries in
+    in-memory assets while retaining vertex/normal/UV indices and source files.
+    Absolute asset keys avoid collisions between identically named robot files.
+    """
+    for mesh in spec.meshes:
+        path = Path(mesh.file)
+        if path.suffix.lower() == ".obj":
+            spec.assets[str(path)] = _OBJ_GROUP_LINE.sub("", path.read_text()).encode()
 
 
 def _resolve_package_uris(urdf_xml: str, urdf_path: Path) -> str:

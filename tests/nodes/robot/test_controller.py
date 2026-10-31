@@ -6,7 +6,7 @@ import pinocchio as pin
 import pytest
 
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
-from humanoid.constants import Topic
+from humanoid.constants import RUNTIME_ENVIRONMENT_VARIABLE, Topic
 from humanoid.controllers.operational_space import ControlResult
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.types.actuator import (
@@ -14,6 +14,7 @@ from humanoid.types.actuator import (
 )
 from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode, OrchestratorMode
+from humanoid.types.process import Runtime
 from humanoid.types.robot import (
     CartesianVelocity,
     RobotBaseCommand,
@@ -486,6 +487,10 @@ class TestActiveMode:
         tool_cmd = _make_tool_cmd(gripper=gripper)
         arm_result = active_mobile_controller.arm_controller.compute_control.return_value
         osc_gripper_positions = []
+        state = _make_state(
+            active_mobile_controller.robot.model.nq, active_mobile_controller.robot.model.nv
+        )
+        state.joint_positions[-1] = 0.3  # Contact keeps the jaws short of the target.
 
         def compute_arm_control(tool_pose, *, dt=None):
             state = active_mobile_controller.arm_controller.update_state.call_args.args[0]
@@ -495,6 +500,8 @@ class TestActiveMode:
         active_mobile_controller.arm_controller.compute_control.side_effect = compute_arm_control
 
         def receive(topic, timeout=0):
+            if topic == Topic.ROBOT_STATE:
+                return state
             if topic == Topic.ROBOT_TOOL_COMMAND:
                 return tool_cmd
             return None
@@ -527,6 +534,84 @@ def test_measured_control_timestep_is_used_and_bounded():
     assert controller._control_timestep() == pytest.approx(nominal_dt * 2.0)
     now += nominal_dt * 0.25
     assert controller._control_timestep() == pytest.approx(nominal_dt * 0.5)
+
+
+@pytest.mark.parametrize("runtime", list(Runtime))
+@pytest.mark.parametrize("mode", [Mode.OCULUS, Mode.KEYBOARD, Mode.SYSTEM])
+@pytest.mark.parametrize("axis", [0, 2], ids=["translation", "yaw"])
+def test_active_arm_and_base_control_is_open_loop(monkeypatch, runtime, mode, axis):
+    """Measured disturbances must not replace the integrated arm/base commands.
+
+    Exercise the real controllers with mocked transport in every active mode
+    and runtime. Alternating measured errors must neither reverse the base
+    command nor jump the arm target to the disturbed measured configuration.
+    """
+    monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, runtime)
+    now = 0.0
+    with (
+        patch("humanoid.nodes.robot.controller.Subscriber"),
+        patch("humanoid.nodes.robot.controller.Publisher"),
+    ):
+        node = RobotControllerNode(TRISKEL_CONFIG, clock=lambda: now)
+    robot = node.robot
+    base = TRISKEL_CONFIG.base
+    root_v = robot.get_root_v_slice()
+    assert base is not None and root_v is not None
+    home = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    arm_q = robot.get_joint_position_indices(robot.get_arm_joint_indices())
+    arm_config = TRISKEL_CONFIG.operational_space_config
+    assert arm_config is not None and arm_config.joint_velocity_limit is not None
+    previous_arm_command = home[arm_q].copy()
+    state = _make_state(robot.model.nq, robot.model.nv)
+    state.joint_positions = home.copy()
+    base_command = None
+
+    def receive(topic, timeout=0):
+        if topic == Topic.ROBOT_STATE:
+            return state
+        if topic == Topic.ROBOT_BASE_COMMAND:
+            return base_command
+        return None
+
+    subscriber, publisher = cast(MagicMock, node.subscriber), cast(MagicMock, node.publisher)
+    subscriber.receive.side_effect = receive
+    node.step()  # Idle initializes all controllers from measurement.
+    node.current_mode = mode
+    speed_limit = base.velocity_limits.linear if axis == 0 else base.velocity_limits.angular
+    desired_speed = 0.1 * speed_limit
+    displacement = np.zeros(robot.model.nv)
+    for index in range(6):
+        now += TRISKEL_CONTROLLER_DT
+        displacement[root_v.start + axis] = (index + 1) * desired_speed * TRISKEL_CONTROLLER_DT
+        target_q = pin.integrate(robot.model, home, displacement)
+        target = robot.get_base_pose(target_q)
+        assert target is not None
+        base_command = RobotBaseCommand(timestamp=now, pose=target.copy())
+        direction = 1 if index % 2 == 0 else -1
+        displacement[root_v.start + axis] += direction * speed_limit * TRISKEL_CONTROLLER_DT * 2
+        state.joint_positions = pin.integrate(robot.model, home, displacement)
+        state.joint_positions[arm_q] += direction * 0.2
+        node.step()
+        command = publisher.publish.call_args.args[0]
+        assert command.joint_velocities[root_v.start + axis] == pytest.approx(desired_speed)
+        assert np.all(
+            np.abs(command.joint_positions[arm_q] - previous_arm_command)
+            <= arm_config.joint_velocity_limit * TRISKEL_CONTROLLER_DT + 1e-12
+        )
+        previous_arm_command = command.joint_positions[arm_q].copy()
+
+    # Returning to Idle still resynchronizes the base. Reactivation at that pose
+    # must not try to return to the previous command-integrated position.
+    node.current_mode = Mode.IDLE
+    node.step()
+    base_command = node.current_base_command
+    node.current_mode = mode
+    now += TRISKEL_CONTROLLER_DT
+    node.step()
+    np.testing.assert_allclose(
+        publisher.publish.call_args.args[0].joint_velocities[root_v], 0.0, atol=1e-12
+    )
+    node.close()
 
 
 def test_close_closes_subscriber(controller):

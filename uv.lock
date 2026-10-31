@@ -601,11 +601,13 @@ dependencies = [
     { name = "mujoco" },
     { name = "numpy" },
     { name = "oculus-reader" },
+    { name = "pillow" },
     { name = "pin" },
     { name = "pin-pink" },
     { name = "pynput" },
     { name = "pyserial" },
     { name = "qpsolvers", extra = ["open-source-solvers"] },
+    { name = "scipy" },
     { name = "vassar-feetech-servo-sdk" },
 ]
 
@@ -625,11 +627,13 @@ requires-dist = [
     { name = "mujoco", specifier = "~=3.10.0" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "oculus-reader", git = "https://github.com/rail-berkeley/oculus_reader.git?rev=17bc7b3923f5754d70c4e358867a3bcac1a3c0c3" },
+    { name = "pillow", specifier = ">=10.0.0" },
     { name = "pin", specifier = ">=3.2.0" },
     { name = "pin-pink", specifier = ">=4.0.0" },
     { name = "pynput", specifier = ">=1.8.1" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "qpsolvers", extras = ["open-source-solvers"], specifier = ">=4.8.2" },
+    { name = "scipy", specifier = ">=1.14.0" },
     { name = "vassar-feetech-servo-sdk", specifier = ">=1.5.0" },
 ]
 

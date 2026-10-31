@@ -17,6 +17,7 @@ from humanoid.config.teleop import get_oculus_teleop_policy_config
 from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE
 from humanoid.logger import get_logger, setup_logging
 from humanoid.orchestrator.service import OrchestratorService
+from humanoid.types.collection import CollectionAction
 from humanoid.types.orchestrator import OrchestratorError
 from humanoid.types.process import ProcessAction
 from humanoid.ui.constants import (
@@ -33,6 +34,8 @@ from humanoid.ui.constants import (
 from humanoid.ui.errors import ApiError
 from humanoid.ui.validation import (
     parse_application_log_cursor,
+    parse_collection_action,
+    parse_collection_settings,
     parse_orchestrator_request,
     parse_process_action,
     parse_process_name,
@@ -138,6 +141,20 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
     @app.post(ApiRoute.REPLAY)
     def update_replay(action: str):
         return _update_replay(orchestrator_service, action)
+
+    @app.post(ApiRoute.COLLECTION)
+    def update_collection(action: str):
+        payload = _json_payload()
+        collection_action = parse_collection_action(action)
+        if collection_action is CollectionAction.STOP:
+            return _success(orchestrator_service.stop_collection(payload.get("run_id")))
+        return _success(
+            orchestrator_service.request_collection(
+                collection_action,
+                parse_collection_settings(payload.get(PayloadKey.SETTINGS)),
+                _safety_context(payload),
+            )
+        )
 
     @app.post(ApiRoute.ORCHESTRATOR)
     def request_orchestrator_mode():

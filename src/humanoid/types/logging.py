@@ -21,6 +21,15 @@ class LoggingStatus:
 
 
 @dataclass(frozen=True)
+class LoggingRequest:
+    """Recording control, optionally choosing a directory for this recording."""
+
+    timestamp: float
+    start: bool
+    directory: str = ""
+
+
+@dataclass(frozen=True)
 class ApplicationLogEntry:
     cursor: int
     message: str

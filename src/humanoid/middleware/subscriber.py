@@ -10,23 +10,54 @@ import lcm
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorHealthReport
+from humanoid.types.camera import CameraFrame
+from humanoid.types.collection import (
+    CollectionEpisode,
+    CollectionRequest,
+    CollectionRunStatus,
+    SimulationSample,
+)
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     actuator_health_report_t,
+    camera_frame_t,
+    collection_episode_t,
+    collection_request_t,
+    collection_run_status_t,
     homing_target_t,
+    logging_request_t,
     logging_status_t,
     node_rate_sample_t,
+    object_state_t,
     orchestrator_event_t,
     orchestrator_mode_t,
     robot_base_command_t,
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
+    simulation_reset_status_t,
+    simulation_reset_t,
+    simulation_sample_t,
+    simulation_scene_state_t,
+    simulation_state_t,
+    task_annotation_t,
 )
+from humanoid.types.lcm.camera import camera_frame_from_lcm
+from humanoid.types.lcm.collection import episode_from_lcm, sample_from_lcm
+from humanoid.types.lcm.collection_control import request_from_lcm, status_from_lcm
 from humanoid.types.lcm.converter import LCMConverter
-from humanoid.types.logging import LoggingStatus
+from humanoid.types.lcm.logging import logging_request_from_lcm
+from humanoid.types.lcm.object_state import object_state_from_lcm
+from humanoid.types.lcm.simulation_control import (
+    reset_from_lcm,
+    reset_status_from_lcm,
+    state_from_lcm,
+)
+from humanoid.types.lcm.task_annotation import task_annotation_from_lcm
+from humanoid.types.logging import LoggingRequest, LoggingStatus
 from humanoid.types.middleware import AcceptedTypes
 from humanoid.types.node import NodeRateSample
+from humanoid.types.object_state import ObjectState
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -34,6 +65,13 @@ from humanoid.types.robot import (
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.scene import SimulationSceneState
+from humanoid.types.simulation import (
+    SimulationReset,
+    SimulationResetStatus,
+    SimulationState,
+)
+from humanoid.types.task_annotation import TaskAnnotation
 
 logger = get_logger(__name__)
 
@@ -76,7 +114,7 @@ class Subscriber:
         while self._running:
             self.lc.handle_timeout(_SPIN_TIMEOUT_MS)
 
-    def _handle_message(  # noqa: PLR0912 - explicit branches document each wire type
+    def _handle_message(  # noqa: PLR0912, PLR0915 - explicit dispatch for each wire type
         self,
         channel: str,
         data: bytes,
@@ -116,6 +154,31 @@ class Subscriber:
             elif expected_type is LoggingStatus:
                 lcm_msg = logging_status_t.decode(data)
                 decoded_data = LCMConverter.logging_status_from_lcm(lcm_msg)
+            elif expected_type is SimulationSceneState:
+                lcm_msg = simulation_scene_state_t.decode(data)
+                decoded_data = LCMConverter.simulation_scene_from_lcm(lcm_msg)
+            elif expected_type is SimulationReset:
+                decoded_data = reset_from_lcm(simulation_reset_t.decode(data))
+            elif expected_type is SimulationResetStatus:
+                decoded_data = reset_status_from_lcm(simulation_reset_status_t.decode(data))
+            elif expected_type is SimulationState:
+                decoded_data = state_from_lcm(simulation_state_t.decode(data))
+            elif expected_type is LoggingRequest:
+                decoded_data = logging_request_from_lcm(logging_request_t.decode(data))
+            elif expected_type is SimulationSample:
+                decoded_data = sample_from_lcm(simulation_sample_t.decode(data))
+            elif expected_type is CollectionEpisode:
+                decoded_data = episode_from_lcm(collection_episode_t.decode(data))
+            elif expected_type is CollectionRequest:
+                decoded_data = request_from_lcm(collection_request_t.decode(data))
+            elif expected_type is CollectionRunStatus:
+                decoded_data = status_from_lcm(collection_run_status_t.decode(data))
+            elif expected_type is CameraFrame:
+                decoded_data = camera_frame_from_lcm(camera_frame_t.decode(data))
+            elif expected_type is ObjectState:
+                decoded_data = object_state_from_lcm(object_state_t.decode(data))
+            elif expected_type is TaskAnnotation:
+                decoded_data = task_annotation_from_lcm(task_annotation_t.decode(data))
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
@@ -172,6 +235,7 @@ class Subscriber:
             Topic.ROBOT_BASE_COMMAND,
             Topic.OCULUS_BASE_COMMAND,
             Topic.KEYBOARD_BASE_COMMAND,
+            Topic.SYSTEM_BASE_COMMAND,
         ],
         timeout: int | None = None,
     ) -> RobotBaseCommand | None: ...
@@ -195,6 +259,66 @@ class Subscriber:
     def receive(
         self, topic: Literal[Topic.LOGGING_STATUS], timeout: int | None = None
     ) -> LoggingStatus | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.SIMULATION_SCENE], timeout: int | None = None
+    ) -> SimulationSceneState | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.SIMULATION_RESET], timeout: int | None = None
+    ) -> SimulationReset | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.SIMULATION_RESET_STATUS], timeout: int | None = None
+    ) -> SimulationResetStatus | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.SIMULATION_STATE], timeout: int | None = None
+    ) -> SimulationState | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.LOGGING_REQUEST], timeout: int | None = None
+    ) -> LoggingRequest | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.SIMULATION_SAMPLE], timeout: int | None = None
+    ) -> SimulationSample | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.COLLECTION_EPISODE], timeout: int | None = None
+    ) -> CollectionEpisode | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.CAMERA_FRAME], timeout: int | None = None
+    ) -> CameraFrame | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.OBJECT_STATE], timeout: int | None = None
+    ) -> ObjectState | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.TASK_ANNOTATION], timeout: int | None = None
+    ) -> TaskAnnotation | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.COLLECTION_REQUEST], timeout: int | None = None
+    ) -> CollectionRequest | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.COLLECTION_STATUS], timeout: int | None = None
+    ) -> CollectionRunStatus | None: ...
 
     @overload
     def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None: ...

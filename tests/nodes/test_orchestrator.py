@@ -19,7 +19,7 @@ from humanoid.types.orchestrator import (
     OrchestratorEvent,
     OrchestratorMode,
 )
-from humanoid.types.robot import RobotToolCommand
+from humanoid.types.robot import RobotBaseCommand, RobotToolCommand
 
 EXPECTED_ORCHESTRATOR_RATE_HZ = 100.0
 
@@ -135,6 +135,22 @@ class TestTransitions:
 
 
 class TestStepIntegration:
+    def test_system_mode_routes_base_targets_and_discards_other_sources(self, node):
+        node.mode = Mode.SYSTEM
+        system_command = RobotBaseCommand(timestamp=1.0, pose=pin.SE3.Identity())
+        keyboard_command = RobotBaseCommand(timestamp=2.0, pose=pin.SE3.Identity())
+        messages = {
+            Topic.SYSTEM_BASE_COMMAND: system_command,
+            Topic.KEYBOARD_BASE_COMMAND: keyboard_command,
+        }
+        node.subscriber.receive = Mock(side_effect=lambda topic: messages.pop(topic, None))
+        node.step()
+        node.publisher.publish.assert_any_call(system_command, topic=Topic.ROBOT_BASE_COMMAND)
+        assert not any(
+            call.args and call.args[0] is keyboard_command
+            for call in node.publisher.publish.call_args_list
+        )
+
     def test_step_drains_event_queue_and_transitions(self, node):
         events = [_event(EventKind.REQUEST_HOMING)]
         node.subscriber.receive = Mock(side_effect=_events_then_none(events))

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -5,10 +6,12 @@ import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.collection import DEFAULT_COLLECTION_SETTINGS
 from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
 from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
+from humanoid.orchestrator.monitor.collection import CollectionMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
@@ -16,6 +19,11 @@ from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.actuator import ActuatorHealthStatus
+from humanoid.types.collection import (
+    CollectionAction,
+    CollectionRunState,
+    CollectionRunStatus,
+)
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import (
     ApplicationLogEntry,
@@ -124,6 +132,11 @@ def _make_service(
         actuator_health_monitor=actuator_health_monitor,
         replay_manager=replay_manager,
         application_log_monitor=application_log_monitor,
+        collection_monitor=MagicMock(
+            spec=CollectionMonitor,
+            snapshot=MagicMock(return_value=CollectionRunStatus(0)),
+            retry_request=MagicMock(return_value=None),
+        ),
     )
     recording_catalog = MagicMock(spec=RecordingCatalog)
     recording_catalog.list.return_value = []
@@ -164,6 +177,87 @@ def test_teleop_requires_main_stack():
         service.start_process(ProcessName.OCULUS, _safety_context())
 
     manager.start.assert_not_called()
+
+
+@pytest.mark.parametrize("action", [CollectionAction.START, CollectionAction.PREPARE])
+def test_collection_requests_existing_stack_and_does_not_start_processes(action):
+    service, manager, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
+    settings = replace(DEFAULT_COLLECTION_SETTINGS, task="cleanup", seed=17)
+    service.request_collection(action, settings, _safety_context())
+    request = client.send_collection.call_args.args[0]
+    assert request.run_id and request.action is action and request.settings == settings
+    cast(MagicMock, service.collection_monitor).requested.assert_called_once_with(request)
+    client.start_logging.assert_not_called()
+    manager.start.assert_not_called()
+
+
+@pytest.mark.parametrize("robot", RobotName)
+def test_empty_scene_can_be_loaded_for_any_robot_but_not_collected(robot):
+    service, manager, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
+    manager.robot = robot
+    status = service.request_collection(
+        CollectionAction.PREPARE, DEFAULT_COLLECTION_SETTINGS, _safety_context(robot=robot)
+    )
+    assert client.send_collection.call_args.args[0].settings.task == "empty"
+    task = next(task for task in status.collection_tasks if task.name == "empty")
+    assert task.robot is None
+    assert not task.collectable
+    client.send_collection.reset_mock()
+    with pytest.raises(OrchestratorError, match="no automated collection task"):
+        service.request_collection(
+            CollectionAction.START, DEFAULT_COLLECTION_SETTINGS, _safety_context(robot=robot)
+        )
+    client.send_collection.assert_not_called()
+    manager.start.assert_not_called()
+
+
+@pytest.mark.parametrize("action", [CollectionAction.START, CollectionAction.PREPARE])
+@pytest.mark.parametrize(
+    "condition", ["stopped", "real", "wrong_robot", "active_mode", "logging", "collecting"]
+)
+def test_collection_requires_compatible_idle_stack(condition, action):
+    service, manager, client, _ = _make_service(
+        stack=condition != "stopped",
+        connected=True,
+        mode=Mode.KEYBOARD if condition == "active_mode" else Mode.IDLE,
+    )
+    if condition == "real":
+        manager.runtime = Runtime.REAL
+    if condition == "wrong_robot":
+        manager.robot = RobotName.PANDA
+    if condition == "logging":
+        cast(MagicMock, service.logging_monitor).snapshot.return_value = LoggingStatus(
+            0, LoggingState.RUNNING
+        )
+    if condition == "collecting":
+        cast(MagicMock, service.collection_monitor).snapshot.return_value = CollectionRunStatus(
+            0, CollectionRunState.RUNNING, "run"
+        )
+    with pytest.raises(OrchestratorError):
+        service.request_collection(
+            action,
+            replace(DEFAULT_COLLECTION_SETTINGS, task="cleanup"),
+            _safety_context(runtime=manager.runtime, robot=manager.robot),
+        )
+    client.send_collection.assert_not_called()
+
+
+def test_collection_blocks_conflicting_controls_and_stop_preserves_stack():
+    service, manager, client, _ = _make_service(stack=True, connected=True, mode=Mode.SYSTEM)
+    cast(MagicMock, service.collection_monitor).snapshot.return_value = CollectionRunStatus(
+        0, CollectionRunState.RUNNING, "run"
+    )
+    with pytest.raises(OrchestratorError, match="Stop collection"):
+        service.request_mode(OrchestratorRequest(Mode.IDLE))
+    with pytest.raises(OrchestratorError, match="Stop collection"):
+        service.set_logging(ProcessAction.STOP)
+    with pytest.raises(OrchestratorError, match="session has changed"):
+        service.stop_collection("other")
+    service.stop_collection("run")
+    client.stop_collection.assert_called_once_with("run")
+    manager.close.assert_not_called()
+    service.start_process(ProcessName.STACK, _safety_context())
+    cast(MagicMock, service.collection_monitor).reset.assert_not_called()
 
 
 def test_teleop_waits_for_orchestrator_readiness():

@@ -1,0 +1,22 @@
+package humanoid.types.lcm;
+
+// Shared rigid-object pose: ground truth in simulation, estimates in real.
+struct object_state_t {
+    // measurement nanoseconds on the collection clock
+    int64_t timestamp;
+    // tracked object identity
+    string name;
+    // pose and velocity reference frame
+    string frame_id;
+    double position[3];
+    // wxyz, reference-frame-from-object rotation
+    double quaternion[4];
+    boolean has_bbox;
+    // object-local meters; ignore when !has_bbox
+    double bbox_center[3];
+    double bbox_half_size[3];
+    boolean has_velocity;
+    // reference-frame axes; ignore when !has_velocity
+    double linear_velocity[3];
+    double angular_velocity[3];
+}

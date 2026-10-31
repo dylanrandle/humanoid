@@ -8,7 +8,7 @@ from humanoid.config import ROBOT_CONFIGS
 from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.recording import RECORDING_MANIFEST_FILENAME
-from humanoid.types.logging import LoggingState, LoggingStatus
+from humanoid.types.logging import LoggingRequest, LoggingState, LoggingStatus
 from humanoid.types.orchestrator import EventKind, OrchestratorEvent
 from humanoid.types.robot import RobotName
 
@@ -41,8 +41,9 @@ def test_robot_logger_init(tmp_path):
     assert node.rate_hz == TEST_RATE_HZ
     assert node.process is None
     subscriber_class.assert_called_once_with(
-        topics=[Topic.ORCHESTRATOR_EVENT],
+        topics=[Topic.ORCHESTRATOR_EVENT, Topic.LOGGING_REQUEST],
         url="udpm://239.255.76.67:7667",
+        queue_size=None,
     )
 
 
@@ -53,6 +54,7 @@ def test_start_logging_creates_bundle_and_uses_exact_filename(tmp_path):
         patch("humanoid.nodes.robot.logger.subprocess.Popen") as popen,
     ):
         subscriber_class.return_value.receive.side_effect = [
+            None,
             OrchestratorEvent(timestamp=123.45, kind=EventKind.START_LOGGING),
             None,
         ]
@@ -68,6 +70,7 @@ def test_start_logging_creates_bundle_and_uses_exact_filename(tmp_path):
     statuses = _published_statuses(publisher_class.return_value)
     assert [status.state for status in statuses] == [
         LoggingState.STARTING,
+        LoggingState.RUNNING,
         LoggingState.RUNNING,
     ]
     filename = statuses[-1].file_name
@@ -155,6 +158,26 @@ def test_stop_logging_reports_nonzero_exit_as_failure(tmp_path):
     assert status.state is LoggingState.FAILED
     assert status.file_name == "logs/recording/recording.lcm"
     assert status.error == "lcm-logger exited with code 7 while stopping."
+
+
+def test_repeated_stop_preserves_recording_failure(tmp_path):
+    with (
+        patch("humanoid.nodes.robot.logger.Subscriber"),
+        patch("humanoid.nodes.robot.logger.Publisher"),
+    ):
+        node = _node(tmp_path)
+        node.logging_status = LoggingStatus(
+            timestamp=1.0,
+            state=LoggingState.FAILED,
+            file_name="logs/recording/recording.lcm",
+            error="The log may be incomplete.",
+        )
+        node._stop_logging()
+        node._stop_logging()
+
+    assert node.logging_status.state is LoggingState.FAILED
+    assert node.logging_status.file_name == "logs/recording/recording.lcm"
+    assert node.logging_status.error == "The log may be incomplete."
 
 
 def test_stop_logging_reports_forced_termination_as_failure(tmp_path):
@@ -253,3 +276,29 @@ def test_robot_logger_reports_subprocess_crash(tmp_path):
     assert status.state is LoggingState.FAILED
     assert status.error == "lcm-logger exited unexpectedly with code 9."
     assert node.process is None
+
+
+def test_collection_directory_is_per_recording_and_stop_blocks_delayed_start(tmp_path):
+    with (
+        patch("humanoid.nodes.robot.logger.Subscriber") as subscriber_class,
+        patch("humanoid.nodes.robot.logger.Publisher"),
+        patch("humanoid.nodes.robot.logger.subprocess.Popen") as popen,
+    ):
+        popen.return_value.poll.return_value = None
+        popen.return_value.wait.return_value = 0
+        node = _node(tmp_path / "manual")
+        start = LoggingRequest(1.0, True, str(tmp_path / "collection"))
+        subscriber_class.return_value.receive.side_effect = [
+            start,
+            LoggingRequest(2.0, False),
+            start,
+            None,
+            None,
+        ]
+        node.step()
+        assert popen.call_count == 1
+        assert node.logging_status.file_name is not None
+        assert Path(node.logging_status.file_name).is_relative_to(tmp_path / "collection")
+        assert node.logging_status.state is LoggingState.STOPPED
+        assert node.log_dir == str(tmp_path / "manual")
+        assert node.process is None

@@ -1,12 +1,14 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from http import HTTPStatus
 from unittest.mock import MagicMock
 
 import pytest
 from flask.testing import FlaskClient
 
+from humanoid.config.collection import DEFAULT_COLLECTION_SETTINGS
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.types.actuator import ActuatorHealth, ActuatorHealthStatus
+from humanoid.types.collection import CollectionAction
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import (
     ApplicationLogEntry,
@@ -78,6 +80,56 @@ def test_serves_split_ui_assets(server_client):
     assert b'data-logging-action="stop"' in response.data
     assert b'id="replay-recording"' in response.data
     assert b'id="replay-action"' in response.data
+    assert b'id="collection-form"' in response.data
+
+
+@pytest.mark.parametrize("action", ["start", "prepare"])
+def test_collection_start_and_stop_routes(server_client, action):
+    service, client = server_client
+    service.request_collection.return_value = service.stop_collection.return_value = {
+        "collection": "ok"
+    }
+    response = client.post(
+        f"/api/collection/{action}",
+        json={"settings": asdict(DEFAULT_COLLECTION_SETTINGS), **_safety_payload()},
+    )
+    assert response.status_code == HTTPStatus.OK
+    service.request_collection.assert_called_once_with(
+        CollectionAction(action), DEFAULT_COLLECTION_SETTINGS, _safety_context()
+    )
+    assert client.post("/api/collection/stop", json={"run_id": "run"}).status_code == HTTPStatus.OK
+    service.stop_collection.assert_called_once_with("run")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"episodes": 0},
+        {"episodes": True},
+        {"episodes": 1.5},
+        {"seed": -1},
+        {"max_attempts": 0},
+        {"max_sim_seconds": "bad"},
+        {"max_sim_seconds": float("inf")},
+        {"output": ""},
+        {"output": []},
+        {"seed": 2**63},
+        {"extra": 1},
+    ],
+)
+def test_invalid_collection_settings_are_rejected(server_client, changes):
+    service, client = server_client
+    response = client.post(
+        "/api/collection/start",
+        json={"settings": {**asdict(DEFAULT_COLLECTION_SETTINGS), **changes}, **_safety_payload()},
+    )
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    service.request_collection.assert_not_called()
+
+
+def test_serves_health_logs_and_script_assets(server_client):
+    _, client = server_client
+    response = client.get("/")
     assert b'id="node-rate-list"' in response.data
     assert b'id="actuator-health-list"' in response.data
     assert b'id="actuator-health-error"' in response.data
@@ -244,6 +296,9 @@ def test_serializes_orchestrator_status_dataclass(server_client):
     assert response.json == {
         "runtime": "sim",
         "robot": "panda",
+        "collection": None,
+        "collection_tasks": [],
+        "collection_defaults": None,
         "robots": ["panda"],
         "processes": {
             "stack": {

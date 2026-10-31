@@ -1,0 +1,10 @@
+package humanoid.types.lcm;
+
+// Simulation-only supervision around the same camera frame used by hardware.
+struct simulation_camera_observation_t {
+    camera_frame_t frame;
+    // privileged world-from-optical transform
+    double position[3];
+    // wxyz
+    double quaternion[4];
+}

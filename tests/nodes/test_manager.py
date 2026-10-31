@@ -14,6 +14,7 @@ from humanoid.constants import (
     RUNTIME_ENVIRONMENT_VARIABLE,
 )
 from humanoid.middleware.subscriber import Subscriber
+from humanoid.nodes.collection import CollectionNode
 from humanoid.nodes.groups import NODE_GROUPS, PROCESS_STOP_ORDER
 from humanoid.nodes.manager import (
     NodeManager,
@@ -80,27 +81,23 @@ def _join_stack_startup(manager: NodeManager) -> None:
 
 
 def test_node_groups_reference_imported_node_classes():
-    assert NODE_GROUPS[ProcessName.STACK].nodes == (
+    common = (
         RobotControllerNode,
         RobotVisualizerNode,
         OrchestratorNode,
         RobotLoggerNode,
+        CollectionNode,
     )
+    assert NODE_GROUPS[ProcessName.STACK].nodes == common
     assert NODE_GROUPS[ProcessName.STACK].deferred_nodes == (HomingNode,)
     assert NODE_GROUPS[ProcessName.REPLAY].nodes == (RobotVisualizerNode,)
     assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.SIM) == (
         MujocoSimulationNode,
-        RobotControllerNode,
-        RobotVisualizerNode,
-        OrchestratorNode,
-        RobotLoggerNode,
+        *common,
     )
     assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.REAL) == (
         RobotDriverNode,
-        RobotControllerNode,
-        RobotVisualizerNode,
-        OrchestratorNode,
-        RobotLoggerNode,
+        *common,
     )
     assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.SIM) == (
         MujocoSimulationNode,
@@ -365,6 +362,7 @@ def test_stack_startup_failure_stops_core_nodes_and_reports_error(monkeypatch):
 
 
 def test_stopping_stack_cancels_deferred_startup(monkeypatch):
+    monkeypatch.setattr("humanoid.nodes.manager.os.kill", MagicMock())
     processes: list[MagicMock] = []
     context = _fake_context(processes)
     waiting = threading.Event()

@@ -1,0 +1,9 @@
+package humanoid.types.lcm;
+
+struct simulation_reset_t
+{
+    int64_t timestamp;
+    string request_id;
+    string task;
+    int64_t seed;
+}

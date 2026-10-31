@@ -3,6 +3,9 @@ import test from "node:test";
 
 import { ProcessName, Runtime } from "../../../src/humanoid/ui/static/js/constants.js";
 import {
+  collectionRequest,
+  collectionSceneRequest,
+  collectionUnavailable,
   loggingRequest,
   processRequest,
   replayRequest,
@@ -10,9 +13,61 @@ import {
   runtimeRequest,
 } from "../../../src/humanoid/ui/static/js/requests.js";
 
+test("collection uses the existing stack and stops only the observed session", () => {
+  const current = snapshot();
+  const settings = { task: "cleanup", episodes: 2, max_attempts: 6, seed: 9, max_sim_seconds: 120, output: "logs/recordings" };
+  const start = collectionRequest(current, settings);
+  assert.equal(start.path, "/api/collection/start");
+  assert.deepEqual(start.payload.settings, settings);
+  assert.equal(start.payload.expected_runtime, "sim");
+  current.collection = {state: "running", run_id: "my-run"};
+  assert.deepEqual(collectionRequest(current, settings), {path: "/api/collection/stop", payload: {run_id: "my-run"}});
+});
+
+test("task scene loading uses selection and waits for an idle compatible stack", () => {
+  const current = snapshot();
+  current.robot = "triskel";
+  current.processes.stack.running = true;
+  current.orchestrator = {connected: true, mode: "idle"};
+  current.logging = {state: "stopped"};
+  current.collection_tasks = [{name: "cleanup", robot: "triskel"}, {name: "other", robot: "triskel"}];
+  current.collection_defaults = {task: "cleanup", seed: 0, episodes: 1, max_attempts: 3, max_sim_seconds: 600, output: "logs/recordings"};
+  const request = collectionSceneRequest(current, "other", 42);
+  assert.equal(request.path, "/api/collection/prepare");
+  assert.equal(request.payload.settings.task, "other");
+  assert.equal(request.payload.settings.seed, 42);
+  for (const change of [
+    {runtime: "real"},
+    {robot: "panda"},
+    {orchestrator: {connected: true, mode: "keyboard"}},
+    {logging: {state: "running"}},
+    {collection: {state: "running"}},
+    {collection: {state: "preparing"}},
+  ]) assert.equal(collectionSceneRequest({...current, ...change}, "other", 42), null);
+  assert.equal(collectionSceneRequest(current, "missing", 42), null);
+  assert.equal(collectionSceneRequest(current, "other", NaN), null);
+});
+
 test("logging controls use the dedicated start and stop endpoints", () => {
   assert.deepEqual(loggingRequest("start"), { path: "/api/logging/start", payload: {} });
   assert.deepEqual(loggingRequest("stop"), { path: "/api/logging/stop", payload: {} });
+});
+
+test("empty scene can load for every robot without allowing collection", () => {
+  const current = snapshot();
+  current.processes.stack.running = true;
+  current.orchestrator = {connected: true, mode: "idle"};
+  current.logging = {state: "stopped"};
+  current.collection_tasks = [{name: "empty", robot: null, collectable: false}];
+  current.collection_defaults = {task: "empty", seed: 0};
+  for (const robot of ["panda", "so101", "triskel"]) {
+    current.robot = robot;
+    const request = collectionSceneRequest(current, "empty", 0);
+    assert.equal(request.path, "/api/collection/prepare");
+    assert.equal(request.payload.settings.task, "empty");
+    assert.equal(request.payload.expected_robot, robot);
+    assert.match(collectionUnavailable(current, "empty"), /teleoperation or manual recording/);
+  }
 });
 
 function snapshot(runtime = Runtime.SIM) {

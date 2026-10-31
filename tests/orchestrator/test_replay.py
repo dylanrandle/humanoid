@@ -1,3 +1,4 @@
+import re
 import shutil
 import signal
 import subprocess
@@ -63,6 +64,12 @@ def test_start_runs_logplayer_on_managed_lcm_url(monkeypatch, tmp_path):
     assert status.running is True
     assert status.file_name == str(recording.log_path)
     assert status.outcome is None
+
+
+def test_replay_includes_scene_geometry_without_replaying_lifecycle_requests():
+    assert re.fullmatch(REPLAY_CHANNEL_PATTERN, Topic.SIMULATION_SCENE.value)
+    for topic in (Topic.SIMULATION_RESET, Topic.COLLECTION_REQUEST, Topic.LOGGING_REQUEST):
+        assert not re.fullmatch(REPLAY_CHANNEL_PATTERN, topic.value)
 
 
 def test_natural_completion_preserves_recording(monkeypatch, tmp_path):

@@ -3,10 +3,12 @@
 import contextlib
 import threading
 import time
+import uuid
 from collections.abc import Callable
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.application_logging import get_application_log_path
+from humanoid.config.collection import DEFAULT_COLLECTION_SETTINGS
 from humanoid.logger import get_logger
 from humanoid.nodes.groups import process_display_name
 from humanoid.nodes.manager import NodeManager, NodeManagerError
@@ -27,13 +29,21 @@ from humanoid.orchestrator.constants import (
 )
 from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
 from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
+from humanoid.orchestrator.monitor.collection import CollectionMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
+from humanoid.simulation.tasks.registry import TASKS
+from humanoid.types.collection import (
+    CollectionAction,
+    CollectionRequest,
+    CollectionSettings,
+    CollectionTaskOption,
+)
 from humanoid.types.homing import HomingPreset
-from humanoid.types.logging import ApplicationLogSnapshot
+from humanoid.types.logging import ApplicationLogSnapshot, LoggingState
 from humanoid.types.orchestrator import (
     Mode,
     OrchestratorError,
@@ -63,6 +73,7 @@ class OrchestratorService:
         actuator_health_monitor: ActuatorHealthMonitor | None = None,
         replay_manager: ReplayManager | None = None,
         application_log_monitor: ApplicationLogMonitor | None = None,
+        collection_monitor: CollectionMonitor | None = None,
     ):
         self.application_log_monitor = (
             application_log_monitor
@@ -79,6 +90,9 @@ class OrchestratorService:
         )
         self.mode_monitor = mode_monitor if mode_monitor is not None else ModeMonitor()
         self.logging_monitor = logging_monitor if logging_monitor is not None else LoggingMonitor()
+        self.collection_monitor = (
+            collection_monitor if collection_monitor is not None else CollectionMonitor()
+        )
         self.node_rate_monitor = (
             node_rate_monitor if node_rate_monitor is not None else NodeRateMonitor()
         )
@@ -110,6 +124,13 @@ class OrchestratorService:
                     self.logging_monitor.reset()
                     self._clear_parameterized_request()
             orchestrator = self._orchestrator_state()
+            collection = self.collection_monitor.snapshot()
+            if collection.running and not stack.running:
+                self.collection_monitor.fail("The simulation stack stopped during collection.")
+                collection = self.collection_monitor.snapshot()
+            pending = self.collection_monitor.retry_request()
+            if pending is not None:
+                self.orchestrator_client.send_collection(pending)
             stack_running = stack.running
             replay_running = processes[ProcessName.REPLAY].running or replay.running
             if orchestrator.connected and not (stack_running or replay_running):
@@ -125,6 +146,12 @@ class OrchestratorService:
                 recordings=self.recording_catalog.list(),
                 replay=replay,
                 orchestrator=orchestrator,
+                collection=collection,
+                collection_tasks=[
+                    CollectionTaskOption(name, task.label, task.robot, task.collectable)
+                    for name, task in TASKS.items()
+                ],
+                collection_defaults=DEFAULT_COLLECTION_SETTINGS,
             )
 
     def application_logs(self, after: int | None = None) -> ApplicationLogSnapshot:
@@ -168,8 +195,9 @@ class OrchestratorService:
                 raise OrchestratorError(REPLAY_ACTIVE_ERROR)
             if process_name is not ProcessName.STACK:
                 self._require_ready_stack(current)
-            else:
+            elif not current.processes[ProcessName.STACK].running:
                 self.actuator_health_monitor.reset()
+                self.collection_monitor.reset()
             self._run_manager_action(lambda: self.node_manager.start(process_name))
             return self.status()
 
@@ -192,6 +220,7 @@ class OrchestratorService:
         with self._lock:
             current = self.status()
             self._require_ready_stack(current)
+            self._require_no_collection(current)
 
             if request.mode is Mode.HOMING:
                 preset = request.parameters[OrchestratorParameter.PRESET]
@@ -221,6 +250,7 @@ class OrchestratorService:
         with self._lock:
             current = self.status()
             self._require_ready_stack(current)
+            self._require_no_collection(current)
             logging_actions = {
                 ProcessAction.START: (
                     self.logging_monitor.start_requested,
@@ -238,6 +268,59 @@ class OrchestratorService:
             except Exception as exc:
                 self.logging_monitor.fail(f"Could not request data logging: {exc}")
                 raise
+            return self.status()
+
+    def request_collection(
+        self, action: CollectionAction, settings: CollectionSettings, safety: SafetyContext
+    ) -> OrchestratorStatus:
+        """Prepare a scene or collect episodes on the existing stack."""
+        assert action is not CollectionAction.STOP
+        with self._lock:
+            self._require_task_stack(settings, safety, action)
+            request = CollectionRequest(time.time(), str(uuid.uuid4()), action, settings)
+            self.collection_monitor.requested(request)
+            try:
+                self.orchestrator_client.send_collection(request)
+            except Exception as exc:
+                self.collection_monitor.fail(f"Could not request {action.value}: {exc}")
+                raise
+            return self.status()
+
+    def _require_task_stack(
+        self, settings: CollectionSettings, safety: SafetyContext, action: CollectionAction
+    ) -> None:
+        current = self.status()
+        self._require_expected_configuration(safety)
+        self._require_ready_stack(current)
+        self._require_no_collection(current)
+        if current.runtime is not Runtime.SIM:
+            raise OrchestratorError("Task scenes and collection require the simulation runtime.")
+        task = TASKS.get(settings.task)
+        if task is None:
+            raise OrchestratorError("Select a registered collection task.")
+        if task.robot is not None and task.robot is not current.robot:
+            raise OrchestratorError(f"{task.label} requires the {task.robot.value} robot.")
+        if action is CollectionAction.START and not task.collectable:
+            raise OrchestratorError(f"{task.label} has no automated collection task.")
+        if current.orchestrator.mode is not Mode.IDLE:
+            raise OrchestratorError(
+                "Select Idle before loading a task scene or starting collection."
+            )
+        if current.logging.state not in {LoggingState.STOPPED, LoggingState.FAILED}:
+            raise OrchestratorError(
+                "Stop manual recording before loading a task scene or collecting."
+            )
+
+    def stop_collection(self, run_id: str | None = None) -> OrchestratorStatus:
+        with self._lock:
+            current = self.status()
+            if current.collection is not None and current.collection.running:
+                if run_id is not None and run_id != current.collection.run_id:
+                    raise OrchestratorError(
+                        "The collection session has changed. Refresh and try again."
+                    )
+                self.collection_monitor.stop_requested()
+                self.orchestrator_client.stop_collection(current.collection.run_id)
             return self.status()
 
     def start_replay(
@@ -297,6 +380,7 @@ class OrchestratorService:
         finally:
             self.mode_monitor.close()
             self.logging_monitor.close()
+            self.collection_monitor.close()
             self.node_rate_monitor.close()
             self.actuator_health_monitor.close()
             self.replay_manager.close()
@@ -310,6 +394,9 @@ class OrchestratorService:
             return
         if processes[ProcessName.STACK].running:
             with contextlib.suppress(Exception):
+                collection = self.collection_monitor.snapshot()
+                if collection.running:
+                    self.orchestrator_client.stop_collection(collection.run_id)
                 self.orchestrator_client.request_idle()
         self.node_manager.close()
         self.mode_monitor.reset()
@@ -391,6 +478,11 @@ class OrchestratorService:
     def _require_real_hardware_acknowledgement(safety: SafetyContext) -> None:
         if not safety.real_hardware_acknowledged:
             raise OrchestratorError(REAL_HARDWARE_ACKNOWLEDGEMENT_ERROR)
+
+    @staticmethod
+    def _require_no_collection(status: OrchestratorStatus) -> None:
+        if status.collection is not None and status.collection.running:
+            raise OrchestratorError("Stop collection before changing modes or manual recording.")
 
     @staticmethod
     def _require_ready_stack(status: OrchestratorStatus) -> None:

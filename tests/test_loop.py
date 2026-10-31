@@ -1,18 +1,18 @@
 import pytest
 
-from humanoid.utils.loop import _next_deadline, _sleep_until
+from humanoid.utils.loop import next_deadline, sleep_until
 
 
 def test_next_deadline_advances_one_period_when_on_schedule():
-    assert _next_deadline(1.0, 0.1, 1.05) == pytest.approx(1.1)
+    assert next_deadline(1.0, 0.1, 1.05) == pytest.approx(1.1)
 
 
 def test_next_deadline_skips_missed_periods_without_catch_up():
-    assert _next_deadline(1.0, 0.1, 1.36) == pytest.approx(1.4)
+    assert next_deadline(1.0, 0.1, 1.36) == pytest.approx(1.4)
 
 
 def test_next_deadline_is_strictly_after_current_time():
-    assert _next_deadline(1.0, 0.1, 1.1) == pytest.approx(1.2)
+    assert next_deadline(1.0, 0.1, 1.1) == pytest.approx(1.2)
 
 
 def test_sleep_until_rechecks_time_after_coalesced_wakeups(monkeypatch):
@@ -28,7 +28,7 @@ def test_sleep_until_rechecks_time_after_coalesced_wakeups(monkeypatch):
 
     monkeypatch.setattr("humanoid.utils.loop.time.perf_counter", lambda: now)
     monkeypatch.setattr("humanoid.utils.loop.time.sleep", sleep)
-    _sleep_until(deadline)
+    sleep_until(deadline)
 
     tolerance = 0.001
     assert deadline <= now <= deadline + tolerance
@@ -43,4 +43,4 @@ def test_sleep_until_does_not_wait_on_a_missed_deadline(monkeypatch):
         pytest.fail("A past deadline must not cause another wait")
 
     monkeypatch.setattr("humanoid.utils.loop.time.sleep", unexpected_sleep)
-    _sleep_until(1.0)
+    sleep_until(1.0)

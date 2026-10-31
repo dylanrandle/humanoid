@@ -303,10 +303,95 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">04 · Data tools</p>
-              <h2 id="data-heading">Record &amp; replay</h2>
+              <h2 id="data-heading">Collect, record &amp; replay</h2>
             </div>
             <span class="panel-note">LCM traffic</span>
           </div>
+
+          <form class="collection-tool" id="collection-form">
+            <div class="data-tool-heading">
+              <div>
+                <p class="eyebrow">Scene &amp; collection</p>
+                <h3>Simulation task</h3>
+              </div>
+              <span class="mini-status" id="collection-status" role="status"
+                >Idle</span
+              >
+            </div>
+            <p class="data-tool-note">
+              Choose a task and seed to define the scene. Start the simulation
+              stack above to preview it. Use Empty scene for teleoperation, or
+              start collection with an expert task. Each attempt resets the
+              scene and records automatically.
+            </p>
+            <div class="collection-fields">
+              <label
+                >Task<select name="collection-task" required disabled></select
+              ></label>
+              <label
+                >Successful episodes<input
+                  name="collection-episodes"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  disabled
+              /></label>
+              <label
+                >Maximum attempts<input
+                  name="collection-max_attempts"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  disabled
+              /></label>
+              <label
+                >Starting seed<input
+                  name="collection-seed"
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  disabled
+              /></label>
+              <label
+                >Seconds per attempt<input
+                  name="collection-max_sim_seconds"
+                  type="number"
+                  min="0.02"
+                  step="any"
+                  required
+                  disabled
+                /><small>Simulation time</small></label
+              >
+              <label class="collection-output"
+                >Recording directory<input
+                  name="collection-output"
+                  type="text"
+                  required
+                  disabled
+              /></label>
+            </div>
+            <div class="collection-footer">
+              <div>
+                <p class="data-tool-note" id="collection-detail">
+                  Start the simulation stack to collect episodes.
+                </p>
+                <p class="collection-progress" id="collection-progress"></p>
+              </div>
+              <button
+                class="secondary-action"
+                id="collection-action"
+                type="submit"
+                disabled
+              >
+                Start collection
+              </button>
+            </div>
+            <p class="data-tool-note" id="collection-recording" hidden></p>
+            <p class="data-tool-note" id="collection-message" hidden></p>
+          </form>
 
           <div class="data-tool-grid">
             <article class="data-tool">

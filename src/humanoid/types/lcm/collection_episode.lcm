@@ -1,0 +1,22 @@
+package humanoid.types.lcm;
+
+// Lifecycle shared by simulation experts, real teleoperation and future policies.
+struct collection_episode_t {
+    // nanoseconds on the named clock below
+    int64_t timestamp;
+    string episode_id;
+    string task;
+    int32_t task_version;
+    // sim or real
+    string runtime;
+    // e.g. episode_simulation or host_monotonic; shared with sensors/actions
+    string clock;
+    // ready, started, succeeded, failed, aborted
+    string outcome;
+    // cumulative; -1 if unavailable/not applicable
+    int64_t sample_count;
+    // cumulative; -1 if unavailable/not applicable
+    int64_t action_count;
+    // runtime-specific settings, provenance, outcome evidence
+    string metadata_json;
+}

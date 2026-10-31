@@ -34,6 +34,23 @@ export const LoggingState = Object.freeze({
   FAILED: "failed",
 });
 
+export const CollectionRunState = Object.freeze({
+  IDLE: "idle",
+  PREPARING: "preparing",
+  STARTING: "starting",
+  RUNNING: "running",
+  STOPPING: "stopping",
+  SUCCEEDED: "succeeded",
+  FAILED: "failed",
+  ABORTED: "aborted",
+});
+
+export const CollectionAction = Object.freeze({
+  PREPARE: "prepare",
+  START: "start",
+  STOP: "stop",
+});
+
 export const ReplayOutcome = Object.freeze({
   COMPLETED: "completed",
   STOPPED: "stopped",
@@ -53,6 +70,7 @@ export const PayloadKey = Object.freeze({
   EXPECTED_ROBOT: "expected_robot",
   REAL_HARDWARE_ACKNOWLEDGED: "real_hardware_acknowledged",
   RECORDING: "recording",
+  SETTINGS: "settings",
 });
 
 export const ApiRoute = Object.freeze({
@@ -63,6 +81,7 @@ export const ApiRoute = Object.freeze({
   ROBOT: "/api/robot",
   PROCESSES: "/api/processes/<name>/<action>",
   LOGGING: "/api/logging/<action>",
+  COLLECTION: "/api/collection/<action>",
   REPLAY: "/api/replay/<action>",
   ORCHESTRATOR: "/api/orchestrator",
 });
@@ -71,6 +90,7 @@ export const BusyKey = Object.freeze({
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
   LOGGING: ApiRoute.LOGGING,
+  COLLECTION: ApiRoute.COLLECTION,
   REPLAY: ApiRoute.REPLAY,
   ORCHESTRATOR: ApiRoute.ORCHESTRATOR,
 });
@@ -87,6 +107,9 @@ export const API = Object.freeze({
   ROBOT: ApiRoute.ROBOT,
   logging(action) {
     return resolveRoute(ApiRoute.LOGGING, { action });
+  },
+  collection(action) {
+    return resolveRoute(ApiRoute.COLLECTION, { action });
   },
   replay(action) {
     return resolveRoute(ApiRoute.REPLAY, { action });

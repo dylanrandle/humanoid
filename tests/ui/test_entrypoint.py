@@ -52,6 +52,7 @@ def test_server_main_configures_wireless_oculus(monkeypatch):
 
 
 def test_server_main_rejects_invalid_oculus_ip(monkeypatch):
+    monkeypatch.delenv(OCULUS_IP_ENVIRONMENT_VARIABLE, raising=False)
     monkeypatch.setattr(sys, "argv", ["start", "--oculus-ip", "not-an-ip"])
 
     with pytest.raises(SystemExit):

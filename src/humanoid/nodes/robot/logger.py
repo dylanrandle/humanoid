@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from humanoid.config import ROBOT_CONFIG
@@ -52,13 +53,16 @@ class RobotLoggerNode(Node):
         self.robot_config = robot_config
         self.recording_catalog = RecordingCatalog(log_dir)
 
-        self.subscriber = Subscriber(topics=[Topic.ORCHESTRATOR_EVENT], url=lcm_url)
+        self.subscriber = Subscriber(
+            topics=[Topic.ORCHESTRATOR_EVENT, Topic.LOGGING_REQUEST], url=lcm_url, queue_size=None
+        )
         self.publisher = Publisher(url=lcm_url)
         self.process: subprocess.Popen[bytes] | None = None
         self.logging_status = LoggingStatus(
             timestamp=time.time(),
             state=LoggingState.STOPPED,
         )
+        self._last_request = float("-inf")
 
     def setup(self) -> None:
         logger.info(
@@ -70,6 +74,14 @@ class RobotLoggerNode(Node):
     def step(self) -> None:
         """Check for START_LOGGING and STOP_LOGGING events."""
         self._report_unexpected_exit()
+        while (request := self.subscriber.receive(Topic.LOGGING_REQUEST)) is not None:
+            if request.timestamp <= self._last_request:
+                continue
+            self._last_request = request.timestamp
+            if request.start:
+                self._start_logging(request.directory)
+            else:
+                self._stop_logging()
         while True:
             event = self.subscriber.receive(Topic.ORCHESTRATOR_EVENT)
             if event is None:
@@ -80,8 +92,11 @@ class RobotLoggerNode(Node):
                 self._start_logging()
             elif kind is EventKind.STOP_LOGGING:
                 self._stop_logging()
+        # A newly connected collection client must discover an already-running logger.
+        self.logging_status = replace(self.logging_status, timestamp=time.time())
+        self.publisher.publish(self.logging_status, Topic.LOGGING_STATUS)
 
-    def _start_logging(self) -> None:
+    def _start_logging(self, directory: str = "") -> None:
         """Spawn the lcm-logger subprocess."""
         if self.process is not None:
             if self.process.poll() is None:
@@ -93,7 +108,8 @@ class RobotLoggerNode(Node):
         self._publish_status(LoggingState.STARTING)
 
         try:
-            recording = self.recording_catalog.create(self.robot_config)
+            catalog = RecordingCatalog(directory) if directory else self.recording_catalog
+            recording = catalog.create(self.robot_config)
         except (OSError, TypeError, ValueError) as exc:
             error = f"Could not prepare the recording directory: {exc}"
             logger.error(error)
@@ -134,8 +150,13 @@ class RobotLoggerNode(Node):
     def _stop_logging(self) -> None:
         """Terminate the lcm-logger subprocess cleanly."""
         if self.process is None:
-            logger.warning("No active logging process to stop.")
-            self._publish_status(LoggingState.STOPPED)
+            # Stop is retried over LCM. Keep the outcome and file from the
+            # completed recording so a retry cannot hide a failed flush.
+            self._publish_status(
+                self.logging_status.state,
+                file_name=self.logging_status.file_name,
+                error=self.logging_status.error,
+            )
             return
 
         logger.info("Stopping logging: Sending SIGINT to lcm-logger...")

@@ -1,0 +1,9 @@
+package humanoid.types.lcm;
+
+struct collection_request_t {
+    int64_t timestamp;
+    string run_id;
+    string action;
+    // CollectionSettings JSON for start; empty for stop.
+    string settings_json;
+}

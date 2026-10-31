@@ -14,12 +14,14 @@ dependencies = [
     "meshcat>=0.3.2",
     "mujoco~=3.10.0",
     "numpy>=2.0.0",
+    "pillow>=10.0.0",
     "oculus-reader",
     "pin>=3.2.0",
     "pin-pink>=4.0.0",
     "pynput>=1.8.1",
     "pyserial>=3.5",
     "qpsolvers[open-source-solvers]>=4.8.2",
+    "scipy>=1.14.0",
     "vassar-feetech-servo-sdk>=1.5.0",
 ]
 

@@ -11,6 +11,10 @@ import numpy as np
 
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
+from humanoid.types.collection import (
+    CollectionAction,
+    CollectionRequest,
+)
 from humanoid.types.homing import HomingTarget
 from humanoid.types.orchestrator import EventKind, OrchestratorEvent
 
@@ -61,6 +65,12 @@ class OrchestratorClient:
 
     def stop_logging(self) -> None:
         self._send(EventKind.STOP_LOGGING)
+
+    def stop_collection(self, run_id: str) -> None:
+        self.send_collection(CollectionRequest(time.time(), run_id, CollectionAction.STOP))
+
+    def send_collection(self, request: CollectionRequest) -> None:
+        self.publisher.publish(request, Topic.COLLECTION_REQUEST)
 
     def _send(self, kind: EventKind) -> None:
         self.publisher.publish(

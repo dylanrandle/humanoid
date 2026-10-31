@@ -15,6 +15,9 @@ import {
   renderDisconnected,
 } from "./render.js";
 import {
+  collectionRequest,
+  collectionRunning,
+  collectionSceneRequest,
   loggingRequest,
   processRequest,
   replayRequest,
@@ -31,6 +34,8 @@ const state = {
   applicationLogCursor: null,
   applicationLogsConnected: null,
   refreshPromise: null,
+  sceneStackPid: undefined,
+  sceneSelectionPending: true,
 };
 
 function refresh() {
@@ -49,6 +54,7 @@ async function loadStatus() {
     state.snapshot = await fetchStatus();
     state.connected = true;
     render(state.snapshot, state.busy, els);
+    syncTaskScene();
   } catch (error) {
     const message = errorMessage(error);
     renderDisconnected(message, els);
@@ -131,6 +137,58 @@ els.loggingButtons.forEach((button) => {
 
 els.replayRecording.addEventListener("change", () => {
   render(state.snapshot, state.busy, els);
+});
+
+function syncTaskScene() {
+  const snapshot = state.snapshot;
+  const stack = snapshot?.processes[ProcessName.STACK];
+  const pid = stack?.running ? stack.pid : null;
+  if (pid !== state.sceneStackPid) {
+    // Reconnecting to an existing task world must not reset its physics.
+    state.sceneSelectionPending = !(
+      state.sceneStackPid === undefined && snapshot?.collection?.task
+    );
+    state.sceneStackPid = pid;
+  }
+  if (!state.sceneSelectionPending || state.busy.size) return;
+  const request = collectionSceneRequest(
+    snapshot,
+    els.collectionFields.task.value,
+    els.collectionFields.seed.valueAsNumber,
+  );
+  if (!request) return;
+  state.sceneSelectionPending = false;
+  perform(BusyKey.COLLECTION, () => post(request.path, request.payload));
+}
+
+for (const name of ["task", "seed"]) {
+  els.collectionFields[name].addEventListener("change", () => {
+    state.sceneSelectionPending = true;
+    render(state.snapshot, state.busy, els);
+    syncTaskScene();
+  });
+}
+els.collectionForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const fields = els.collectionFields;
+  const settings = Object.fromEntries(
+    Object.entries(fields).map(([name, field]) => [
+      name,
+      field.type === "number" ? field.valueAsNumber : field.value,
+    ]),
+  );
+  if (
+    !collectionRunning(state.snapshot?.collection) &&
+    settings.max_attempts < settings.episodes
+  ) {
+    showToast(
+      "Maximum attempts must be at least the number of successful episodes.",
+    );
+    return;
+  }
+  const request = collectionRequest(state.snapshot, settings);
+  if (request)
+    perform(BusyKey.COLLECTION, () => post(request.path, request.payload));
 });
 
 els.replayAction.addEventListener("click", () => {

@@ -10,7 +10,7 @@ import pinocchio as pin
 from numpy.typing import NDArray
 
 from humanoid.config import ROBOT_CONFIG
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.controllers.base import Controller
 from humanoid.controllers.gripper import GripperController
 from humanoid.controllers.omniwheel_base import OmniwheelBaseController
@@ -50,6 +50,7 @@ class RobotControllerNode(Node):
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
         clock: Callable[[], float] = time.perf_counter,
+        lcm_url: str = DEFAULT_LCM_URL,
     ):
         """Initialize the robot controller node.
 
@@ -99,8 +100,9 @@ class RobotControllerNode(Node):
                 Topic.ROBOT_STATE,
                 Topic.ORCHESTRATOR_MODE,
             ],
+            url=lcm_url,
         )
-        self.publisher = Publisher()
+        self.publisher = Publisher(url=lcm_url)
 
         # Reference for current tool and base commands
         self.current_tool_command: RobotToolCommand | None = None
@@ -121,7 +123,7 @@ class RobotControllerNode(Node):
         robot's current pose on reactivation.
         """
         q = robot_state.joint_positions
-        timestamp = time.perf_counter()
+        timestamp = self._clock()
 
         gripper_indices = self.robot.get_gripper_position_indices()
         gripper_positions = q[gripper_indices] if gripper_indices else None
@@ -218,9 +220,8 @@ class RobotControllerNode(Node):
             self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
             return
 
-        # Active: existing OSC logic.
-        # Initialize controller state from robot state feedback until the first
-        # command is received, and run open-loop thereafter.
+        # Initialize from feedback until the first command, then integrate
+        # commands open-loop in every active mode and runtime.
         if robot_state is not None and (
             self.arm_controller.configuration is None
             or (self.current_tool_command is None and self.current_base_command is None)
@@ -288,7 +289,7 @@ class RobotControllerNode(Node):
         self._update_controller_states(q)
 
         joint_command = RobotJointCommand(
-            timestamp=time.perf_counter(), joint_positions=q, joint_velocities=v
+            timestamp=self._clock(), joint_positions=q, joint_velocities=v
         )
 
         logger.debug(f"Publishing joint command: {joint_command}")

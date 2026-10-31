@@ -4,6 +4,11 @@ from enum import StrEnum
 from types import MappingProxyType
 
 from humanoid.types.actuator import ActuatorHealthStatus
+from humanoid.types.collection import (
+    CollectionRunStatus,
+    CollectionSettings,
+    CollectionTaskOption,
+)
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateStatus
@@ -109,6 +114,9 @@ class OrchestratorStatus:
     recordings: list[RecordingSummary]
     replay: ReplayStatus
     orchestrator: OrchestratorState
+    collection: CollectionRunStatus | None = None
+    collection_tasks: list[CollectionTaskOption] = field(default_factory=list)
+    collection_defaults: CollectionSettings | None = None
 
 
 @dataclass(frozen=True)

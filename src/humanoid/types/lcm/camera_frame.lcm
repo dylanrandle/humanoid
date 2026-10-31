@@ -1,0 +1,17 @@
+package humanoid.types.lcm;
+
+// Rectified RGB observation shared by simulated and real camera producers.
+struct camera_frame_t {
+    // capture nanoseconds on the collection clock, not receipt time
+    int64_t timestamp;
+    // sensor identity
+    string name;
+    // optical frame: x right, y down, z forward
+    string frame_id;
+    int32_t width;
+    int32_t height;
+    // row-major calibration of the stored rectified image
+    double intrinsics[9];
+    int32_t rgb_size;
+    byte rgb_jpeg[rgb_size];
+}

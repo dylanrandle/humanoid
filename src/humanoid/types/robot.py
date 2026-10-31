@@ -1,3 +1,4 @@
+import math
 import os
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -109,10 +110,49 @@ class RobotBaseConfig:
 
 
 @dataclass(frozen=True, kw_only=True)
+class GripperSimulationConfig:
+    """Explicit gripper assumptions, separate from geometry and URDF coupling.
+
+    Motor torque is in N m; None preserves the URDF effort limit. Friction is
+    MuJoCo's sliding/torsional/rolling tuple. Solver tuples use MuJoCo's native
+    solref/solimp formats for contacts and the finger mimic constraints.
+    """
+
+    motor_torque_limit: float | None
+    friction: tuple[float, float, float]
+    contact_dimension: int
+    contact_solref: tuple[float, float]
+    contact_solimp: tuple[float, float, float, float, float]
+    coupling_solref: tuple[float, float]
+    coupling_solimp: tuple[float, float, float, float, float]
+
+    def __post_init__(self) -> None:
+        if self.motor_torque_limit is not None and (
+            not math.isfinite(self.motor_torque_limit) or self.motor_torque_limit <= 0
+        ):
+            raise ValueError("Gripper motor torque limit must be positive and finite, or None.")
+        for name, size in (
+            ("friction", 3),
+            ("contact_solref", 2),
+            ("contact_solimp", 5),
+            ("coupling_solref", 2),
+            ("coupling_solimp", 5),
+        ):
+            values = getattr(self, name)
+            if len(values) != size or not all(math.isfinite(value) for value in values):
+                raise ValueError(f"Gripper {name} must contain {size} finite values.")
+        if any(value < 0 for value in self.friction):
+            raise ValueError("Gripper friction coefficients must be nonnegative.")
+        if self.contact_dimension not in (1, 3, 4, 6):
+            raise ValueError("Gripper contact dimension must be 1, 3, 4, or 6.")
+
+
+@dataclass(frozen=True, kw_only=True)
 class RobotGripperConfig:
     """Independently commanded gripper joints identified by URDF name."""
 
     joint_names: tuple[str, ...]
+    simulation: GripperSimulationConfig | None = None
 
     def __post_init__(self) -> None:
         if not self.joint_names:

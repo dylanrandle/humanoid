@@ -1,0 +1,18 @@
+package humanoid.types.lcm;
+
+// Timestamped simulator snapshot with the last applied actuator command.
+struct simulation_sample_t {
+    // host_monotonic nanoseconds; command retains its own application timestamp
+    int64_t timestamp;
+    string episode_id;
+    int64_t sequence;
+    // -1 for asynchronous observations
+    int64_t action_index;
+    robot_state_t state;
+    robot_joint_command_t command;
+    int32_t num_cameras;
+    simulation_camera_observation_t cameras[num_cameras];
+    int32_t num_objects;
+    object_state_t objects[num_objects];
+    task_annotation_t task_annotation;
+}

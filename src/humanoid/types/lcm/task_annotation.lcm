@@ -1,0 +1,12 @@
+package humanoid.types.lcm;
+
+// Task-specific labels from experts, operators or estimators in either runtime.
+struct task_annotation_t {
+    // nanoseconds on the episode's collection clock
+    int64_t timestamp;
+    string episode_id;
+    string task;
+    int32_t task_version;
+    // JSON object; schema owned by task/task_version
+    string labels_json;
+}

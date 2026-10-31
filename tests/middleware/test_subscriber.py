@@ -24,7 +24,12 @@ from humanoid.types.robot import (
 def mock_lcm():
     """Patch lcm.LCM so no actual broker is needed."""
     mock_instance = MagicMock()
-    with patch("humanoid.middleware.subscriber.lcm.LCM", return_value=mock_instance):
+    # A mocked handle_timeout returns immediately; do not leave background
+    # threads spinning and accumulating mock calls throughout later tests.
+    with (
+        patch("humanoid.middleware.subscriber.lcm.LCM", return_value=mock_instance),
+        patch.object(Subscriber, "_lcm_spin"),
+    ):
         yield mock_instance
 
 

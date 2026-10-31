@@ -9,6 +9,8 @@ import {
   Runtime,
   TELEOP_PROCESSES,
 } from "./constants.js";
+import { renderCollection, disconnectCollection } from "./collection.js";
+import { collectionRunning } from "./requests.js";
 export function render(snapshot, busy, elements) {
   if (!snapshot) return;
 
@@ -18,6 +20,10 @@ export function render(snapshot, busy, elements) {
   const replayActive =
     snapshot.replay.running || processes[ProcessName.REPLAY].running;
   const controlsReady = stackActive && snapshot.orchestrator.connected;
+  const manualControlsReady =
+    controlsReady &&
+    !collectionRunning(snapshot.collection) &&
+    !busy.has(BusyKey.COLLECTION);
   const anyRunning = Object.values(processes).some(
     (process) => process.running,
   );
@@ -67,15 +73,16 @@ export function render(snapshot, busy, elements) {
     elements,
   );
   for (const name of TELEOP_PROCESSES) {
-    renderProcess(name, processes[name], controlsReady, busy, elements);
+    renderProcess(name, processes[name], manualControlsReady, busy, elements);
   }
-  renderLogging(snapshot.logging, controlsReady, busy, elements);
+  renderLogging(snapshot.logging, manualControlsReady, busy, elements);
+  renderCollection(snapshot, busy, elements);
   renderReplay(snapshot, anyRunning, replayActive, busy, elements);
   renderOrchestrator(
     snapshot.orchestrator,
     processes,
     stackActive,
-    controlsReady,
+    manualControlsReady,
     busy,
     elements,
   );
@@ -525,6 +532,7 @@ export function renderDisconnected(
   elements.stackStatus.textContent = "Unavailable";
   elements.stackDetail.textContent = message;
   elements.stackAction.disabled = true;
+  disconnectCollection(elements);
   elements.nodeRateSummary.textContent = "Unavailable";
   elements.nodeRateSummary.classList.remove("healthy", "unhealthy");
   const nodeRateMessage =

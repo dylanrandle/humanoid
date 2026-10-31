@@ -87,6 +87,14 @@ function elements() {
     loggingStatus: element(),
     loggingDetail: element(),
     loggingError: element(),
+    collectionForm: element(),
+    collectionFields: Object.fromEntries(["task", "episodes", "max_attempts", "seed", "max_sim_seconds", "output"].map(name => [name, element()])),
+    collectionStatus: element(),
+    collectionDetail: element(),
+    collectionProgress: element(),
+    collectionRecording: element(),
+    collectionMessage: element(),
+    collectionAction: element(),
     replayRecording: element(),
     replayStatus: element(),
     replayDetail: element(),
@@ -97,6 +105,68 @@ function elements() {
     modePulse: element(),
   };
 }
+
+test("collection preserves settings across polls and locks conflicting controls while active", () => {
+  const ui = elements();
+  const current = snapshot();
+  current.robot = "triskel";
+  current.processes.stack.running = true;
+  current.orchestrator = {mode: "idle", connected: true, parameters: {}};
+  current.collection_tasks = [{name: "cleanup", label: "Cleanup", robot: "triskel"}];
+  current.collection_defaults = {task: "cleanup", episodes: 1, max_attempts: 3, seed: 0, max_sim_seconds: 600, output: "logs/recordings"};
+  render(current, new Set(), ui);
+  assert.equal(ui.collectionAction.disabled, false);
+  ui.collectionFields.seed.value = "42";
+  render(current, new Set(), ui);
+  assert.equal(ui.collectionFields.seed.value, "42");
+  current.collection = {state: "running", run_id: "run", task: "cleanup", episodes: 1, max_attempts: 3, attempts: 1, successes: 0, phase: "pickup", target: "block", seed: 42, samples: 12, sim_seconds: 1.2};
+  current.orchestrator.mode = "system";
+  render(current, new Set(), ui);
+  assert.equal(ui.collectionAction.textContent, "Stop collection");
+  assert.equal(ui.collectionAction.disabled, false);
+  assert.ok(Object.values(ui.collectionFields).every(field => field.disabled));
+  assert.ok(ui.loggingButtons.every(button => button.disabled));
+  assert.ok(ui.orchestratorButtons.every(button => button.disabled));
+  assert.match(ui.collectionProgress.textContent, /Seed 42/);
+  current.collection = {...current.collection, state: "preparing", episodes: 0};
+  render(current, new Set(), ui);
+  assert.equal(ui.collectionStatus.textContent, "Loading scene");
+  assert.equal(ui.collectionAction.disabled, true);
+  assert.equal(ui.collectionProgress.textContent, "");
+  assert.equal(ui.stackAction.disabled, false);
+  current.collection.state = "aborted";
+  current.orchestrator.mode = "idle";
+  render(current, new Set(), ui);
+  assert.equal(ui.collectionAction.disabled, false);
+  assert.equal(ui.collectionStatus.textContent, "Stopped");
+  renderDisconnected("offline", ui);
+  assert.equal(ui.collectionAction.disabled, true);
+});
+
+test("empty scene preserves manual controls and enables collection after selecting an expert", () => {
+  const ui = elements();
+  const current = snapshot();
+  current.robot = "triskel";
+  current.processes.stack.running = true;
+  current.orchestrator = {mode: "idle", connected: true, parameters: {}};
+  current.collection_tasks = [
+    {name: "empty", label: "Empty scene", robot: null, collectable: false},
+    {name: "cleanup", label: "Cleanup", robot: "triskel", collectable: true},
+  ];
+  current.collection_defaults = {task: "empty", episodes: 1, max_attempts: 3, seed: 0, max_sim_seconds: 600, output: "logs/recordings"};
+  render(current, new Set(), ui);
+  assert.equal(ui.collectionFields.task.value, "empty");
+  assert.equal(ui.collectionFields.task.disabled, false);
+  assert.equal(ui.collectionFields.seed.disabled, false);
+  assert.equal(ui.collectionAction.disabled, true);
+  assert.equal(ui.collectionFields.episodes.disabled, true);
+  assert.equal(ui.loggingButtons[0].disabled, false);
+  assert.equal(ui.processes.keyboard.action.disabled, false);
+  ui.collectionFields.task.value = "cleanup";
+  render(current, new Set(), ui);
+  assert.equal(ui.collectionAction.disabled, false);
+  assert.ok(Object.values(ui.collectionFields).every(field => !field.disabled));
+});
 
 test("node target and measured rates render healthy and unhealthy states", () => {
   const ui = elements();

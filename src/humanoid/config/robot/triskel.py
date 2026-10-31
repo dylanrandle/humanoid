@@ -21,6 +21,7 @@ from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConf
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     CartesianVelocityLimits,
+    GripperSimulationConfig,
     RobotBaseConfig,
     RobotConfig,
     RobotGripperConfig,
@@ -146,7 +147,21 @@ STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
     root=WheelDeadReckoningRootStateEstimatorConfig(),
 )
 TOOL_CONFIG = RobotToolConfig(frame="gripper_base_link")
-GRIPPER_CONFIG = RobotGripperConfig(joint_names=(GRIPPER_ID,))
+# Provisional values for stable simulated grasping, not measured hardware
+# parameters. Replace these after system identification; none adds filtering.
+PROVISIONAL_TRISKEL_GRIPPER_CONFIG = GripperSimulationConfig(
+    motor_torque_limit=0.3,
+    friction=(1.0, 0.01, 0.0001),
+    contact_dimension=4,
+    contact_solref=(0.008, 1.0),
+    contact_solimp=(0.95, 0.99, 0.001, 0.5, 2.0),
+    coupling_solref=(0.004, 1.0),
+    coupling_solimp=(0.9999, 0.9999, 0.001, 0.5, 2.0),
+)
+
+GRIPPER_CONFIG = RobotGripperConfig(
+    joint_names=(GRIPPER_ID,), simulation=PROVISIONAL_TRISKEL_GRIPPER_CONFIG
+)
 BASE_CONFIG = RobotBaseConfig(
     frame="root_joint",
     velocity_limits=CartesianVelocityLimits(

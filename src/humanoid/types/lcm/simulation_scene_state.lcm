@@ -1,0 +1,13 @@
+package humanoid.types.lcm;
+
+// Privileged visualization telemetry; not a policy observation channel.
+struct simulation_scene_state_t {
+    int64_t timestamp;
+    int32_t num_geoms;
+    string names[num_geoms];
+    string kinds[num_geoms];
+    double sizes[num_geoms][3];
+    double colors[num_geoms][4];
+    double positions[num_geoms][3];
+    double quaternions[num_geoms][4];
+}

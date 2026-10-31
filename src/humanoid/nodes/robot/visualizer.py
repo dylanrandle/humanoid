@@ -5,7 +5,7 @@ current joint positions using MeshCat.
 """
 
 from humanoid.config import ROBOT_CONFIG, VISUALIZER_CONFIG
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
@@ -14,6 +14,7 @@ from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import RobotConfig
 from humanoid.types.visualizer import VisualizerConfig
 from humanoid.visualizers.robot import RobotVisualizer as _RobotVisualizer
+from humanoid.visualizers.scene import SceneVisualizer
 
 logger = get_logger(__name__)
 
@@ -36,6 +37,7 @@ class RobotVisualizerNode(Node):
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
         visualizer_config: VisualizerConfig = VISUALIZER_CONFIG,
+        lcm_url: str = DEFAULT_LCM_URL,
     ):
         self.rate_hz = 1 / visualizer_config.dt
 
@@ -46,6 +48,7 @@ class RobotVisualizerNode(Node):
         self.viz_config = visualizer_config
         self.viz = _RobotVisualizer(self.robot, config=visualizer_config)
         self.viz.initialize()
+        self.scene_viz = SceneVisualizer(self.viz.viewer.viewer)
 
         # Initialize with home position
         self.current_q = robot_config.homing_presets[HomingPreset.HOME].copy()
@@ -58,7 +61,9 @@ class RobotVisualizerNode(Node):
                 Topic.ROBOT_JOINT_COMMAND,
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
+                Topic.SIMULATION_SCENE,
             ],
+            url=lcm_url,
         )
 
     def setup(self) -> None:
@@ -71,6 +76,9 @@ class RobotVisualizerNode(Node):
         """
         # Check for robot state update
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE)
+        scene = self.subscriber.receive(Topic.SIMULATION_SCENE)
+        if scene is not None:
+            self.scene_viz.display(scene)
 
         if robot_state is not None:
             # Extract joint positions from the state

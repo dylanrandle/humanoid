@@ -7,6 +7,7 @@ A Python framework for multi-robot control and teleoperation in simulation and o
 - **Multi-robot support**: Compatible with SO101, Triskel, and Panda robot platforms
 - **Actuator control**: Runtime-independent joint control with optional typed Feetech hardware
 - **MuJoCo digital twin**: Native rigid-body dynamics behind the same LCM interface as hardware
+- **Autonomous simulation data collection**: a privileged Triskel expert collects successful mobile cleanup demonstrations through the existing LCM recorder
 - **Visualization**: Real-time robot visualization using MeshCat
 - **LCM middleware**: Lightweight Communications and Marshalling for inter-process communication
 - **Operational space control**: Advanced control algorithms for precise robot manipulation
@@ -61,7 +62,7 @@ uv run start
 
 The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Use it to select the
 robot and runtime, manage the stack and teleoperation processes, choose a control mode,
-monitor node health and application logs, and record or replay LCM sessions.
+monitor node health and application logs, collect task episodes, and record or replay LCM sessions.
 Each data-logger run is stored as `logs/recordings/<timestamp>/`, with the LCM log and
 robot-configuration manifest kept together inside that directory.
 
@@ -69,6 +70,48 @@ Simulation uses MuJoCo and real-hardware mode uses the hardware driver; both exp
 same LCM interface to the rest of the stack. Hardware actions require explicit operator
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
+
+Simulation defaults to **Empty scene**, the original robot-only environment for
+teleoperation and manual recording. Select it under **Simulation task** to clear a
+loaded task scene while Idle; it works with every robot and does not collect episodes.
+
+### Autonomous simulation data collection
+
+The Cleanup task defines a scene with a floor, loose blocks, a toy car, an open bin, and
+four RGB cameras: one behind the gripper and one between each pair of base wheels.
+The simulation-only cleanup expert uses privileged object poses and bounding boxes
+to choose shortest collision-free base routes, face each pickup and the bin, physically
+grasp them, carry them, and verify that every object is fully contained in the bin.
+
+Start `uv run start`, select **Simulation** and **Triskel**, then **Start stack**.
+In **Simulation task**, select **Cleanup**, set the successful episode count, maximum
+attempts, starting seed, simulation time limit per attempt, and recording directory.
+The selected task and seed load their scene into the existing stack while **Idle**
+with manual recording stopped. Changing either reloads the preview; there is no
+hardcoded task scene in the simulator.
+With the stack in **Idle**, select **Start collection**. Progress shows the current
+attempt, phase, seed, and recording. **Stop collection** flushes the current attempt
+and returns to Idle; the stack and MeshCat viewer stay running.
+
+Collection uses the already-running controller, orchestrator, MuJoCo driver, logger,
+and MeshCat visualization. All collection settings and controls are in the operator UI.
+Each attempt gets a fresh world, incremented seed, and a normal
+`logs/recordings/<id>/recording.lcm` + `robot.json` bundle. `episode.json` identifies
+success/failure, provenance, settings, and training eligibility. Interrupted, failed,
+or incomplete recordings are retained but never counted toward the requested successes.
+
+The existing `RobotLoggerNode` / `lcm-logger` records full-rate robot state and commands,
+timestamped RGB from all four cameras with privileged labels, scene replay geometry, and episode
+boundaries. No perception or real-world autonomous controller is used. These raw logs
+are the input to a subsequent training-format conversion and policy-training pipeline.
+The policy's camera input is RGB only; privileged state guides the simulation expert
+and provides supervision, while depth is neither rendered nor recorded.
+Camera frames, object states, task annotations, and episode boundaries use
+[shared LCM messages](src/humanoid/types/lcm/README.md) that also support real
+teleoperation recordings. The episode's runtime distinguishes simulation labels from
+real estimates. Simulation samples include the last applied command with its own
+timestamp; training conversion aligns the asynchronous streams.
+See [the task interface and recording schema](src/humanoid/simulation/README.md).
 
 ### Controller Tracking Diagnostic
 

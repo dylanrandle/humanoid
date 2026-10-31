@@ -1,0 +1,8 @@
+package humanoid.types.lcm;
+
+struct logging_request_t
+{
+    int64_t timestamp;
+    boolean start;
+    string directory;
+}

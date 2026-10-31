@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import mujoco
 import numpy as np
+import pinocchio as pin
 
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.robots.base import Robot
@@ -23,6 +25,11 @@ from humanoid.types.robot import (
     RobotJointCommand,
     RobotState,
 )
+from humanoid.types.scene import (
+    SceneGeometry,
+    SceneGeometryKind,
+    SimulationSceneState,
+)
 from humanoid.types.simulation import MujocoSimulationConfig
 
 SIMULATED_ACTUATOR_TEMPERATURE = 25.0
@@ -35,10 +42,14 @@ class NativeMujocoEngine:
         self,
         robot_config: RobotConfig,
         config: MujocoSimulationConfig = DEFAULT_MUJOCO_SIMULATION_CONFIG,
+        *,
+        scene_builder: Callable[[mujoco.MjSpec], None] | None = None,
     ) -> None:
         self.config = config
         self.robot = Robot(robot_config)
         self.spec = build_mujoco_spec(self.robot, config)
+        if scene_builder is not None:
+            scene_builder(self.spec)
         self.model = self.spec.compile()
         self.data = mujoco.MjData(self.model)
         self.binding: MujocoRobotBinding = resolve_mujoco_robot_binding(
@@ -166,3 +177,32 @@ class NativeMujocoEngine:
             ),
             effort_source=ActuatorEffortSource.SIMULATION,
         )
+
+    def read_scene_state(self, timestamp: float) -> SimulationSceneState:
+        """Export scene geometry for visualization and replay."""
+        shapes: dict[int, SceneGeometryKind] = {
+            mujoco.mjtGeom.mjGEOM_BOX: "box",
+            mujoco.mjtGeom.mjGEOM_CYLINDER: "cylinder",
+            mujoco.mjtGeom.mjGEOM_PLANE: "plane",
+        }
+        geoms = []
+        for index in range(self.model.ngeom):
+            if self.model.geom_contype[index] != 2 and not (  # noqa: PLR2004 - external collision bit
+                self.model.geom(index).name or ""
+            ).startswith("camera_"):
+                continue
+            kind = shapes.get(self.model.geom_type[index])
+            if kind is None:
+                continue
+            geoms.append(
+                SceneGeometry(
+                    name=self.model.geom(index).name or f"scene_{index}",
+                    kind=kind,
+                    size=self.model.geom_size[index].copy(),
+                    rgba=self.model.geom_rgba[index].copy(),
+                    pose=pin.SE3(
+                        self.data.geom_xmat[index].reshape(3, 3), self.data.geom_xpos[index]
+                    ),
+                )
+            )
+        return SimulationSceneState(timestamp, tuple(geoms))

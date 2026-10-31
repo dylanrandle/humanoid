@@ -10,7 +10,7 @@ from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.robot.so101 import SO101_CONFIG
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.simulation.engine import NativeMujocoEngine
-from humanoid.types.actuator import ActuatorEffortSource
+from humanoid.types.actuator import ActuatorControlMode, ActuatorEffortSource
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import RobotConfig, RobotJointCommand
 
@@ -89,6 +89,25 @@ def test_position_command_moves_a_fixed_base_robot():
     state = engine.read_robot_state(timestamp=1.0)
 
     assert state.joint_positions[0] == pytest.approx(target[0], abs=0.01)
+
+
+def test_stop_clears_velocity_targets_but_preserves_position_hold():
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
+    target = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    engine.apply_joint_command(RobotJointCommand(0.0, target, np.full(engine.robot.model.nv, 0.1)))
+    engine.step(20)
+    control = engine.data.ctrl.copy()
+    engine.stop_velocity_actuators()
+    for joint in engine.binding.joints:
+        if joint.control_mode is ActuatorControlMode.VELOCITY:
+            assert control[joint.actuator_id] != 0
+            assert engine.data.ctrl[joint.actuator_id] == 0
+        else:
+            assert engine.data.ctrl[joint.actuator_id] == control[joint.actuator_id]
+    assert engine.binding.root is not None
+    ids = list(engine.binding.root.actuator_ids)
+    assert np.all(control[ids] != 0)
+    assert engine.data.ctrl[ids] == pytest.approx(0)
 
 
 def test_mobile_root_follows_the_commanded_generalized_velocity():
@@ -181,3 +200,21 @@ def test_rejects_non_positive_substeps():
 
     with pytest.raises(ValueError, match="substeps must be positive"):
         engine.step(0)
+
+
+def test_bare_engine_does_not_invent_a_task_scene():
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
+    assert engine.model.ncam == 0
+    assert mujoco.mj_name2id(engine.model, mujoco.mjtObj.mjOBJ_BODY, "cleanup_bin") == -1
+    assert mujoco.mj_name2id(engine.model, mujoco.mjtObj.mjOBJ_GEOM, "floor") == -1
+
+
+def test_tasks_can_compose_their_own_scene():
+    def add_goal(spec):
+        spec.worldbody.add_geom(
+            name="custom_goal", type=mujoco.mjtGeom.mjGEOM_BOX, size=[0.1, 0.1, 0.1]
+        )
+
+    engine = NativeMujocoEngine(TRISKEL_CONFIG, scene_builder=add_goal)
+    assert engine.model.geom("custom_goal").id >= 0
+    assert mujoco.mj_name2id(engine.model, mujoco.mjtObj.mjOBJ_BODY, "cleanup_bin") == -1

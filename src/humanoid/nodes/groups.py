@@ -1,5 +1,6 @@
 """Imported node groups exposed to the process manager."""
 
+from humanoid.nodes.collection import CollectionNode
 from humanoid.nodes.orchestrator import OrchestratorNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
@@ -23,6 +24,7 @@ NODE_GROUPS = {
                 RobotVisualizerNode,
                 OrchestratorNode,
                 RobotLoggerNode,
+                CollectionNode,
             ),
             deferred_nodes=(HomingNode,),
             runtime_nodes={

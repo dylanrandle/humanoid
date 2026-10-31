@@ -5,6 +5,7 @@ import json
 from enum import StrEnum
 
 from humanoid.orchestrator.constants import TELEOP_PROCESSES
+from humanoid.types.collection import CollectionAction, CollectionRunState
 from humanoid.types.logging import LoggingState
 from humanoid.types.orchestrator import Mode, OrchestratorParameter
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
@@ -26,6 +27,8 @@ def render_javascript_constants() -> str:
         _enum_object("ProcessAction", ProcessAction),
         _enum_object("Mode", Mode),
         _enum_object("LoggingState", LoggingState),
+        _enum_object("CollectionRunState", CollectionRunState),
+        _enum_object("CollectionAction", CollectionAction),
         _enum_object("ReplayOutcome", ReplayOutcome),
         _enum_object("OrchestratorParameter", OrchestratorParameter),
         _enum_object("PayloadKey", PayloadKey),
@@ -47,6 +50,7 @@ def _busy_keys() -> str:
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
   LOGGING: ApiRoute.LOGGING,
+  COLLECTION: ApiRoute.COLLECTION,
   REPLAY: ApiRoute.REPLAY,
   ORCHESTRATOR: ApiRoute.ORCHESTRATOR,
 });
@@ -66,6 +70,9 @@ def _api_routes() -> str:
   ROBOT: ApiRoute.ROBOT,
   logging(action) {
     return resolveRoute(ApiRoute.LOGGING, { action });
+  },
+  collection(action) {
+    return resolveRoute(ApiRoute.COLLECTION, { action });
   },
   replay(action) {
     return resolveRoute(ApiRoute.REPLAY, { action });

@@ -1,11 +1,13 @@
 import os
 import subprocess
 import sys
+from dataclasses import replace
 
 import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.robot.triskel import PROVISIONAL_TRISKEL_GRIPPER_CONFIG
 from humanoid.constants import DEFAULT_HUMANOID_ROBOT, ROBOT_ENVIRONMENT_VARIABLE
 from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.controllers import OmniwheelBaseConfig
@@ -222,3 +224,26 @@ def test_robot_combines_tool_frame_limits_and_homing_presets():
         config.homing_presets[HomingPreset.HOME].shape
         == config.homing_presets[HomingPreset.REST].shape
     )
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, float("nan"), float("inf")])
+def test_gripper_motor_torque_limit_must_be_positive_and_finite(value):
+    with pytest.raises(ValueError, match="positive and finite"):
+        replace(PROVISIONAL_TRISKEL_GRIPPER_CONFIG, motor_torque_limit=value)
+
+
+@pytest.mark.parametrize(
+    "field_name,value",
+    [
+        ("friction", (1.0, -0.01, 0.0001)),
+        ("friction", (1.0, 0.01)),
+        ("contact_dimension", 2),
+        ("contact_solref", (float("nan"), 1.0)),
+        ("contact_solimp", (0.95, 0.99)),
+        ("coupling_solref", (0.004, float("inf"))),
+        ("coupling_solimp", (0.9999, 0.9999, 0.001, 0.5, float("nan"))),
+    ],
+)
+def test_gripper_rejects_invalid_contact_and_solver_parameters(field_name, value):
+    with pytest.raises(ValueError, match="Gripper"):
+        replace(PROVISIONAL_TRISKEL_GRIPPER_CONFIG, **{field_name: value})

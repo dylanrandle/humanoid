@@ -102,6 +102,17 @@ def test_robot_joint_command_encode_decode():
     np.testing.assert_allclose(recovered.joint_velocities, v)
 
 
+@pytest.mark.parametrize("timestamp", [4.1, 8.2, 16.4, 16.9, 34.3, 68.6, 136.7, 137.2])
+def test_joint_command_timestamp_is_stable_across_routing_hops(timestamp):
+    command = RobotJointCommand(timestamp, np.ones(3), np.zeros(3))
+    expected = LCMConverter.robot_joint_command_to_lcm(command)
+    assert expected.timestamp == round(timestamp * 1e9)
+    for _ in range(3):
+        wire = LCMConverter.robot_joint_command_to_lcm(command)
+        assert wire.encode() == expected.encode()
+        command = LCMConverter.robot_joint_command_from_lcm(type(wire).decode(wire.encode()))
+
+
 def test_robot_joint_command_none_velocities():
     """When joint_velocities is None, num_velocities=0 on the wire and decodes back to None."""
     q = np.array([0.1, 0.2, 0.3])

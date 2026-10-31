@@ -5,12 +5,27 @@ lcm-gen 1.5.2
 """
 
 from .actuator_health_report_t import actuator_health_report_t as actuator_health_report_t
+from .camera_frame_t import camera_frame_t as camera_frame_t
+from .collection_episode_t import collection_episode_t as collection_episode_t
+from .collection_request_t import collection_request_t as collection_request_t
+from .collection_run_status_t import collection_run_status_t as collection_run_status_t
 from .homing_target_t import homing_target_t as homing_target_t
+from .logging_request_t import logging_request_t as logging_request_t
 from .logging_status_t import logging_status_t as logging_status_t
 from .node_rate_sample_t import node_rate_sample_t as node_rate_sample_t
+from .object_state_t import object_state_t as object_state_t
 from .orchestrator_event_t import orchestrator_event_t as orchestrator_event_t
 from .orchestrator_mode_t import orchestrator_mode_t as orchestrator_mode_t
 from .robot_base_command_t import robot_base_command_t as robot_base_command_t
 from .robot_joint_command_t import robot_joint_command_t as robot_joint_command_t
 from .robot_state_t import robot_state_t as robot_state_t
 from .robot_tool_command_t import robot_tool_command_t as robot_tool_command_t
+from .simulation_camera_observation_t import (
+    simulation_camera_observation_t as simulation_camera_observation_t,
+)
+from .simulation_reset_status_t import simulation_reset_status_t as simulation_reset_status_t
+from .simulation_reset_t import simulation_reset_t as simulation_reset_t
+from .simulation_sample_t import simulation_sample_t as simulation_sample_t
+from .simulation_scene_state_t import simulation_scene_state_t as simulation_scene_state_t
+from .simulation_state_t import simulation_state_t as simulation_state_t
+from .task_annotation_t import task_annotation_t as task_annotation_t

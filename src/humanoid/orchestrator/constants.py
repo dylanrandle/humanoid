@@ -16,6 +16,7 @@ REPLAY_CHANNELS = (
     Topic.ROBOT_TOOL_COMMAND,
     Topic.ROBOT_BASE_COMMAND,
     Topic.ORCHESTRATOR_MODE,
+    Topic.SIMULATION_SCENE,
 )
 REPLAY_CHANNEL_PATTERN = "|".join(topic.value for topic in REPLAY_CHANNELS)
 TELEOP_PROCESSES: dict[Mode, ProcessName] = {

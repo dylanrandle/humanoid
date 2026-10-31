@@ -32,7 +32,8 @@ from humanoid.types.robot import RobotName
 
 logger = get_logger(__name__)
 
-DEFAULT_STATE_TIMEOUT_SECONDS = 10.0
+# Leave time for model loading and multicast startup under load.
+DEFAULT_STATE_TIMEOUT_SECONDS = 30.0
 DEFAULT_STATE_POLL_INTERVAL_SECONDS = 0.1
 DEFAULT_STOP_TIMEOUT_SECONDS = 8.0
 TERMINATE_TIMEOUT_SECONDS = 2.0

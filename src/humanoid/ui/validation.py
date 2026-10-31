@@ -2,12 +2,27 @@
 
 from enum import StrEnum
 from http import HTTPStatus
+from typing import Any, cast
 
 from humanoid.orchestrator.constants import CONTROLLED_PROCESS_NAMES
+from humanoid.types.collection import CollectionAction, CollectionSettings
 from humanoid.types.orchestrator import Mode, OrchestratorRequest, SafetyContext
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
 from humanoid.types.robot import RobotName
 from humanoid.ui.errors import ApiError
+
+
+def parse_collection_action(value: str) -> CollectionAction:
+    return _parse_enum(value, CollectionAction, "Unknown collection action.", HTTPStatus.NOT_FOUND)
+
+
+def parse_collection_settings(value: object) -> CollectionSettings:
+    if not isinstance(value, dict):
+        raise ApiError("Collection settings must be a JSON object.", HTTPStatus.BAD_REQUEST)
+    try:
+        return CollectionSettings(**cast(dict[str, Any], value))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ApiError(f"Invalid collection settings: {exc}", HTTPStatus.BAD_REQUEST) from exc
 
 
 def parse_process_name(name: str) -> ProcessName:

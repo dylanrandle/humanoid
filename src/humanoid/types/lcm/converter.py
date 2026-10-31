@@ -18,6 +18,7 @@ from humanoid.types.lcm import (
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
+    simulation_scene_state_t,
 )
 from humanoid.types.logging import LoggingState, LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -34,10 +35,53 @@ from humanoid.types.robot import (
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.scene import SceneGeometry, SimulationSceneState
 
 
 class LCMConverter:
     """Handles conversion between LCM types and Python dataclasses."""
+
+    @staticmethod
+    def simulation_scene_to_lcm(scene: SimulationSceneState) -> simulation_scene_state_t:
+        message = simulation_scene_state_t()
+        message.timestamp = round(scene.timestamp * 1e9)
+        message.num_geoms = len(scene.geoms)
+        message.names = [geom.name for geom in scene.geoms]
+        message.kinds = [geom.kind for geom in scene.geoms]
+        message.sizes = [geom.size.tolist() for geom in scene.geoms]
+        message.colors = [geom.rgba.tolist() for geom in scene.geoms]
+        message.positions = [geom.pose.translation.tolist() for geom in scene.geoms]
+        message.quaternions = []
+        for geom in scene.geoms:
+            quat = pin.Quaternion(geom.pose.rotation)
+            message.quaternions.append([quat.w, quat.x, quat.y, quat.z])
+        return message
+
+    @staticmethod
+    def simulation_scene_from_lcm(message: simulation_scene_state_t) -> SimulationSceneState:
+        geoms = []
+        for name, kind, size, rgba, position, quaternion in zip(
+            message.names,
+            message.kinds,
+            message.sizes,
+            message.colors,
+            message.positions,
+            message.quaternions,
+            strict=True,
+        ):
+            if kind not in ("box", "cylinder", "plane"):
+                raise ValueError(f"Unsupported scene primitive: {kind}")
+            rotation = pin.Quaternion(*quaternion).toRotationMatrix()
+            geoms.append(
+                SceneGeometry(
+                    name,
+                    kind,
+                    np.asarray(size),
+                    np.asarray(rgba),
+                    pin.SE3(rotation, np.asarray(position)),
+                )
+            )
+        return SimulationSceneState(message.timestamp / 1e9, tuple(geoms))
 
     @staticmethod
     def actuator_health_report_to_lcm(
@@ -45,7 +89,7 @@ class LCMConverter:
     ) -> actuator_health_report_t:
         """Convert actuator health telemetry to its LCM representation."""
         lcm_report = actuator_health_report_t()
-        lcm_report.timestamp = int(report.timestamp * 1e9)
+        lcm_report.timestamp = round(report.timestamp * 1e9)
         lcm_report.num_actuators = len(report.actuators)
         lcm_report.joint_names = [actuator.joint_name for actuator in report.actuators]
         lcm_report.controllers = [actuator.controller for actuator in report.actuators]
@@ -93,7 +137,7 @@ class LCMConverter:
     def node_rate_sample_to_lcm(sample: NodeRateSample) -> node_rate_sample_t:
         """Convert NodeRateSample dataclass to node_rate_sample_t LCM type."""
         lcm_sample = node_rate_sample_t()
-        lcm_sample.timestamp = int(sample.timestamp * 1e9)
+        lcm_sample.timestamp = round(sample.timestamp * 1e9)
         lcm_sample.node_name = sample.node_name
         lcm_sample.pid = sample.pid
         lcm_sample.target_rate_hz = sample.target_rate_hz
@@ -126,7 +170,9 @@ class LCMConverter:
             robot_joint_command_t LCM type ready for transmission
         """
         lcm_command = robot_joint_command_t()
-        lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
+        # Rounding keeps timestamps stable when the orchestrator decodes and
+        # republishes a command; truncation can lose a nanosecond at each hop.
+        lcm_command.timestamp = round(command.timestamp * 1e9)
         lcm_command.num_positions = len(command.joint_positions)
         lcm_command.joint_positions = command.joint_positions.tolist()
         lcm_command.joint_velocities = (
@@ -169,7 +215,7 @@ class LCMConverter:
             robot_state_t LCM type ready for transmission
         """
         lcm_state = robot_state_t()
-        lcm_state.timestamp = int(state.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_state.timestamp = round(state.timestamp * 1e9)
         lcm_state.num_joints = len(state.actuator_temperatures)
         lcm_state.num_positions = len(state.joint_positions)
         lcm_state.num_velocities = len(state.joint_velocities)
@@ -226,7 +272,7 @@ class LCMConverter:
             robot_tool_command_t LCM type ready for transmission
         """
         lcm_command = robot_tool_command_t()
-        lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_command.timestamp = round(command.timestamp * 1e9)
 
         # Extract position from SE3
         lcm_command.position = command.pose.translation.tolist()
@@ -303,7 +349,7 @@ class LCMConverter:
     def robot_base_command_to_lcm(command: RobotBaseCommand) -> robot_base_command_t:
         """Convert RobotBaseCommand dataclass to robot_base_command_t LCM type."""
         lcm_command = robot_base_command_t()
-        lcm_command.timestamp = int(command.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_command.timestamp = round(command.timestamp * 1e9)
         lcm_command.position = command.pose.translation.tolist()
         quat = pin.Quaternion(command.pose.rotation)
         lcm_command.quaternion = [quat.w, quat.x, quat.y, quat.z]
@@ -329,7 +375,7 @@ class LCMConverter:
     def orchestrator_mode_to_lcm(msg: OrchestratorMode) -> orchestrator_mode_t:
         """Convert OrchestratorMode dataclass to orchestrator_mode_t LCM type."""
         lcm_msg = orchestrator_mode_t()
-        lcm_msg.timestamp = int(msg.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_msg.timestamp = round(msg.timestamp * 1e9)
         lcm_msg.mode = msg.mode.value
         return lcm_msg
 
@@ -345,7 +391,7 @@ class LCMConverter:
     def orchestrator_event_to_lcm(msg: OrchestratorEvent) -> orchestrator_event_t:
         """Convert OrchestratorEvent dataclass to orchestrator_event_t LCM type."""
         lcm_msg = orchestrator_event_t()
-        lcm_msg.timestamp = int(msg.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_msg.timestamp = round(msg.timestamp * 1e9)
         lcm_msg.kind = msg.kind.value
         return lcm_msg
 
@@ -361,7 +407,7 @@ class LCMConverter:
     def homing_target_to_lcm(msg: HomingTarget) -> homing_target_t:
         """Convert HomingTarget dataclass to homing_target_t LCM type."""
         lcm_msg = homing_target_t()
-        lcm_msg.timestamp = int(msg.timestamp * 1e9)  # Convert to nanoseconds
+        lcm_msg.timestamp = round(msg.timestamp * 1e9)
         lcm_msg.num_positions = len(msg.target_position)
         lcm_msg.target_position = msg.target_position.tolist()
         return lcm_msg
@@ -378,7 +424,7 @@ class LCMConverter:
     def logging_status_to_lcm(status: LoggingStatus) -> logging_status_t:
         """Convert LoggingStatus dataclass to logging_status_t LCM type."""
         lcm_status = logging_status_t()
-        lcm_status.timestamp = int(status.timestamp * 1e9)
+        lcm_status.timestamp = round(status.timestamp * 1e9)
         lcm_status.state = status.state.value
         lcm_status.file_name = status.file_name or ""
         lcm_status.error = status.error or ""

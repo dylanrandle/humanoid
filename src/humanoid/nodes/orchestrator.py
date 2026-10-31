@@ -14,7 +14,7 @@ saves the previous mode and pops back to it when the homing policy sends a
 import argparse
 import time
 
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
@@ -49,6 +49,7 @@ MODE_FORWARDS: dict[Mode, dict[Topic, Topic]] = {
     },
     Mode.SYSTEM: {
         Topic.SYSTEM_TOOL_COMMAND: Topic.ROBOT_TOOL_COMMAND,
+        Topic.SYSTEM_BASE_COMMAND: Topic.ROBOT_BASE_COMMAND,
         Topic.CONTROLLER_JOINT_COMMAND: Topic.ROBOT_JOINT_COMMAND,
     },
 }
@@ -70,7 +71,12 @@ def _all_source_topics() -> list[Topic]:
 class OrchestratorNode(Node):
     """Event-driven node that selects a mode and routes per-source topics."""
 
-    def __init__(self, mode: Mode = Mode.IDLE, rate_hz: float = DEFAULT_RATE_HZ):
+    def __init__(
+        self,
+        mode: Mode = Mode.IDLE,
+        rate_hz: float = DEFAULT_RATE_HZ,
+        lcm_url: str = DEFAULT_LCM_URL,
+    ):
         self.rate_hz = rate_hz
         self.mode = mode
         # Where to return after HOMING completes. None outside of HOMING.
@@ -79,20 +85,14 @@ class OrchestratorNode(Node):
         self._source_topics = _all_source_topics()
         self.subscriber = Subscriber(
             topics=[*self._source_topics, Topic.ORCHESTRATOR_EVENT],
+            url=lcm_url,
         )
-        self.publisher = Publisher()
+        self.publisher = Publisher(url=lcm_url)
 
     def setup(self) -> None:
         logger.info(f"Orchestrator starting in mode: {self.mode}")
 
     def step(self) -> None:
-        # Broadcast current mode every tick so subscribers stay in sync even if
-        # they (re)start mid-session.
-        self.publisher.publish(
-            OrchestratorMode(timestamp=time.time(), mode=self.mode),
-            topic=Topic.ORCHESTRATOR_MODE,
-        )
-
         # Drain incoming events; each may change self.mode.
         while True:
             event = self.subscriber.receive(Topic.ORCHESTRATOR_EVENT)
@@ -100,6 +100,10 @@ class OrchestratorNode(Node):
                 break
             self._handle_event(event)
 
+        self.publisher.publish(
+            OrchestratorMode(timestamp=time.time(), mode=self.mode),
+            topic=Topic.ORCHESTRATOR_MODE,
+        )
         forwards = MODE_FORWARDS[self.mode]
         for source_topic in self._source_topics:
             msg = self.subscriber.receive(source_topic)

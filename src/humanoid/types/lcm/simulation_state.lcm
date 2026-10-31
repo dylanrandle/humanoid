@@ -1,0 +1,15 @@
+package humanoid.types.lcm;
+
+struct simulation_state_t
+{
+    int64_t timestamp;
+    string reset_id;
+    double sim_seconds;
+    int32_t nq;
+    double qpos[nq];
+    int32_t nv;
+    double qvel[nv];
+    robot_state_t state;
+    robot_joint_command_t command;
+    string error;
+}

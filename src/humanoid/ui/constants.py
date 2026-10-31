@@ -23,6 +23,7 @@ class ApiRoute(StrEnum):
     ROBOT = f"{ROOT}/robot"
     PROCESSES = f"{ROOT}/processes/<name>/<action>"
     LOGGING = f"{ROOT}/logging/<action>"
+    COLLECTION = f"{ROOT}/collection/<action>"
     REPLAY = f"{ROOT}/replay/<action>"
     ORCHESTRATOR = f"{ROOT}/orchestrator"
 
@@ -36,3 +37,4 @@ class PayloadKey(StrEnum):
     EXPECTED_ROBOT = "expected_robot"
     REAL_HARDWARE_ACKNOWLEDGED = "real_hardware_acknowledged"
     RECORDING = "recording"
+    SETTINGS = "settings"
