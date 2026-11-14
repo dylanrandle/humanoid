@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+import numpy as np
+import pinocchio as pin
 import pytest
 
 ASSETS_DIR = Path(__file__).resolve().parents[2] / "src" / "humanoid" / "robots" / "assets"
@@ -13,6 +15,35 @@ SRDF_PATHS = sorted(ASSETS_DIR.glob("*/srdf/*.srdf"))
 SIMPLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 PACKAGE_URI_PATTERN = re.compile(r"^package://([^/]+)/(.+)$")
 VERSION_PATTERN = re.compile(r"(?:^|_)v\d+(?:_|$)")
+
+
+@pytest.mark.parametrize("filename", ["triskel.urdf", "triskel_collision.urdf"])
+@pytest.mark.parametrize(
+    ("frame", "expected_translation"),
+    [
+        ("ego_camera_depth_optical_frame", [-0.0175, 0.10875, 0.032]),
+        ("ego_camera_color_optical_frame", [-0.0325, 0.10875, 0.032]),
+    ],
+)
+def test_triskel_camera_frames_match_confirmed_mount(filename, frame, expected_translation):
+    model = pin.buildModelFromUrdf(
+        str(ASSETS_DIR / "triskel" / "urdf" / filename), pin.JointModelPlanar()
+    )
+    data = model.createData()
+    q = pin.neutral(model)
+    # Moving the robot in world must not change the camera-to-base extrinsics.
+    q[:4] = [1.2, -0.7, np.cos(0.6), np.sin(0.6)]
+    pin.framesForwardKinematics(model, data, q)
+    assert model.existFrame(frame)
+    base_from_camera = (
+        data.oMf[model.getFrameId("base_link")].inverse() * data.oMf[model.getFrameId(frame)]
+    )
+
+    np.testing.assert_allclose(base_from_camera.translation, expected_translation, atol=1e-12)
+    # Image right, down, and forward must point along base +X, -Z, and +Y.
+    np.testing.assert_allclose(
+        base_from_camera.rotation, [[1, 0, 0], [0, 0, 1], [0, -1, 0]], atol=1e-12
+    )
 
 
 def test_asset_file_names_are_simple_and_version_free():

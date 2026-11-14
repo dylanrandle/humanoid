@@ -34,6 +34,14 @@ from humanoid.types.process import ProcessName, Runtime
 from humanoid.types.robot import RobotName
 
 
+@pytest.fixture(autouse=True)
+def send_signal(monkeypatch):
+    """Keep fake process IDs from reaching the operating system."""
+    mock = MagicMock()
+    monkeypatch.setattr("humanoid.nodes.manager.os.kill", mock)
+    return mock
+
+
 def _fake_process(
     name: str = "Node",
     *,
@@ -364,7 +372,7 @@ def test_stack_startup_failure_stops_core_nodes_and_reports_error(monkeypatch):
     assert status.last_output == "Main stack failed to start: state unavailable"
 
 
-def test_stopping_stack_cancels_deferred_startup(monkeypatch):
+def test_stopping_stack_cancels_deferred_startup(monkeypatch, send_signal):
     processes: list[MagicMock] = []
     context = _fake_context(processes)
     waiting = threading.Event()
@@ -389,6 +397,10 @@ def test_stopping_stack_cancels_deferred_startup(monkeypatch):
     assert len(processes) == len(NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(manager.runtime))
     assert status.running is False
     assert status.exit_code == 0
+    if os.name == "posix":
+        assert send_signal.call_args_list == [
+            call(process.pid, signal.SIGINT) for process in processes
+        ]
 
 
 def test_partial_group_failure_stops_siblings_and_reports_failure(monkeypatch):
@@ -417,13 +429,11 @@ def test_partial_group_failure_stops_siblings_and_reports_failure(monkeypatch):
     stop_processes.assert_called_once_with(processes)
 
 
-def test_stop_processes_interrupts_then_escalates_stragglers(monkeypatch):
+def test_stop_processes_interrupts_then_escalates_stragglers(monkeypatch, send_signal):
     process = _fake_process()
     process.is_alive.side_effect = [True, True, True]
     monotonic = MagicMock(side_effect=[0.0, 0.0])
-    send_signal = MagicMock()
     monkeypatch.setattr("humanoid.nodes.manager.time.monotonic", monotonic)
-    monkeypatch.setattr("humanoid.nodes.manager.os.kill", send_signal)
 
     NodeManager._stop_processes([process], timeout=5.0)
 

@@ -1,23 +1,44 @@
 <?xml version="1.0"?>
 <robot name="triskel">
+    <!-- Motor masses verified against Feetech specifications (2026-11-02):
+         STS3215-C001, 7.4 V: 55 +/- 1 g (0.055 kg).
+         https://ftservo.github.io/ftservo-wiki/products/models/st-3215-c001/main/
+         HLS3930M-C001 at arm_3 / motor_3_link: 70.5 +/- 1 g (0.0705 kg).
+         https://www.feetechrc.com/Data/feetechrc/upload/file/20240823/6386000476147063735440942.pdf
+         Other servo links, including the wheels and finger_drive_link, are STS3215.
+         Nexus RB-Nex-08 (manufacturer 14049) wheels: 290 g each (0.290 kg).
+         https://www.robotshop.com/products/100mm-omnidirectional-wheel-brass-bearing-rollers
+         User-measured base plates: 303 g each; wheel mounts: 20 g each (2026-11-02).
+         Other printed part masses remain unverified estimates.
+         Motor COM locations are existing geometry estimates, not manufacturer data.
+         Keep inertial properties synchronized with the other Triskel URDF.
+    -->
     <material name="silver">
         <color rgba="0.700 0.700 0.700 1.000" />
     </material>
     <material name="black">
-        <color rgba="0.00 0.00 0.00 1.000" />
+        <color rgba="0.04 0.04 0.04 1" />
+    </material>
+    <material name="gray">
+        <color rgba="0.45 0.45 0.45 1" />
+    </material>
+    <material name="finray_blue">
+        <color rgba="0.03 0.25 0.85 1" />
     </material>
     <link name="lower_plate_link">
+        <!-- Measured mass; inertia scaled proportionally, retaining estimated COM and shape. -->
         <inertial>
-            <mass value="0.000248008" />
+            <mass value="0.303" />
             <origin xyz="-1.67956e-15 -2.71555e-05 0.0035" rpy="0 -0 0" />
-            <inertia ixx="7.18103e-07" ixy="0" ixz="0" iyy="7.16999e-07" iyz="0" izz="1.43308e-06" />
+            <inertia ixx="0.0008773314127" ixy="0" ixz="0" iyy="0.0008759826175" iyz="0"
+                izz="0.001750843682" />
         </inertial>
         <visual>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/lower_plate.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
@@ -26,18 +47,73 @@
             </geometry>
         </collision>
     </link>
+    <!-- Confirmed placement: mount rests on the lower plate's top surface (z = 7 mm).
+         The 40 mm hole pair aligns with base-frame (x, y) = (+/-20, 100) mm.
+         Camera rear mounting face is at y = 88 mm, facing forward (+Y).
+         Camera screw centers are at (x, y, z) = (+/-22.5, 88, 32) mm.
+         Mount mass is unmeasured; the bracket is represented visually only. -->
+    <link name="ego_camera_mount_link">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://triskel/meshes/ego_camera_mount.stl"
+                    scale="0.001 0.001 0.001" />
+            </geometry>
+            <material name="black" />
+        </visual>
+    </link>
+    <joint name="ego_camera_mount_joint" type="fixed">
+        <origin xyz="0 0.088 0.032" rpy="1.5707963267948966 0 0" />
+        <parent link="lower_plate_link" />
+        <child link="ego_camera_mount_link" />
+    </joint>
+    <!-- Upright RealSense D435, rear face flush at base y = 88 mm.
+         camera_link uses forward/left/up axes at the nominal depth origin.
+         Optical frames use right/down/forward; derive base transforms from this tree.
+         Official mesh converted to STL; provenance/license: meshes/d435_notice.txt.
+         Visual/frame model only: camera mass and collisions are not modeled.
+         The camera is protected by the existing collision body.
+         Color baseline is nominal. -->
+    <link name="ego_camera_link">
+        <visual>
+            <origin xyz="0.0043 -0.0175 0" rpy="1.5707963267948966 0 1.5707963267948966" />
+            <geometry>
+                <mesh filename="package://triskel/meshes/d435.stl" scale="1 1 1" />
+            </geometry>
+            <material name="silver" />
+        </visual>
+    </link>
+    <joint name="ego_camera_joint" type="fixed">
+        <origin xyz="-0.0175 0 -0.02075" rpy="0 1.5707963267948966 1.5707963267948966" />
+        <parent link="ego_camera_mount_link" />
+        <child link="ego_camera_link" />
+    </joint>
+    <link name="ego_camera_depth_optical_frame" />
+    <joint name="ego_camera_depth_optical_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+        <parent link="ego_camera_link" />
+        <child link="ego_camera_depth_optical_frame" />
+    </joint>
+    <link name="ego_camera_color_optical_frame" />
+    <joint name="ego_camera_color_optical_joint" type="fixed">
+        <origin xyz="-0.015 0 0" rpy="0 0 0" />
+        <parent link="ego_camera_depth_optical_frame" />
+        <child link="ego_camera_color_optical_frame" />
+    </joint>
     <link name="upper_plate_link">
+        <!-- Measured mass; inertia scaled proportionally, retaining estimated COM and shape. -->
         <inertial>
-            <mass value="0.000242412" />
+            <mass value="0.303" />
             <origin xyz="-1.71738e-15 0.000264699 0.0035" rpy="0 -0 0" />
-            <inertia ixx="7.1753e-07" ixy="0" ixz="0" iyy="7.07722e-07" iyz="0" izz="1.42327e-06" />
+            <inertia ixx="0.0008968681006" ixy="0" ixz="0" iyy="0.0008846087075" iyz="0"
+                izz="0.001778999431" />
         </inertial>
         <visual>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/upper_plate.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0 0 0.007" rpy="0 -0 0" />
@@ -47,18 +123,20 @@
         </collision>
     </link>
     <link name="wheel_2_link">
+        <!-- RB-Nex-08: published net mass; inertia scaled with mass, COM unchanged (approximation). -->
         <inertial>
-            <mass value="0.000188807" />
+            <mass value="0.29" />
             <origin xyz="0.0155864 -4.97261e-05 1.48402e-05" rpy="0 -0 0" />
-            <inertia ixx="2.33719e-07" ixy="9.30755e-11" ixz="-2.77773e-11" iyy="1.38047e-07"
-                iyz="-8.77167e-11" izz="1.37519e-07" />
+            <inertia ixx="0.0003589830356" ixy="1.429602451e-07" ixz="-4.266482175e-08"
+                iyy="0.0002120346703"
+                iyz="-1.347293427e-07" izz="0.0002112236834" />
         </inertial>
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="gray" />
         </visual>
         <collision>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
@@ -68,18 +146,20 @@
         </collision>
     </link>
     <link name="wheel_3_link">
+        <!-- RB-Nex-08: published net mass; inertia scaled with mass, COM unchanged (approximation). -->
         <inertial>
-            <mass value="0.000188807" />
+            <mass value="0.29" />
             <origin xyz="0.0155864 -4.97261e-05 1.48402e-05" rpy="0 -0 0" />
-            <inertia ixx="2.33719e-07" ixy="9.30755e-11" ixz="-2.77773e-11" iyy="1.38047e-07"
-                iyz="-8.77167e-11" izz="1.37519e-07" />
+            <inertia ixx="0.0003589830356" ixy="1.429602451e-07" ixz="-4.266482175e-08"
+                iyy="0.0002120346703"
+                iyz="-1.347293427e-07" izz="0.0002112236834" />
         </inertial>
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="gray" />
         </visual>
         <collision>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
@@ -89,18 +169,20 @@
         </collision>
     </link>
     <link name="wheel_1_link">
+        <!-- RB-Nex-08: published net mass; inertia scaled with mass, COM unchanged (approximation). -->
         <inertial>
-            <mass value="0.000188807" />
+            <mass value="0.29" />
             <origin xyz="0.0155864 -4.97261e-05 1.48402e-05" rpy="0 -0 0" />
-            <inertia ixx="2.33719e-07" ixy="9.30755e-11" ixz="-2.77773e-11" iyy="1.38047e-07"
-                iyz="-8.77167e-11" izz="1.37519e-07" />
+            <inertia ixx="0.0003589830356" ixy="1.429602451e-07" ixz="-4.266482175e-08"
+                iyy="0.0002120346703"
+                iyz="-1.347293427e-07" izz="0.0002112236834" />
         </inertial>
         <visual>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="gray" />
         </visual>
         <collision>
             <origin xyz="0.0169259 -0.0100977 -4.44089e-18" rpy="0 -0 0" />
@@ -110,17 +192,19 @@
         </collision>
     </link>
     <link name="wheel_3_mount_link">
+        <!-- Measured mass; inertia scaled proportionally, retaining estimated COM and shape. -->
         <inertial>
-            <mass value="1.57415e-05" />
+            <mass value="0.02" />
             <origin xyz="2.33027e-11 -7.36437e-11 0.0055229" rpy="0 -0 0" />
-            <inertia ixx="2.27577e-09" ixy="0" ixz="0" iyy="2.27577e-09" iyz="0" izz="4.158e-09" />
+            <inertia ixx="2.891427119e-06" ixy="0" ixz="0" iyy="2.891427119e-06" iyz="0"
+                izz="5.282851062e-06" />
         </inertial>
         <visual>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
@@ -130,17 +214,19 @@
         </collision>
     </link>
     <link name="wheel_1_mount_link">
+        <!-- Measured mass; inertia scaled proportionally, retaining estimated COM and shape. -->
         <inertial>
-            <mass value="1.57415e-05" />
+            <mass value="0.02" />
             <origin xyz="2.33027e-11 -7.36437e-11 0.0055229" rpy="0 -0 0" />
-            <inertia ixx="2.27577e-09" ixy="0" ixz="0" iyy="2.27577e-09" iyz="0" izz="4.158e-09" />
+            <inertia ixx="2.891427119e-06" ixy="0" ixz="0" iyy="2.891427119e-06" iyz="0"
+                izz="5.282851062e-06" />
         </inertial>
         <visual>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
@@ -150,17 +236,19 @@
         </collision>
     </link>
     <link name="wheel_2_mount_link">
+        <!-- Measured mass; inertia scaled proportionally, retaining estimated COM and shape. -->
         <inertial>
-            <mass value="1.57415e-05" />
+            <mass value="0.02" />
             <origin xyz="2.33027e-11 -7.36437e-11 0.0055229" rpy="0 -0 0" />
-            <inertia ixx="2.27577e-09" ixy="0" ixz="0" iyy="2.27577e-09" iyz="0" izz="4.158e-09" />
+            <inertia ixx="2.891427119e-06" ixy="0" ixz="0" iyy="2.891427119e-06" iyz="0"
+                izz="5.282851062e-06" />
         </inertial>
         <visual>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel_mount.obj" scale="1 1 1" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0 0 0.0055875" rpy="0 -0 0" />
@@ -189,11 +277,13 @@
         <child link="wheel_3_floor" />
     </joint>
     <link name="wheel_1_motor_link">
+        <!-- Inertia scaled by new/old mass, retaining the previous COM and shape approximation. -->
         <inertial>
-            <mass value="3.6217e-05" />
+            <mass value="0.055" />
             <origin xyz="-0.023001 4.90758e-13 -0.0142729" rpy="0 -0 0" />
-            <inertia ixx="5.06055e-09" ixy="0" ixz="-7.09417e-11" iyy="9.36156e-09" iyz="0"
-                izz="7.83909e-09" />
+            <inertia ixx="7.685071928e-06" ixy="0" ixz="-1.077337576e-07" iyy="1.42166883e-05"
+                iyz="0"
+                izz="1.190462904e-05" />
         </inertial>
         <visual>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
@@ -210,11 +300,13 @@
         </collision>
     </link>
     <link name="wheel_3_motor_link">
+        <!-- Inertia scaled by new/old mass, retaining the previous COM and shape approximation. -->
         <inertial>
-            <mass value="3.6217e-05" />
+            <mass value="0.055" />
             <origin xyz="-0.023001 4.90758e-13 -0.0142729" rpy="0 -0 0" />
-            <inertia ixx="5.06055e-09" ixy="0" ixz="-7.09417e-11" iyy="9.36156e-09" iyz="0"
-                izz="7.83909e-09" />
+            <inertia ixx="7.685071928e-06" ixy="0" ixz="-1.077337576e-07" iyy="1.42166883e-05"
+                iyz="0"
+                izz="1.190462904e-05" />
         </inertial>
         <visual>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
@@ -231,11 +323,13 @@
         </collision>
     </link>
     <link name="wheel_2_motor_link">
+        <!-- Inertia scaled by new/old mass, retaining the previous COM and shape approximation. -->
         <inertial>
-            <mass value="3.6217e-05" />
+            <mass value="0.055" />
             <origin xyz="-0.023001 4.90758e-13 -0.0142729" rpy="0 -0 0" />
-            <inertia ixx="5.06055e-09" ixy="0" ixz="-7.09417e-11" iyy="9.36156e-09" iyz="0"
-                izz="7.83909e-09" />
+            <inertia ixx="7.685071928e-06" ixy="0" ixz="-1.077337576e-07" iyy="1.42166883e-05"
+                iyz="0"
+                izz="1.190462904e-05" />
         </inertial>
         <visual>
             <origin xyz="-0.0227 0 -0.0144" rpy="0 -0 0" />
@@ -263,7 +357,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/base.stl" scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0 0 0" rpy="0 0 0" />
@@ -307,7 +401,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/arm_1.stl" scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="-0.0 -0.042489 -0.049005" rpy="0 0 0" />
@@ -351,7 +445,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/arm_2.stl" scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0.019668 -0.042123 -0.090938" rpy="0 0 0" />
@@ -361,11 +455,13 @@
         </collision>
     </link>
     <link name="motor_3_link">
+        <!-- Inertia scaled by new/old mass, retaining the previous COM and shape approximation. -->
         <inertial>
             <origin xyz="-0.0012258665484379326 -0.00019383890721715036 0.02270059947453923"
                 rpy="0 0 0" />
-            <mass value="0.055" />
-            <inertia ixx="7e-06" iyy="8e-06" izz="4e-06" ixy="0.0" iyz="0.0" ixz="-0.0" />
+            <mass value="0.0705" />
+            <inertia ixx="8.972727273e-06" iyy="1.025454545e-05" izz="5.127272727e-06" ixy="0"
+                iyz="0" ixz="-0" />
         </inertial>
         <visual>
             <origin xyz="-0.000195 -0.041636 -0.146765" rpy="0 0 0" />
@@ -396,7 +492,7 @@
                 <mesh filename="package://triskel/meshes/arm_3.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0.01979 -0.041327 -0.182173" rpy="0 0 0" />
@@ -441,7 +537,7 @@
                 <mesh filename="package://triskel/meshes/arm_4.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0.018817 -0.078489 -0.219238" rpy="0 0 0" />
@@ -487,7 +583,7 @@
                 <mesh filename="package://triskel/meshes/arm_5.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="-0.001897 -0.161352 -0.219254" rpy="0 0 0" />
@@ -532,7 +628,7 @@
                 <mesh filename="package://triskel/meshes/arm_6.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="0.018026 -0.204259 -0.219604" rpy="0 0 0" />
@@ -578,7 +674,7 @@
                 <mesh filename="package://triskel/meshes/gripper_base.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="-0.002925 -0.259566 -0.218892" rpy="0 0 0" />
@@ -624,7 +720,7 @@
                 <mesh filename="package://triskel/meshes/gripper_gear.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
         </visual>
         <collision>
             <origin xyz="-0.003701 -0.304808 -0.218483" rpy="0 0 0" />
@@ -643,10 +739,18 @@
         <visual>
             <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://triskel/meshes/finger_2.stl"
+                <mesh filename="package://triskel/meshes/finger_2_mount.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
+        </visual>
+        <visual>
+            <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://triskel/meshes/finger_2_fin.stl"
+                    scale="0.001 0.001 0.001" />
+            </geometry>
+            <material name="finray_blue" />
         </visual>
         <collision>
             <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
@@ -665,10 +769,18 @@
         <visual>
             <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://triskel/meshes/finger_1.stl"
+                <mesh filename="package://triskel/meshes/finger_1_mount.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="silver" />
+            <material name="black" />
+        </visual>
+        <visual>
+            <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://triskel/meshes/finger_1_fin.stl"
+                    scale="0.001 0.001 0.001" />
+            </geometry>
+            <material name="finray_blue" />
         </visual>
         <collision>
             <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />

@@ -51,45 +51,69 @@ POSITION_PID_GAINS_BY_ACTUATOR_ID: dict[int, FeetechPIDGains] = {
 
 HOME_POSITION = np.array(
     [
+        # floating base
         0.0,
         0.0,
         1.0,
         0.0,
+        # wheel 1
         1.0,
         0.0,
+        # wheel 2
         1.0,
         0.0,
+        # wheel 3
         1.0,
         0.0,
+        # j1
         0.0,
-        -0.75,
-        0.5,
+        # j2
+        -0.82,
+        # j3
+        0.82,
+        # j4
         0.0,
+        # j5
         0.0,
-        1.0,
+        # j6
+        0.83,
+        # j7
         0.0,
+        # gripper
         0.0,
     ]
 )
 REST_POSITION = np.array(
     [
+        # floating base
         0.0,
         0.0,
         1.0,
         0.0,
+        # wheel 1
         1.0,
         0.0,
+        # wheel 2
         1.0,
         0.0,
+        # wheel 3
         1.0,
         0.0,
+        # j1
         0.0,
-        -1.6,
-        -0.1,
-        1.65,
+        # j2
+        -1.57,
+        # j3
+        1.57,
+        # j4
         0.0,
-        0.21,
+        # j5
         0.0,
+        # j6
+        1.57,
+        # j7
+        0.0,
+        # gripper
         2.2,
     ]
 )
