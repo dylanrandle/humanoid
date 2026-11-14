@@ -18,6 +18,7 @@ DEFAULT_MAX_POSITION_VELOCITY = 1.0
 DEFAULT_POSITION_TRACKING_ERROR_GAIN = 10.0
 DEFAULT_BAUD_RATE = 1_000_000
 DEFAULT_FEEDBACK_READ_RETRIES = 2
+MAX_TORQUE_OUTPUT_LIMIT = 1000
 FEETECH_ACTUATOR_ID_MIN = 1
 FEETECH_ACTUATOR_ID_MAX = 253
 FEETECH_ACCELERATION_MIN = 0
@@ -107,8 +108,12 @@ class FeetechActuatorConfig(ActuatorConfig):
     position_tracking_error_gain: float = DEFAULT_POSITION_TRACKING_ERROR_GAIN
     position_pid: FeetechPIDGains | None = None
     current_calibration: ActuatorCurrentCalibration | None = None
+    servo_type: FeetechServoType | None = None
+    torque_output_limit: int = 100
 
     def __post_init__(self) -> None:
+        if not 1 <= self.torque_output_limit <= MAX_TORQUE_OUTPUT_LIMIT:
+            raise ValueError("Torque output limit must be 1..1000 (0.1% units).")
         if not FEETECH_ACTUATOR_ID_MIN <= self.actuator_id <= FEETECH_ACTUATOR_ID_MAX:
             raise ValueError(
                 "Feetech actuator ID must be between "

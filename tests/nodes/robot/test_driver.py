@@ -1,6 +1,7 @@
 from unittest.mock import Mock, patch
 
 import numpy as np
+import pinocchio as pin
 import pytest
 
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
@@ -37,6 +38,7 @@ class StubActuatorSystem(ActuatorSystem):
         self.position_writes: list[dict[str, float]] = []
         self.position_velocity_writes: list[dict[str, float] | None] = []
         self.velocity_writes: list[dict[str, float]] = []
+        self.torque_writes: list[dict[str, float]] = []
         self.states: dict[str, ActuatorState] = {}
         self.issues: dict[str, str] = {}
         self.connected = False
@@ -58,6 +60,9 @@ class StubActuatorSystem(ActuatorSystem):
 
     def write_velocities(self, velocities: dict[str, float]) -> None:
         self.velocity_writes.append(velocities)
+
+    def write_torques(self, torques: dict[str, float]) -> None:
+        self.torque_writes.append(torques)
 
     def read_states(self) -> dict[str, ActuatorState]:
         return self.states
@@ -509,6 +514,7 @@ def test_mobile_driver_uses_root_state_estimator():
             position=0.0,
             velocity=measured_wheel_velocities.get(joint_name, 0.0),
             effort=-0.1 * index if index % 2 else None,
+            temperature=25.0,
         )
         for index, joint_name in enumerate(driver.actuator_joint_names)
     }
@@ -593,7 +599,7 @@ def test_mobile_driver_ignores_commanded_root_velocity():
     assert root_state_estimator.updates == []
 
     actuator_system.states = {
-        joint_name: ActuatorState(position=0.0, velocity=0.0)
+        joint_name: ActuatorState(position=0.0, velocity=0.0, temperature=25.0)
         for joint_name in driver.actuator_joint_names
     }
     driver.publish()
@@ -617,7 +623,9 @@ def test_real_driver_publishes_per_actuator_health_and_temperature():
         for index, joint_name in enumerate(driver.actuator_joint_names)
     }
 
-    driver.publish()
+    # This test mocks the robot model; gravity physics is covered with the real model below.
+    with patch.object(driver, "_write_gravity_compensation"):
+        driver.publish()
 
     report_call = next(
         call
@@ -732,3 +740,90 @@ def test_close_disconnects_hardware_when_subscriber_close_fails(robot_driver):
         robot_driver.on_close()
 
     assert events == ["stop", "subscriber", "disconnect"]
+
+
+def _gravity_driver():
+    now = [0.0]
+    system = StubActuatorSystem()
+    with (
+        patch("humanoid.nodes.robot.driver.Subscriber"),
+        patch("humanoid.nodes.robot.driver.Publisher"),
+    ):
+        driver = RobotDriverNode(
+            robot_config=TRISKEL_CONFIG, actuator_system=system, clock=lambda: now[0]
+        )
+    system.states = {
+        name: ActuatorState(position=0.0, velocity=0.0, temperature=25.0)
+        for name in driver.actuator_joint_names
+    }
+    return driver, system, now
+
+
+def test_gravity_uses_measured_pose_ramps_and_only_commands_arm_3():
+    driver, system, now = _gravity_driver()
+    driver.publish()
+    assert system.torque_writes == [{"arm_3": 0.0}]
+    now[0] = 1.0
+    driver.publish()
+    assert system.torque_writes[-1] == {"arm_3": pytest.approx(-0.4)}
+    system.states["arm_4"] = ActuatorState(position=1.0, velocity=0.0, temperature=25.0)
+    with patch(
+        "humanoid.nodes.robot.driver.pin.computeGeneralizedGravity",
+        wraps=pin.computeGeneralizedGravity,
+    ) as compute:
+        driver.publish()
+    q = compute.call_args.args[2]
+    joint = driver.robot.model.joints[driver.joint_indices["arm_4"] + 1]
+    assert q[joint.idx_q] == 1.0
+    driver.subscriber.receive = Mock(
+        return_value=RobotJointCommand(
+            timestamp=0.0, joint_positions=TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+        )
+    )
+    driver.receive()
+    assert "arm_3" not in system.position_writes[-1]
+    assert "arm_2" in system.position_writes[-1]
+
+
+@pytest.mark.parametrize("fault", ["missing", "nan", "hot", "fast", "outside", "slow"])
+def test_gravity_fault_stops_before_sending_current(fault):
+    driver, system, now = _gravity_driver()
+    driver.subscriber.receive = Mock(return_value=None)
+    if fault == "missing":
+        del system.states["arm_4"]
+    elif fault == "nan":
+        system.states["arm_4"] = ActuatorState(position=float("nan"), velocity=0, temperature=25)
+    elif fault == "hot":
+        system.states["arm_3"] = ActuatorState(position=0, velocity=0, temperature=65)
+    elif fault == "fast":
+        system.states["arm_3"] = ActuatorState(position=0, velocity=2, temperature=25)
+    elif fault == "outside":
+        system.states["arm_3"] = ActuatorState(position=3, velocity=0, temperature=25)
+    else:
+
+        def delayed_read():
+            now[0] += 1.0
+            return system.states
+
+        system.read_states = delayed_read
+    with pytest.raises(RuntimeError):
+        driver.step()
+    assert system.torque_writes == []
+    assert system.stop_calls == 1
+
+
+def test_command_timeout_stops_gravity_and_fresh_command_restarts_ramp():
+    driver, system, now = _gravity_driver()
+    command = RobotJointCommand(
+        timestamp=0.0, joint_positions=TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    )
+    driver.subscriber.receive = Mock(return_value=command)
+    driver.step()
+    driver.subscriber.receive = Mock(return_value=None)
+    now[0] = 0.3
+    driver.step()
+    assert system.stop_calls == 1
+    assert len(system.torque_writes) == 1
+    driver.subscriber.receive = Mock(return_value=command)
+    driver.step()
+    assert system.torque_writes[-1] == {"arm_3": 0.0}

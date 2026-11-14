@@ -1,8 +1,12 @@
 """Triskel robot configuration."""
 
+from dataclasses import replace
+
 import numpy as np
 
 from humanoid.config.actuator import (
+    HLS3930M_CURRENT_CALIBRATION,
+    HLS3930M_EFFORT_LIMITS,
     STS3215_12V_CURRENT_CALIBRATION,
     STS3215_12V_EFFORT_LIMITS,
 )
@@ -10,13 +14,18 @@ from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
     FeetechPIDGains,
+    FeetechServoType,
 )
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.state_estimation.config import RobotStateEstimationConfig
 from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
-from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
+from humanoid.types.actuator import (
+    ActuatorControlMode,
+    ActuatorHardwareConfig,
+    GravityCompensationConfig,
+)
 from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
@@ -136,6 +145,24 @@ ACTUATOR_CONFIGS = {
         current_calibration=STS3215_12V_CURRENT_CALIBRATION,
     ),
 }
+# Hardware-local policy: arm_3 is gravity/current controlled instead of following
+# position targets. Other joints and simulation retain their logical control modes.
+ACTUATOR_CONFIGS["arm_3"] = replace(
+    ACTUATOR_CONFIGS["arm_3"],
+    servo_type=FeetechServoType.HLS,
+    position_pid=None,
+    current_calibration=HLS3930M_CURRENT_CALIBRATION,
+    effort_limits=HLS3930M_EFFORT_LIMITS,
+    gravity_compensation=GravityCompensationConfig(
+        scale=1.0,
+        damping=0.05,
+        max_torque_nm=0.4,
+        ramp_seconds=1.0,
+        max_speed=1.0,
+        max_temperature=60.0,
+    ),
+    torque_output_limit=100,
+)
 HARDWARE_CONFIG = RobotHardwareConfig(
     actuators=ActuatorHardwareConfig(
         controllers={MAIN_CONTROLLER: FeetechActuatorControllerConfig()},

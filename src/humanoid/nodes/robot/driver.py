@@ -88,6 +88,21 @@ class RobotDriverNode(Node):
         self._actuator_configs: dict[str, ActuatorConfig] = (
             dict(actuator_hardware.joints) if actuator_hardware is not None else {}
         )
+        self._gravity_configs = {
+            name: actuator.gravity_compensation
+            for name, actuator in self._actuator_configs.items()
+            if actuator.gravity_compensation is not None
+        }
+        self.position_controlled_joints = [
+            name for name in self.position_controlled_joints if name not in self._gravity_configs
+        ]
+        self.position_trajectory_joints = [
+            name for name in self.position_trajectory_joints if name not in self._gravity_configs
+        ]
+        self._clock = clock
+        self._gravity_data = self.robot.model.createData()
+        self._gravity_started: float | None = None
+        self._gravity_enabled = True
         self._latest_actuator_states: dict[str, ActuatorState] = {}
         self.actuator_system = actuator_system or create_actuator_system(
             self.actuator_control_modes,
@@ -125,7 +140,9 @@ class RobotDriverNode(Node):
         command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND)
         if command is None:
             if self._command_watchdog.stop_if_stale():
-                logger.warning("Robot command watchdog stopped velocity-controlled actuators")
+                logger.warning(
+                    "Robot command watchdog stopped velocity/current-controlled actuators"
+                )
             return
 
         logger.debug("Received command: %s", command)
@@ -167,12 +184,18 @@ class RobotDriverNode(Node):
 
         self.actuator_system.write_positions(positions, position_velocities)
         self.actuator_system.write_velocities(velocities)
-        self._command_watchdog.observe_command(velocity_active=any(velocities.values()))
+        self._gravity_enabled = True
+        self._command_watchdog.observe_command(
+            velocity_active=any(velocities.values()) or bool(self._gravity_configs)
+        )
 
     def _stop_actuators(self) -> None:
+        self._gravity_enabled = False
+        self._gravity_started = None
         self.actuator_system.stop()
 
     def publish(self) -> None:
+        feedback_started = self._clock()
         actuator_states = self.actuator_system.read_states()
         self._latest_actuator_states = actuator_states
         missing_positions = [
@@ -194,6 +217,14 @@ class RobotDriverNode(Node):
             error = f"Incomplete actuator feedback ({'; '.join(details)})."
             self._publish_actuator_health(error=error)
             raise RuntimeError(error)
+        if self._gravity_configs and any(
+            state.position is None
+            or state.velocity is None
+            or not np.isfinite(state.position)
+            or not np.isfinite(state.velocity)
+            for state in actuator_states.values()
+        ):
+            raise RuntimeError("Gravity control requires finite full-robot feedback.")
         self._publish_actuator_health()
         joint_idx_to_position = {
             self.joint_indices[joint_name]: state.position
@@ -243,8 +274,45 @@ class RobotDriverNode(Node):
             actuator_temperatures=actuator_temperatures,
             effort_source=ActuatorEffortSource.CURRENT_ESTIMATE,
         )
+        self._write_gravity_compensation(q, v, actuator_states, feedback_started)
         logger.debug("Measured state: %s", robot_state)
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
+
+    def _write_gravity_compensation(
+        self,
+        q: np.ndarray,
+        v: np.ndarray,
+        states: dict[str, ActuatorState],
+        feedback_started: float,
+    ) -> None:
+        if not self._gravity_configs or not self._gravity_enabled:
+            return
+        now = self._clock()
+        if now - feedback_started > DEFAULT_COMMAND_TIMEOUT_SECONDS:
+            raise RuntimeError("Gravity feedback acquisition timed out.")
+        if not np.isfinite(q).all() or not np.isfinite(v).all():
+            raise RuntimeError("Gravity control requires finite full-robot feedback.")
+        gravity = pin.computeGeneralizedGravity(self.robot.model, self._gravity_data, q)
+        if self._gravity_started is None:
+            self._gravity_started = now
+        torques = {}
+        for name, config in self._gravity_configs.items():
+            joint = self.robot.model.joints[self.joint_indices[name] + 1]
+            temperature = states[name].temperature
+            if temperature is None or not np.isfinite(temperature):
+                raise RuntimeError(f"Missing temperature feedback for {name}.")
+            if abs(v[joint.idx_v]) >= config.max_speed or temperature >= config.max_temperature:
+                raise RuntimeError(f"Gravity speed/temperature limit reached for {name}.")
+            if (
+                not self.joint_lower_limits[joint.idx_q]
+                < q[joint.idx_q]
+                < self.joint_upper_limits[joint.idx_q]
+            ):
+                raise RuntimeError(f"Gravity joint position limit reached for {name}.")
+            ramp = min(1.0, (now - self._gravity_started) / config.ramp_seconds)
+            torque = ramp * (config.scale * gravity[joint.idx_v] - config.damping * v[joint.idx_v])
+            torques[name] = float(np.clip(torque, -config.max_torque_nm, config.max_torque_nm))
+        self.actuator_system.write_torques(torques)
 
     def setup(self) -> None:
         pass
@@ -254,6 +322,10 @@ class RobotDriverNode(Node):
             self.receive()
             self.publish()
         except Exception as error:
+            try:
+                self._stop_actuators()
+            except Exception:
+                logger.exception("Failed to stop actuators after driver error")
             self._publish_actuator_failure(str(error))
             raise
 

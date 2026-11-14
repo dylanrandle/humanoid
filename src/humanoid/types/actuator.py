@@ -67,6 +67,27 @@ class ActuatorControllerConfig:
 
 
 @dataclass(frozen=True, kw_only=True)
+class GravityCompensationConfig:
+    """Hardware-local gravity/current control, overriding position commands."""
+
+    scale: float
+    damping: float
+    max_torque_nm: float
+    ramp_seconds: float
+    max_speed: float
+    max_temperature: float
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.scale) or not 0 <= self.scale <= 1:
+            raise ValueError("Gravity scale must be finite and in 0..1.")
+        if not math.isfinite(self.damping) or self.damping < 0:
+            raise ValueError("Gravity damping must be finite and nonnegative.")
+        for value in (self.max_torque_nm, self.ramp_seconds, self.max_speed, self.max_temperature):
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("Gravity control limits and ramp must be positive and finite.")
+
+
+@dataclass(frozen=True, kw_only=True)
 class ActuatorConfig:
     """Configuration owned by one physical actuator."""
 
@@ -74,6 +95,7 @@ class ActuatorConfig:
     controller: str
     inverted: bool = False
     effort_limits: ActuatorEffortLimits | None = None
+    gravity_compensation: GravityCompensationConfig | None = None
 
 
 @dataclass

@@ -16,8 +16,10 @@ from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
     FeetechActuatorControllerConfig,
     FeetechPIDGains,
+    FeetechServoType,
     validate_feetech_acceleration,
 )
+from humanoid.hardware.actuators.feetech.ports import detect_servo_port
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorControlMode, ActuatorFeedback
 
@@ -104,6 +106,20 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
                 + ", ".join(str(actuator_id) for actuator_id in invalid_pid_ids)
             )
         self.control_modes = dict(control_modes)
+        for actuator in actuator_configs:
+            family = actuator.servo_type or controller_config.servo_type
+            if actuator.gravity_compensation is None:
+                if family is not controller_config.servo_type:
+                    raise ValueError(
+                        "Mixed servo families currently require gravity/current control."
+                    )
+                continue
+            if family is not FeetechServoType.HLS or actuator.current_calibration is None:
+                raise ValueError("Gravity/current control requires HLS and current calibration.")
+            if actuator.position_pid is not None:
+                raise ValueError("Gravity/current control cannot configure position PID gains.")
+            if control_modes[actuator.actuator_id] is not ActuatorControlMode.POSITION:
+                raise ValueError("Gravity control can only override logical position joints.")
         self._configure_on_connect = configure_on_connect
         self._feedback_read_retries = controller_config.feedback_read_retries
         self._last_positions: dict[int, float] = {}
@@ -112,7 +128,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             self,
             servo_ids=actuator_ids,
             servo_type=controller_config.servo_type.value,
-            port=controller_config.port,
+            port=controller_config.port or detect_servo_port(),
             baudrate=controller_config.baud_rate,
         )
         ActuatorDriver.__init__(self, actuator_ids=actuator_ids)
@@ -154,7 +170,7 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             for actuator_id, control_mode in self.control_modes.items():
                 self._configure_actuator(actuator_id, control_mode)
         except Exception:
-            super().disconnect()
+            self.disconnect()
             raise
 
     def _configure_actuator(
@@ -165,7 +181,8 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         assert self.packet_handler, "Not connected"
         self._set_torque_enabled(actuator_id, enabled=False)
 
-        expected_mode = OPERATING_MODE[control_mode]
+        gravity = self.actuator_configs[actuator_id].gravity_compensation
+        expected_mode = 2 if gravity is not None else OPERATING_MODE[control_mode]
         mode, result, error = self.packet_handler.read1ByteTxRx(
             actuator_id,
             ADDR_OPERATING_MODE,
@@ -188,8 +205,57 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
         if position_pid is not None:
             self._configure_position_pid(actuator_id, position_pid)
 
-        self._stage_safe_goal(actuator_id, control_mode)
+        if gravity is not None:
+            self._write_register(
+                actuator_id, 48, self.actuator_configs[actuator_id].torque_output_limit
+            )
+            self._write_register(actuator_id, 44, 0)
+            self._write_register(actuator_id, ADDR_GOAL_SPEED, 0)
+        else:
+            self._stage_safe_goal(actuator_id, control_mode)
         self._set_torque_enabled(actuator_id, enabled=True)
+
+    def _write_register(self, actuator_id: int, address: int, value: int) -> None:
+        assert self.packet_handler, "Not connected"
+        result, error = self.packet_handler.write2ByteTxRx(actuator_id, address, value)
+        if result != 0 or error != 0:
+            raise RuntimeError(f"Actuator {actuator_id}: failed writing register {address}.")
+
+    def write_torque(self, torques: dict[int, float]) -> None:  # ty: ignore[invalid-method-override]
+        for actuator_id, requested in torques.items():
+            actuator = self.actuator_configs[actuator_id]
+            config = actuator.gravity_compensation
+            calibration = actuator.current_calibration
+            if config is None or calibration is None or not math.isfinite(requested):
+                raise ValueError(
+                    "Torque commands require configured gravity control and finite N·m."
+                )
+            torque = max(-config.max_torque_nm, min(config.max_torque_nm, requested))
+            if actuator.inverted:
+                torque = -torque
+            raw = int(torque / (calibration.amperes_per_unit * calibration.effort_per_ampere))
+            raw = max(-2047, min(2047, raw))
+            self._write_register(actuator_id, 44, abs(raw) | (0x8000 if raw < 0 else 0))
+
+    def disconnect(self) -> None:
+        errors = []
+        if self._connected:
+            for actuator_id, actuator in self.actuator_configs.items():
+                if actuator.gravity_compensation is None:
+                    continue
+                try:
+                    self.write_torque({actuator_id: 0.0})
+                except Exception as error:
+                    errors.append(error)
+                try:
+                    self._set_torque_enabled(actuator_id, enabled=False)
+                except Exception as error:
+                    errors.append(error)
+        try:
+            super().disconnect()
+        finally:
+            if errors:
+                raise ExceptionGroup("Failed to stop gravity-controlled actuators", errors)
 
     def _configure_position_pid(
         self,
@@ -346,6 +412,10 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
             actuator_id: self.angle_to_position(angle, actuator_id)
             for actuator_id, angle in positions.items()
         }
+        if any(self.actuator_configs[key].gravity_compensation is not None for key in positions):
+            raise ValueError(
+                "Cannot send position commands to gravity/current-controlled actuators."
+            )
         requested_acceleration = kwargs.pop("acceleration", None)
         speed = kwargs.pop("speed", None)
         if kwargs:
@@ -535,6 +605,10 @@ class FeetechActuatorDriver(ServoController, ActuatorDriver):
 
     def write_velocity(self, velocities: dict[int, float]) -> None:
         assert self.packet_handler, "Not connected"
+        if any(self.actuator_configs[key].gravity_compensation is not None for key in velocities):
+            raise ValueError(
+                "Cannot send velocity commands to gravity/current-controlled actuators."
+            )
         for actuator_id, velocity in velocities.items():
             value = -velocity if self.actuator_configs[actuator_id].inverted else velocity
             magnitude = int(min(abs(value) / SPEED_UNIT_RAD_S, 32767))

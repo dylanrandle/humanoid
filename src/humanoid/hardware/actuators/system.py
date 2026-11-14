@@ -52,6 +52,11 @@ class ActuatorSystem(ABC):
     def stop(self) -> None:
         """Stop every velocity-controlled actuator while position actuators hold."""
 
+    def write_torques(self, torques: dict[str, float]) -> None:
+        """Write signed N·m to hardware-local gravity-controlled joints."""
+        if torques:
+            raise NotImplementedError("This actuator system does not support torque commands.")
+
 
 class CompositeActuatorSystem(ActuatorSystem):
     """Routes logical joint commands across one or more controller drivers."""
@@ -128,6 +133,16 @@ class CompositeActuatorSystem(ActuatorSystem):
         for controller, commands in grouped.items():
             self.drivers[controller].write_velocity(commands)
 
+    def write_torques(self, torques: dict[str, float]) -> None:
+        grouped: dict[str, dict[int, float]] = {}
+        for name, torque in torques.items():
+            actuator = self.actuator_configs[name]
+            if actuator.gravity_compensation is None:
+                raise ValueError(f"Joint {name} is not configured for gravity/current control.")
+            grouped.setdefault(actuator.controller, {})[actuator.actuator_id] = torque
+        for controller, commands in grouped.items():
+            self.drivers[controller].write_torque(commands)
+
     def read_states(self) -> dict[str, ActuatorState]:
         states: dict[str, ActuatorState] = {}
         for controller, driver in self.drivers.items():
@@ -162,6 +177,13 @@ class CompositeActuatorSystem(ActuatorSystem):
     def stop(self) -> None:
         errors: list[Exception] = []
         for joint_name, mode in self.control_modes.items():
+            actuator = self.actuator_configs[joint_name]
+            if actuator.gravity_compensation is not None:
+                try:
+                    self.drivers[actuator.controller].write_torque({actuator.actuator_id: 0.0})
+                except Exception as error:
+                    errors.append(error)
+                continue
             if mode is not ActuatorControlMode.VELOCITY:
                 continue
             actuator = self.actuator_configs[joint_name]
@@ -185,6 +207,8 @@ class CompositeActuatorSystem(ActuatorSystem):
             except KeyError as exc:
                 raise ValueError(f"Unknown actuator joint {joint_name!r}.") from exc
             control_mode = self.control_modes[joint_name]
+            if actuator.gravity_compensation is not None:
+                raise ValueError(f"Joint {joint_name} uses hardware-local gravity/current control.")
             if control_mode is not expected_mode:
                 raise ValueError(
                     f"Actuator {joint_name!r} uses {control_mode.value} control, "

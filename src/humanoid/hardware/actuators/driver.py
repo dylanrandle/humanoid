@@ -74,3 +74,8 @@ class ActuatorDriver(ABC):
     def health_issues(self) -> dict[int, str]:
         """Return current actuator issues, keyed by physical actuator ID."""
         return {}
+
+    def write_torque(self, torques: dict[int, float]) -> None:
+        """Write signed output-shaft torque in N·m where supported."""
+        if torques:
+            raise NotImplementedError("This actuator driver does not support torque commands.")

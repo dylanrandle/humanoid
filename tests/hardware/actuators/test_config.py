@@ -72,7 +72,11 @@ def test_triskel_actuator_hardware_configuration():
         actuator = actuator_hardware.joints[f"arm_{index}"]
         assert isinstance(actuator, FeetechActuatorConfig)
         assert actuator.max_position_velocity == MAX_POSITION_VELOCITY_RAD_S
-        assert actuator.position_pid == POSITION_PID_GAINS_BY_ACTUATOR_ID[index]
+        if actuator.gravity_compensation is not None:
+            assert actuator.position_pid is None
+            assert actuator.current_calibration is not None
+        else:
+            assert actuator.position_pid == POSITION_PID_GAINS_BY_ACTUATOR_ID[index]
     gripper = actuator_hardware.joints["gripper_1"]
     assert isinstance(gripper, FeetechActuatorConfig)
     assert gripper.max_position_velocity == MAX_POSITION_VELOCITY_RAD_S
