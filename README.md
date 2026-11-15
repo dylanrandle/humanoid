@@ -87,6 +87,41 @@ use simulation there; the real camera driver intentionally fails.
 Linux needs USB permissions. Python 3.12 uses the official ARM64 wheel on Raspberry Pi.
 See [camera setup and message format](src/humanoid/hardware/cameras/README.md).
 
+### Cube approach and squeeze
+
+Run the standalone Triskel simulation demo:
+
+```bash
+uv run python -m humanoid.simulation.cube_pick
+```
+
+The policy detects one red, 25 mm cube using RGB and native depth, moves the open
+fingers above it, descends, then squeezes. It uses URDF camera transforms and waits
+for measured tool position/orientation before closing. Five ground-level cube poses
+are tested; images and measured errors are saved to `logs/cube_pick/`. The command
+exits nonzero if any trial fails.
+
+This demo assumes a stationary base/cube, level ground and a visible cube top. Cube
+contacts and lifting are excluded. It runs independently of the main stack and does
+not start hardware. On headless Linux, set `MUJOCO_GL=egl`.
+
+For a 45 mm wooden cube, test the geometry-based profile:
+
+```bash
+uv run python -m humanoid.simulation.cube_pick --wood --output logs/cube_pick_wood
+```
+
+This profile fits side faces from depth, uses the floor 32 mm below the base
+origin, and limits gripper closure to 0.30 rad (about 7 mm of jaw travel). It
+requires one isolated cube in the common camera view, 30–35 cm forward of the
+base origin. Geometry matching does not distinguish a cube from similar clutter;
+these simulations do not validate real contact force or hardware motion.
+
+Settings and test poses are in
+[`src/humanoid/config/cube_pick.py`](src/humanoid/config/cube_pick.py).
+`CubePickPolicy` consumes `Observation.camera_frames` and returns normal tool/gripper
+actions; it is not automatically started by the orchestrator.
+
 ### Controller Tracking Diagnostic
 
 Run the diagnostic with the main stack in **Idle**:
