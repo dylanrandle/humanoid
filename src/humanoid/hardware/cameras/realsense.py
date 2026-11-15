@@ -4,7 +4,7 @@ import importlib
 import sys
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -50,7 +50,8 @@ class RealSenseCamera:
                     "RealSense SDK unavailable. Run `uv sync`; on Raspberry Pi/ARM, "
                     "install a matching SDK wheel as described in README.md."
                 ) from error
-        sdk = self._sdk
+        # The SDK exposes native extension attributes that its Python package does not type.
+        sdk = cast(Any, self._sdk)
         settings = sdk.config()
         if self.config.serial_number is not None:
             settings.enable_device(self.config.serial_number)
