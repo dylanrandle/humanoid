@@ -9,6 +9,8 @@ import {
   Runtime,
   TELEOP_PROCESSES,
 } from "./constants.js";
+import { renderHostResources } from "./host.js";
+
 export function render(snapshot, busy, elements) {
   if (!snapshot) return;
 
@@ -60,6 +62,7 @@ export function render(snapshot, busy, elements) {
     elements,
   );
   renderNodeRates(snapshot.node_rates || [], elements);
+  renderHostResources(snapshot.host_resources, elements.hostResources);
   renderActuatorHealth(
     snapshot.actuator_health,
     snapshot.runtime,
@@ -519,6 +522,7 @@ export function renderDisconnected(
   message = "Check the start process",
   elements,
 ) {
+  renderHostResources(null, elements.hostResources);
   elements.systemState.classList.remove("online");
   elements.systemStateLabel.textContent = "Console disconnected";
   elements.stackLight.classList.remove("online");

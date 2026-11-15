@@ -27,11 +27,14 @@ from humanoid.orchestrator.constants import (
 )
 from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
 from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
+from humanoid.orchestrator.monitor.camera import CameraPreviewMonitor
+from humanoid.orchestrator.monitor.host import HostResourceMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
+from humanoid.types.camera import CameraPreviewSnapshot
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import ApplicationLogSnapshot
 from humanoid.types.orchestrator import (
@@ -63,6 +66,7 @@ class OrchestratorService:
         actuator_health_monitor: ActuatorHealthMonitor | None = None,
         replay_manager: ReplayManager | None = None,
         application_log_monitor: ApplicationLogMonitor | None = None,
+        host_resource_monitor: HostResourceMonitor | None = None,
     ):
         self.application_log_monitor = (
             application_log_monitor
@@ -89,11 +93,15 @@ class OrchestratorService:
         )
         self.replay_manager = replay_manager if replay_manager is not None else ReplayManager()
         self.recording_catalog = RecordingCatalog()
+        self.host_resource_monitor = (
+            host_resource_monitor if host_resource_monitor is not None else HostResourceMonitor()
+        )
         self._lock = threading.RLock()
         self._parameterized_request: OrchestratorRequest | None = None
         self._parameterized_request_at: float | None = None
         self._parameterized_mode_seen = False
         self._handled_stack_failure: ProcessStatus | None = None
+        self._camera_monitor: CameraPreviewMonitor | None = None
 
     def status(self) -> OrchestratorStatus:
         with self._lock:
@@ -120,6 +128,7 @@ class OrchestratorService:
                 robots=list(RobotName),
                 processes=processes,
                 node_rates=self.node_rate_monitor.snapshot(self.node_manager.active_nodes()),
+                host_resources=self.host_resource_monitor.snapshot(),
                 actuator_health=self.actuator_health_monitor.snapshot(),
                 logging=self.logging_monitor.snapshot(),
                 recordings=self.recording_catalog.list(),
@@ -129,6 +138,17 @@ class OrchestratorService:
 
     def application_logs(self, after: int | None = None) -> ApplicationLogSnapshot:
         return self.application_log_monitor.snapshot(after)
+
+    def camera_previews(self, depth_far: float) -> CameraPreviewSnapshot:
+        with self._lock:
+            if self._camera_monitor is None:
+                self._camera_monitor = CameraPreviewMonitor()
+            monitor = self._camera_monitor
+        return monitor.snapshot(depth_far)
+
+    def _reset_camera_previews(self) -> None:
+        if self._camera_monitor is not None:
+            self._camera_monitor.reset()
 
     def set_runtime(self, runtime: Runtime, safety: SafetyContext) -> OrchestratorStatus:
         return self._set_configuration(lambda: self.node_manager.set_runtime(runtime), safety)
@@ -150,6 +170,7 @@ class OrchestratorService:
                 self._require_real_hardware_acknowledgement(safety)
             self._run_manager_action(action)
             self.actuator_health_monitor.reset()
+            self._reset_camera_previews()
             return self.status()
 
     def start_process(
@@ -170,6 +191,7 @@ class OrchestratorService:
                 self._require_ready_stack(current)
             else:
                 self.actuator_health_monitor.reset()
+                self._reset_camera_previews()
             self._run_manager_action(lambda: self.node_manager.start(process_name))
             return self.status()
 
@@ -262,6 +284,7 @@ class OrchestratorService:
                 robot_config = ROBOT_CONFIGS[self.node_manager.robot]
                 self.replay_manager.validate(recording, robot_config)
                 self.actuator_health_monitor.reset()
+                self._reset_camera_previews()
                 self._run_manager_action(lambda: self.node_manager.start(ProcessName.REPLAY))
                 replay_nodes_started = True
                 self._run_manager_action(self.node_manager.wait_until_robot_ready)
@@ -299,6 +322,8 @@ class OrchestratorService:
             self.logging_monitor.close()
             self.node_rate_monitor.close()
             self.actuator_health_monitor.close()
+            if self._camera_monitor is not None:
+                self._camera_monitor.close()
             self.replay_manager.close()
             self.application_log_monitor.close()
 

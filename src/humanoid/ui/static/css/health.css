@@ -229,3 +229,71 @@
     grid-template-columns: 1fr;
   }
 }
+.host-resources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.host-resource {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+
+.host-resource-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.host-resource-heading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.host-resource-heading strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.host-resource small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.host-resource meter {
+  display: block;
+  width: 100%;
+  height: 12px;
+}
+
+.host-resource meter[hidden] {
+  display: none;
+}
+
+.host-resource meter::-webkit-meter-bar {
+  background: var(--paper);
+  border: none;
+}
+
+.host-resource meter::-webkit-meter-optimum-value {
+  background: var(--sim);
+}
+
+.host-resource meter::-moz-meter-bar {
+  background: var(--sim);
+}
+
+@media (max-width: 600px) {
+  .host-resources {
+    grid-template-columns: 1fr;
+  }
+}

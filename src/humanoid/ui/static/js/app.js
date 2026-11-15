@@ -1,4 +1,5 @@
 import { fetchApplicationLogs, fetchStatus, post } from "./api.js";
+import { startCameraPreviews } from "./cameras.js";
 import {
   API,
   BusyKey,
@@ -158,6 +159,7 @@ els.orchestratorButtons.forEach((button) => {
 });
 
 refresh();
+startCameraPreviews(els.cameras);
 window.setInterval(() => {
   void refresh();
 }, 1000);

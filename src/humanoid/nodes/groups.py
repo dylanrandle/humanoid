@@ -4,6 +4,7 @@ from humanoid.nodes.orchestrator import OrchestratorNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
 from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
+from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
@@ -27,7 +28,7 @@ NODE_GROUPS = {
             deferred_nodes=(HomingNode,),
             runtime_nodes={
                 Runtime.SIM: (MujocoSimulationNode,),
-                Runtime.REAL: (RobotDriverNode,),
+                Runtime.REAL: (RobotDriverNode, CameraDriverNode),
             },
         ),
         NodeGroup(
@@ -36,7 +37,7 @@ NODE_GROUPS = {
             nodes=(RobotVisualizerNode,),
             runtime_nodes={
                 Runtime.SIM: (MujocoSimulationNode,),
-                Runtime.REAL: (RobotDriverNode,),
+                Runtime.REAL: (RobotDriverNode, CameraDriverNode),
             },
         ),
         NodeGroup(

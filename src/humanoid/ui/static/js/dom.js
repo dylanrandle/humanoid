@@ -15,11 +15,34 @@ export const els = {
   stackActionLabel: document.querySelector("#stack-action-label"),
   nodeRateSummary: document.querySelector("#node-rate-summary"),
   nodeRateList: document.querySelector("#node-rate-list"),
+  hostResources: {
+    cpu: document.querySelector("#host-cpu"),
+    cpuMeter: document.querySelector("#host-cpu-meter"),
+    memory: document.querySelector("#host-memory"),
+    memoryMeter: document.querySelector("#host-memory-meter"),
+    memoryDetail: document.querySelector("#host-memory-detail"),
+  },
   actuatorHealthSummary: document.querySelector("#actuator-health-summary"),
   actuatorHealthError: document.querySelector("#actuator-health-error"),
   actuatorHealthList: document.querySelector("#actuator-health-list"),
   applicationLogStatus: document.querySelector("#application-log-status"),
   applicationLogOutput: document.querySelector("#application-log-output"),
+  cameras: {
+    ...Object.fromEntries(
+      ["rgb", "depth"].map((stream) => [
+        stream,
+        {
+          image: document.querySelector(`#camera-${stream}-image`),
+          empty: document.querySelector(`#camera-${stream}-empty`),
+          status: document.querySelector(`#camera-${stream}-status`),
+          detail: document.querySelector(`#camera-${stream}-detail`),
+        },
+      ]),
+    ),
+    range: document.querySelector("#camera-depth-range"),
+    near: document.querySelector("#camera-depth-near"),
+    far: document.querySelector("#camera-depth-far"),
+  },
   processes: Object.fromEntries(
     TELEOP_PROCESSES.map((name) => [
       name,

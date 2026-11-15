@@ -59,6 +59,7 @@ export const ApiRoute = Object.freeze({
   ROOT: "/api",
   STATUS: "/api/status",
   APPLICATION_LOGS: "/api/application-logs",
+  CAMERA_PREVIEWS: "/api/camera-previews",
   RUNTIME: "/api/runtime",
   ROBOT: "/api/robot",
   PROCESSES: "/api/processes/<name>/<action>",
@@ -83,6 +84,7 @@ export const TELEOP_PROCESSES = Object.freeze([
 export const API = Object.freeze({
   STATUS: ApiRoute.STATUS,
   APPLICATION_LOGS: ApiRoute.APPLICATION_LOGS,
+  CAMERA_PREVIEWS: ApiRoute.CAMERA_PREVIEWS,
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
   logging(action) {

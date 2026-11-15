@@ -6,13 +6,16 @@ Source: https://github.com/realsenseai/realsense-ros/blob/7a87097c499e3b0b69518d
 Source SHA-256: 42f3b66f47a1f8f425a2e4dc07c1d9c283183167d8441f520a15623d98f9bf78
 License: Apache License 2.0; see d435_license.txt.
 
-Modified 2026-11-14: converted COLLADA to binary STL for MeshCat/Pinocchio
+Modified 2026-11-14: converted COLLADA through binary STL to indexed OBJ for MeshCat/Pinocchio
 and MuJoCo compatibility. Concatenated all 18 geometry instances' indexed
 triangles, preserving source coordinates, dimensions in meters, winding,
-and the original mesh frame. Recomputed facet normals. No simplification.
-STL omits the source's uniform gray material; the URDF supplies silver.
+and the original mesh frame. Facet normals follow triangle winding. No simplification.
+OBJ omits the source's uniform gray material; the URDF supplies silver.
 Triangle count: 231186.
 
 Placement and nominal optical offsets follow upstream _d435.urdf.xacro
 at the same revision. Optical offsets are CAD estimates, not measured
 calibration. Camera and bracket inertia are not modeled.
+
+OBJ preserves all triangles and vertex coordinates while avoiding MuJoCo's
+200,000-face STL decoder limit. Repeated vertices are indexed once.

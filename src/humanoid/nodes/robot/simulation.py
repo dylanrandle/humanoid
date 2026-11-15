@@ -75,6 +75,10 @@ class MujocoSimulationNode(Node):
         self.engine.step(self.substeps)
         robot_state = self.engine.read_robot_state(timestamp=self._clock())
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
+        frames = self.engine.read_camera_frames(timestamp=robot_state.timestamp)
+        if frames is not None:
+            self.publisher.publish(frames.rgb, topic=Topic.CAMERA_RGB)
+            self.publisher.publish(frames.depth, topic=Topic.CAMERA_DEPTH)
 
     def _stop_velocity_actuators(self) -> None:
         self.engine.stop_velocity_actuators()
@@ -83,7 +87,10 @@ class MujocoSimulationNode(Node):
         try:
             self._command_watchdog.stop()
         finally:
-            self.subscriber.close()
+            try:
+                self.engine.close()
+            finally:
+                self.subscriber.close()
 
 
 def main() -> None:

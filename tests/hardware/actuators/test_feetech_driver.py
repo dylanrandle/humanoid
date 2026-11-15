@@ -780,7 +780,8 @@ def test_connect_rolls_back_when_configuration_fails():
     ):
         driver.connect()
 
-    disconnect.assert_called_once_with(driver)
+    # Other drivers can be finalized while the class-level method is patched.
+    assert disconnect.call_args_list.count(call(driver)) == 1
 
 
 def test_id_change_retains_active_wire_id_for_disconnect_cleanup():

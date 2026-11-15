@@ -19,6 +19,7 @@ class ApiRoute(StrEnum):
     ROOT = "/api"
     STATUS = f"{ROOT}/status"
     APPLICATION_LOGS = f"{ROOT}/application-logs"
+    CAMERA_PREVIEWS = f"{ROOT}/camera-previews"
     RUNTIME = f"{ROOT}/runtime"
     ROBOT = f"{ROOT}/robot"
     PROCESSES = f"{ROOT}/processes/<name>/<action>"

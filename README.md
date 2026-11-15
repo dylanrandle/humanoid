@@ -14,7 +14,7 @@ A Python framework for multi-robot control and teleoperation in simulation and o
 
 ## Requirements
 
-- Python 3.13 or higher
+- Python 3.12 (selected by `.python-version`)
 - [uv](https://github.com/astral-sh/uv) package manager
 
 ## Installation
@@ -62,6 +62,8 @@ uv run start
 The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Use it to select the
 robot and runtime, manage the stack and teleoperation processes, choose a control mode,
 monitor node health and application logs, and record or replay LCM sessions.
+Host telemetry shows total CPU usage and used/total memory for the backend machine,
+including all processes, even when the robot stack is stopped.
 Each data-logger run is stored as `logs/recordings/<timestamp>/`, with the LCM log and
 robot-configuration manifest kept together inside that directory.
 
@@ -69,6 +71,21 @@ Simulation uses MuJoCo and real-hardware mode uses the hardware driver; both exp
 same LCM interface to the rest of the stack. Hardware actions require explicit operator
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
+
+### RGB and depth cameras
+
+The camera driver starts automatically with real hardware. Triskel simulation renders
+RGB and native depth from the URDF camera frames. The console displays both views,
+with an adjustable depth color scale and stale-stream indicators. Depth is not aligned
+to RGB; black means no depth measurement.
+
+Defaults are 640 × 480 at 30 FPS, configured in
+[`src/humanoid/config/camera.py`](src/humanoid/config/camera.py). The official
+`pyrealsense2` is a required dependency on non-macOS platforms. macOS installs no SDK:
+use simulation there; the real camera driver intentionally fails.
+
+Linux needs USB permissions. Python 3.12 uses the official ARM64 wheel on Raspberry Pi.
+See [camera setup and message format](src/humanoid/hardware/cameras/README.md).
 
 ### Controller Tracking Diagnostic
 
@@ -118,6 +135,9 @@ This installs locked dependencies, enables `humanoid.service`, and restarts the 
 The robot needs no source checkout. The stack remains stopped until started from the UI.
 Deployment may prompt for `sudo`; use `--dry-run` to build without deploying. Override the
 defaults with `HUMANOID_ROBOT_HOST` and `HUMANOID_ROBOT_DIR`.
+The deployed service keeps LCM traffic local and configures 8 MiB receive buffers
+for camera images. See [camera transport setup](src/humanoid/hardware/cameras/README.md#pi-throughput-and-lcm-buffers)
+for cross-host LCM.
 
 Forward the dashboard and MeshCat ports from another local terminal:
 

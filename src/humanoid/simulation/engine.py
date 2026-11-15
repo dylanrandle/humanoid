@@ -14,8 +14,10 @@ from humanoid.simulation.binding import (
     MujocoRobotBinding,
     resolve_mujoco_robot_binding,
 )
+from humanoid.simulation.camera import MujocoCamera
 from humanoid.simulation.model import build_mujoco_spec
 from humanoid.types.actuator import ActuatorControlMode, ActuatorEffortSource
+from humanoid.types.camera import CameraFrames
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     NormalizedRobotJointCommand,
@@ -45,6 +47,11 @@ class NativeMujocoEngine:
             self.model,
             self.robot,
         )
+        self.camera = (
+            MujocoCamera(self.model, config.camera)
+            if config.camera is not None and self.model.ncam > 0
+            else None
+        )
         self.reset()
 
     @property
@@ -73,6 +80,15 @@ class NativeMujocoEngine:
             self.data.ctrl[list(root.actuator_ids)] = 0.0
 
         mujoco.mj_forward(self.model, self.data)
+        if self.camera is not None:
+            self.camera.reset()
+
+    def read_camera_frames(self, timestamp: float) -> CameraFrames | None:
+        return self.camera.read(self.data, timestamp) if self.camera is not None else None
+
+    def close(self) -> None:
+        if self.camera is not None:
+            self.camera.close()
 
     def apply_joint_command(self, command: RobotJointCommand) -> NormalizedRobotJointCommand:
         """Apply one full-stack command to named MuJoCo actuator targets."""

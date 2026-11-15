@@ -24,6 +24,7 @@ from humanoid.nodes.orchestrator import OrchestratorNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
 from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
+from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
@@ -105,6 +106,7 @@ def test_node_groups_reference_imported_node_classes():
     )
     assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.REAL) == (
         RobotDriverNode,
+        CameraDriverNode,
         RobotControllerNode,
         RobotVisualizerNode,
         OrchestratorNode,
@@ -116,6 +118,7 @@ def test_node_groups_reference_imported_node_classes():
     )
     assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.REAL) == (
         RobotDriverNode,
+        CameraDriverNode,
         RobotVisualizerNode,
     )
     assert NODE_GROUPS[ProcessName.KEYBOARD].nodes == (KeyboardTeleopNode,)
@@ -123,7 +126,7 @@ def test_node_groups_reference_imported_node_classes():
 
 
 @pytest.mark.parametrize("runtime", list(Runtime))
-def test_replay_group_starts_driver_and_visualizer(monkeypatch, runtime):
+def test_replay_group_starts_runtime_sensors_driver_and_visualizer(monkeypatch, runtime):
     processes: list[MagicMock] = []
     context = _fake_context(processes)
     _use_process_context(monkeypatch, context)
@@ -131,15 +134,15 @@ def test_replay_group_starts_driver_and_visualizer(monkeypatch, runtime):
 
     manager.start(ProcessName.REPLAY)
 
-    driver = MujocoSimulationNode if runtime is Runtime.SIM else RobotDriverNode
+    expected_nodes = (
+        [MujocoSimulationNode, RobotVisualizerNode]
+        if runtime is Runtime.SIM
+        else [RobotDriverNode, CameraDriverNode, RobotVisualizerNode]
+    )
     assert [entry.kwargs["target"] for entry in context.Process.call_args_list] == [
-        _run_node,
-        _run_node,
-    ]
-    assert [entry.kwargs["args"][0] for entry in context.Process.call_args_list] == [
-        driver,
-        RobotVisualizerNode,
-    ]
+        _run_node
+    ] * len(expected_nodes)
+    assert [entry.kwargs["args"][0] for entry in context.Process.call_args_list] == expected_nodes
 
 
 def test_node_processes_receive_the_parent_log_queue(monkeypatch):

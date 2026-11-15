@@ -100,12 +100,17 @@ WHEEL_NAME="$(basename "${WHEELS[0]}")"
 BUNDLE_PATH="$BUILD_DIR/humanoid-deploy.tar.gz"
 install -m 0644 "$PROJECT_ROOT/deploy/humanoid.service" \
     "$BUILD_DIR/humanoid.service.template"
-tar -C "$BUILD_DIR" -czf "$BUNDLE_PATH" \
-    "$WHEEL_NAME" requirements.txt humanoid.service.template
+install -m 0644 "$PROJECT_ROOT/.python-version" "$BUILD_DIR/.python-version"
+install -m 0644 "$PROJECT_ROOT/deploy/90-humanoid-lcm.conf" "$BUILD_DIR/90-humanoid-lcm.conf"
+# Avoid macOS extended attributes in bundles extracted by GNU tar on Ubuntu.
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$BUILD_DIR" -czf "$BUNDLE_PATH" \
+    "$WHEEL_NAME" requirements.txt humanoid.service.template .python-version 90-humanoid-lcm.conf
 
 if [[ "$DRY_RUN" == true ]]; then
     echo "Would upload the deployment bundle to $REMOTE_HOST"
     echo "Would install Humanoid into $INSTALL_DIR"
+    echo "Would configure persistent 8 MiB LCM receive buffers"
+    echo "Would install EGL/Mesa libraries for headless simulation cameras"
     echo "Would install, enable, and restart humanoid.service"
     exit 0
 fi
@@ -170,7 +175,12 @@ fi
 tar -xzf "$BUNDLE_PATH" -C "$STAGING_DIR"
 install -d -m 0755 "$INSTALL_DIR/logs"
 
-"$UV_BIN" venv --python 3.13 --allow-existing "$INSTALL_DIR/.venv"
+PYTHON_VERSION="$(cat "$STAGING_DIR/.python-version")"
+if [[ ! "$PYTHON_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    echo "Invalid Python version in deployment bundle: $PYTHON_VERSION" >&2
+    exit 1
+fi
+"$UV_BIN" venv --python "$PYTHON_VERSION" --allow-existing "$INSTALL_DIR/.venv"
 "$UV_BIN" pip install \
     --python "$INSTALL_DIR/.venv/bin/python" \
     --exact \
@@ -186,12 +196,23 @@ sed -i \
     -e "s|@HUMANOID_INSTALL_DIR@|$INSTALL_DIR|g" \
     "$STAGING_DIR/humanoid.service"
 
-"$INSTALL_DIR/.venv/bin/python" -c "import humanoid"
+"$UV_BIN" run --no-project --python "$INSTALL_DIR/.venv/bin/python" \
+    python -c "import humanoid; import pyrealsense2"
 echo "Installed Humanoid package"
 REMOTE_SCRIPT
 
-echo "Installing and restarting humanoid.service on $REMOTE_HOST"
-ssh -t "$REMOTE_HOST" \
-    "sudo install -m 0644 '$REMOTE_STAGING_DIR/humanoid.service' /etc/systemd/system/humanoid.service && sudo systemctl daemon-reload && sudo systemctl enable humanoid.service && sudo systemctl restart humanoid.service && sleep 1 && sudo systemctl --no-pager --full status humanoid.service"
+echo "Installing graphics dependencies and restarting humanoid.service on $REMOTE_HOST"
+ssh -t "$REMOTE_HOST" "
+    sudo apt-get update &&
+    sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libopengl0 libgl1-mesa-dri &&
+    sudo install -m 0644 '$REMOTE_STAGING_DIR/90-humanoid-lcm.conf' /etc/sysctl.d/90-humanoid-lcm.conf &&
+    sudo sysctl -p /etc/sysctl.d/90-humanoid-lcm.conf &&
+    sudo install -m 0644 '$REMOTE_STAGING_DIR/humanoid.service' /etc/systemd/system/humanoid.service &&
+    sudo systemctl daemon-reload &&
+    sudo systemctl enable humanoid.service &&
+    sudo systemctl restart humanoid.service &&
+    sleep 1 &&
+    sudo systemctl --no-pager --full status humanoid.service
+"
 
 echo "Deployment complete; humanoid.service is enabled and running"

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/css/controls.css" />
     <link rel="stylesheet" href="/css/data.css" />
     <link rel="stylesheet" href="/css/logs.css" />
+    <link rel="stylesheet" href="/css/cameras.css" />
     <link rel="stylesheet" href="/css/responsive.css" />
   </head>
   <body>
@@ -299,10 +300,74 @@
           </section>
         </div>
 
+        <section
+          class="panel camera-panel"
+          id="camera-panel"
+          aria-labelledby="camera-heading"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">04 · Perception</p>
+              <h2 id="camera-heading">Camera views</h2>
+            </div>
+            <label class="camera-range" for="camera-depth-range">
+              Depth scale
+              <select id="camera-depth-range">
+                <option value="1">1 m</option>
+                <option value="3" selected>3 m</option>
+                <option value="5">5 m</option>
+                <option value="10">10 m</option>
+              </select>
+            </label>
+          </div>
+          <div class="camera-grid">
+            <figure class="camera-view">
+              <figcaption>
+                <h3>RGB</h3>
+                <span class="mini-status" id="camera-rgb-status">Waiting</span>
+              </figcaption>
+              <div class="camera-image-area">
+                <img id="camera-rgb-image" alt="Live RGB camera view" hidden />
+                <p id="camera-rgb-empty">Waiting for RGB images</p>
+              </div>
+              <p class="camera-detail" id="camera-rgb-detail">
+                Start the stack to view the camera.
+              </p>
+            </figure>
+            <figure class="camera-view">
+              <figcaption>
+                <h3>Native depth</h3>
+                <span class="mini-status" id="camera-depth-status"
+                  >Waiting</span
+                >
+              </figcaption>
+              <div class="camera-image-area">
+                <img
+                  id="camera-depth-image"
+                  alt="Live depth camera view, amber for near and blue for far"
+                  hidden
+                />
+                <p id="camera-depth-empty">Waiting for depth images</p>
+              </div>
+              <p class="camera-detail" id="camera-depth-detail">
+                Depth uses its own viewpoint, separate from RGB.
+              </p>
+              <div class="depth-legend" aria-label="Depth color scale">
+                <span id="camera-depth-near">≤ 0.2 m</span>
+                <span class="depth-gradient" aria-hidden="true"></span>
+                <span id="camera-depth-far">≥ 3 m</span>
+              </div>
+              <p class="camera-legend-note">
+                Black: no depth measurement. Colors are for display only.
+              </p>
+            </figure>
+          </div>
+        </section>
+
         <section class="panel data-panel" aria-labelledby="data-heading">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">04 · Data tools</p>
+              <p class="eyebrow">05 · Data tools</p>
               <h2 id="data-heading">Record &amp; replay</h2>
             </div>
             <span class="panel-note">LCM traffic</span>
@@ -391,12 +456,45 @@
         >
           <div class="section-heading">
             <div>
-              <p class="eyebrow">05 · Runtime telemetry</p>
-              <h2 id="node-health-heading">Node health</h2>
+              <p class="eyebrow">06 · Runtime telemetry</p>
+              <h2 id="node-health-heading">Host &amp; node health</h2>
             </div>
             <span class="panel-note node-rate-summary" id="node-rate-summary"
               >No active nodes</span
             >
+          </div>
+
+          <div class="host-resources" aria-label="Host resource usage">
+            <div class="host-resource">
+              <div class="host-resource-heading">
+                <h3>Host CPU</h3>
+                <strong id="host-cpu">Sampling…</strong>
+              </div>
+              <meter
+                id="host-cpu-meter"
+                min="0"
+                max="100"
+                value="0"
+                aria-label="Total host CPU usage"
+                hidden
+              ></meter>
+              <small>All cores · all processes</small>
+            </div>
+            <div class="host-resource">
+              <div class="host-resource-heading">
+                <h3>Host memory</h3>
+                <strong id="host-memory">Sampling…</strong>
+              </div>
+              <meter
+                id="host-memory-meter"
+                min="0"
+                max="100"
+                value="0"
+                aria-label="Total host memory usage"
+                hidden
+              ></meter>
+              <small id="host-memory-detail">Waiting for host telemetry</small>
+            </div>
           </div>
 
           <div class="node-rate-list" id="node-rate-list">
@@ -412,7 +510,7 @@
         >
           <div class="section-heading">
             <div>
-              <p class="eyebrow">06 · Hardware telemetry</p>
+              <p class="eyebrow">07 · Hardware telemetry</p>
               <h2 id="actuator-health-heading">Motor health</h2>
             </div>
             <span
@@ -440,7 +538,7 @@
         >
           <div class="section-heading">
             <div>
-              <p class="eyebrow">07 · Diagnostics</p>
+              <p class="eyebrow">08 · Diagnostics</p>
               <h2 id="application-log-heading">Application logs</h2>
             </div>
             <span class="panel-note" id="application-log-status"

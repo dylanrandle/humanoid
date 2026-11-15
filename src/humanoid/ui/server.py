@@ -13,6 +13,7 @@ from flask import Flask, Response, jsonify, request
 from werkzeug.exceptions import BadRequest, HTTPException
 from werkzeug.serving import make_server
 
+from humanoid.config.camera import CAMERA_PREVIEW_CONFIG
 from humanoid.config.teleop import get_oculus_teleop_policy_config
 from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE
 from humanoid.logger import get_logger, setup_logging
@@ -103,6 +104,18 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
     def application_logs():
         cursor = parse_application_log_cursor(request.args.get("after"))
         return jsonify(orchestrator_service.application_logs(cursor))
+
+    @app.get(ApiRoute.CAMERA_PREVIEWS)
+    def camera_previews():
+        try:
+            depth_far = float(
+                request.args.get("depth_far", CAMERA_PREVIEW_CONFIG.default_depth_far_meters)
+            )
+        except ValueError as exc:
+            raise ApiError("Invalid depth preview range.", HTTPStatus.BAD_REQUEST) from exc
+        if depth_far not in CAMERA_PREVIEW_CONFIG.depth_ranges_meters:
+            raise ApiError("Invalid depth preview range.", HTTPStatus.BAD_REQUEST)
+        return jsonify(orchestrator_service.camera_previews(depth_far))
 
     @app.post(ApiRoute.RUNTIME)
     def set_runtime():

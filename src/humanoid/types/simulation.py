@@ -3,6 +3,8 @@
 import math
 from dataclasses import dataclass
 
+from humanoid.types.camera import SimulatedCameraConfig
+
 
 @dataclass(frozen=True, kw_only=True)
 class MujocoSimulationConfig:
@@ -19,6 +21,7 @@ class MujocoSimulationConfig:
     root_force_limit: float = 100.0
     minimum_body_mass: float = 0.001
     minimum_body_inertia: float = 1e-6
+    camera: SimulatedCameraConfig | None = None
 
     def __post_init__(self) -> None:
         positive_values = (

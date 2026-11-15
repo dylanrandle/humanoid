@@ -1,0 +1,26 @@
+package humanoid.types.lcm;
+
+// Native RGB8 or unsigned 16-bit depth. Pixel bytes use lossless compression.
+// Multi-byte pixels are little-endian, rows tightly packed, no alignment/filtering.
+struct camera_image_t {
+    int64_t timestamp; // Host monotonic receipt time in nanoseconds; shared by a frameset.
+    double device_timestamp; // Seconds in timestamp_domain (simulation uses simulation time).
+    string timestamp_domain;
+    int64_t frame_number;
+    string frame_id;
+    string serial_number;
+    string encoding;
+    int32_t width;
+    int32_t height;
+    double fx;
+    double fy;
+    double cx;
+    double cy;
+    string distortion_model;
+    int32_t num_distortion_coefficients;
+    double distortion_coefficients[num_distortion_coefficients];
+    double depth_scale; // Meters per raw depth unit; zero for RGB, zero pixels are invalid depth.
+    string compression;
+    int32_t data_size;
+    byte data[data_size];
+}

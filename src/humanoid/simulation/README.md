@@ -46,3 +46,49 @@ zeroed by the same 250 ms stale-command policy used by the hardware driver.
 Restarting the simulation process resets it to the configured Home preset. The engine
 also exposes `reset()` directly for future simulation-control messages and integration
 tests.
+
+## Cameras
+
+For robots with both configured optical frames (currently Triskel), the model builder
+adds separate fixed RGB and depth cameras directly to those URDF links. Optical axes
+are +X right, +Y down, +Z forward; the builder converts these to MuJoCo's camera axes.
+The URDF remains the source of camera extrinsics, including the offset between sensors.
+Visual meshes and their colors are retained, while collision proxies are hidden from
+both camera views. The D435 visual uses OBJ to preserve its complete geometry without
+exceeding MuJoCo's STL face limit.
+
+The simulation node publishes the same `CAMERA/RGB` and `CAMERA/DEPTH` messages as the
+physical camera driver. Defaults are 640 × 480 at 30 frames per simulated second,
+with nominal vertical fields of view of 42° (RGB) and 58° (depth). Depth measures optical
+Z in millimeters, with zero for background or values outside the representable range.
+Images have separate pinhole intrinsics and viewpoints; depth is not aligned to RGB.
+This is ideal geometry rendering, without RealSense stereo noise, missing measurements,
+lens distortion, or device-specific factory calibration.
+
+`NativeMujocoEngine.read_camera_frames(timestamp)` lazily creates an offscreen renderer
+and returns a new pair when due, otherwise `None`. Physics-only engine use does not
+create a graphics context. Reset restarts the camera cadence and frame counter; call
+`engine.close()` to release graphics resources. Robots without either optical frame
+continue to run without cameras. Set `MujocoSimulationConfig.camera=None` to disable
+cameras, or supply a `SimulatedCameraConfig` to customize dimensions, FPS, and optics.
+
+Rendering needs an OpenGL context. Desktop macOS uses CGL; headless Linux can use
+`MUJOCO_GL=egl` with suitable GPU drivers or `MUJOCO_GL=osmesa` with Mesa installed.
+Deployment installs Ubuntu EGL/Mesa libraries and sets `MUJOCO_GL=egl` in the
+systemd service. For a manual Ubuntu launch:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libegl1 libegl-mesa0 libopengl0 libgl1-mesa-dri
+MUJOCO_GL=egl uv run start --no-open
+```
+
+Set the backend **before starting Python**, since MuJoCo selects it at import time.
+The service user needs access to `/dev/dri/renderD*` (the `render` group on Ubuntu).
+`MUJOCO_GL=osmesa` with `libosmesa6` is a slower software alternative on machines
+without a compatible GPU. GLFW requires an X11 display and cannot render from a
+headless systemd service with no `DISPLAY`.
+
+Rendering and image compression run synchronously with physics, so camera load can
+reduce wall-clock simulation speed. Reduce resolution/FPS when needed. Device
+timestamps use the simulation clock, independently of host receipt timestamps.

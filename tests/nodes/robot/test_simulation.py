@@ -12,6 +12,7 @@ from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.robot.simulation import MujocoSimulationNode
 from humanoid.simulation.engine import NativeMujocoEngine
+from humanoid.types.camera import CameraFrames
 from humanoid.types.robot import NormalizedRobotJointCommand, RobotJointCommand, RobotState
 from humanoid.types.simulation import MujocoSimulationConfig
 
@@ -46,6 +47,7 @@ def _make_node(monkeypatch, *, clock=None, timeout: float = 0.25):
     engine = MagicMock(spec=NativeMujocoEngine)
     engine.physics_timestep = MujocoSimulationConfig().physics_timestep
     engine.read_robot_state.return_value = _state()
+    engine.read_camera_frames.return_value = None
     engine.apply_joint_command.return_value = NormalizedRobotJointCommand(
         joint_positions=np.zeros(6),
         joint_velocities=np.zeros(6),
@@ -91,6 +93,22 @@ def test_default_simulation_runs_at_two_hundred_hz(monkeypatch):
     assert node.substeps == EXPECTED_SIMULATION_SUBSTEPS
 
 
+def test_publishes_camera_pairs_on_shared_topics(monkeypatch):
+    node, engine, subscriber, publisher = _make_node(monkeypatch)
+    subscriber.receive.return_value = None
+    frames = MagicMock(spec=CameraFrames)
+    frames.rgb = MagicMock()
+    frames.depth = MagicMock()
+    engine.read_camera_frames.return_value = frames
+
+    node.step()
+
+    engine.read_camera_frames.assert_called_once_with(timestamp=1.0)
+    publisher.publish.assert_has_calls(
+        [call(frames.rgb, topic=Topic.CAMERA_RGB), call(frames.depth, topic=Topic.CAMERA_DEPTH)]
+    )
+
+
 def test_watchdog_stops_velocity_actuators_once(monkeypatch):
     clock = MagicMock(side_effect=[1.0, 1.0, 1.3, 1.3, 1.6, 1.6])
     node, engine, subscriber, _ = _make_node(monkeypatch, clock=clock, timeout=0.25)
@@ -120,6 +138,7 @@ def test_close_stops_simulation_before_closing_transport(monkeypatch):
     node.on_close()
 
     assert operations.call_args_list == [call("stop"), call("close")]
+    engine.close.assert_called_once()
 
 
 def test_rejects_invalid_timing_or_watchdog(monkeypatch):

@@ -70,7 +70,7 @@
     <!-- Upright RealSense D435, rear face flush at base y = 88 mm.
          camera_link uses forward/left/up axes at the nominal depth origin.
          Optical frames use right/down/forward; derive base transforms from this tree.
-         Official mesh converted to STL; provenance/license: meshes/d435_notice.txt.
+         Official mesh converted to OBJ; provenance/license: meshes/d435_notice.txt.
          Visual/frame model only: camera mass and collisions are not modeled.
          The camera is protected by the existing collision body.
          Color baseline is nominal. -->
@@ -78,7 +78,7 @@
         <visual>
             <origin xyz="0.0043 -0.0175 0" rpy="1.5707963267948966 0 1.5707963267948966" />
             <geometry>
-                <mesh filename="package://triskel/meshes/d435.stl" scale="1 1 1" />
+                <mesh filename="package://triskel/meshes/d435.obj" scale="1 1 1" />
             </geometry>
             <material name="silver" />
         </visual>

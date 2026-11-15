@@ -9,6 +9,10 @@ User=@HUMANOID_USER@
 WorkingDirectory=@HUMANOID_INSTALL_DIR@
 Environment=HUMANOID_DATA_DIR=@HUMANOID_INSTALL_DIR@
 Environment=PYTHONUNBUFFERED=1
+# Render simulated cameras without an X11 display, using the host GPU.
+Environment=MUJOCO_GL=egl
+# The console serves remote browsers over HTTP; image multicast stays on this host.
+Environment="LCM_DEFAULT_URL=udpm://239.255.76.67:7667?ttl=0&recv_buf_size=8388608"
 ExecStart=@HUMANOID_INSTALL_DIR@/.venv/bin/start --no-open
 Restart=on-failure
 RestartSec=3

@@ -859,3 +859,22 @@ def test_close_releases_mode_monitor_when_stack_status_fails():
     cast(MagicMock, service.node_rate_monitor).close.assert_called_once_with()
     cast(MagicMock, service.actuator_health_monitor).close.assert_called_once_with()
     cast(MagicMock, service.application_log_monitor).close.assert_called_once_with()
+
+
+def test_camera_monitor_is_lazy_reset_on_configuration_change_and_closed(monkeypatch):
+    service, _, _, _ = _make_service()
+    camera = MagicMock()
+    factory = MagicMock(return_value=camera)
+    monkeypatch.setattr("humanoid.orchestrator.service.CameraPreviewMonitor", factory)
+    assert service._camera_monitor is None
+    assert service.camera_previews(3) is camera.snapshot.return_value
+    service.camera_previews(5)
+    factory.assert_called_once_with()
+    camera.snapshot.assert_any_call(5)
+    service.set_robot(
+        RobotName.PANDA,
+        SafetyContext(expected_runtime=Runtime.SIM, expected_robot=RobotName.TRISKEL),
+    )
+    camera.reset.assert_called_once()
+    service.close()
+    camera.close.assert_called_once()

@@ -10,9 +10,11 @@ import lcm
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorHealthReport
+from humanoid.types.camera import CameraImage
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     actuator_health_report_t,
+    camera_image_t,
     homing_target_t,
     logging_status_t,
     node_rate_sample_t,
@@ -86,7 +88,9 @@ class Subscriber:
             topic = Topic(channel)
             expected_type = TOPIC_TO_TYPE.get(topic)
 
-            if expected_type is ActuatorHealthReport:
+            if expected_type is CameraImage:
+                decoded_data = LCMConverter.camera_image_from_lcm(camera_image_t.decode(data))
+            elif expected_type is ActuatorHealthReport:
                 lcm_msg = actuator_health_report_t.decode(data)
                 decoded_data = LCMConverter.actuator_health_report_from_lcm(lcm_msg)
             elif expected_type is NodeRateSample:
@@ -126,6 +130,11 @@ class Subscriber:
             q.put_nowait((decoded_data, received_at_s))
         except Exception as e:
             logger.error(f"Error decoding message on channel {channel}: {e}")
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.CAMERA_RGB, Topic.CAMERA_DEPTH], timeout: int | None = None
+    ) -> CameraImage | None: ...
 
     @overload
     def receive(

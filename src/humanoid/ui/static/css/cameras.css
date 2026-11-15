@@ -1,0 +1,112 @@
+.camera-panel {
+  min-height: auto;
+  margin-top: 20px;
+}
+
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.camera-view {
+  margin: 0;
+  min-width: 0;
+}
+
+.camera-view figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.camera-view h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.camera-view .mini-status.live {
+  color: var(--healthy);
+  background: var(--healthy-soft);
+}
+
+.camera-view .mini-status.stale {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.camera-image-area {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  background: #101719;
+  border-radius: 12px;
+  overflow: hidden;
+  color: #c4cece;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.camera-image-area img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.camera-image-area [hidden] {
+  display: none;
+}
+
+.camera-detail,
+.camera-legend-note {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.camera-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.camera-range select {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.depth-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.depth-gradient {
+  flex: 1;
+  height: 9px;
+  border-radius: 5px;
+  background: linear-gradient(to right, #f8c442, #31b8ba, #3347a9);
+}
+
+@media (max-width: 700px) {
+  .camera-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .camera-panel .section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+}

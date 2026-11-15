@@ -52,7 +52,7 @@ def test_data_root_prefers_environment_override(monkeypatch, tmp_path):
 
 def test_data_root_uses_virtual_environment_parent_without_repo(monkeypatch, tmp_path):
     install_root = tmp_path / "humanoid"
-    module = install_root / ".venv" / "lib" / "python3.13" / "site-packages" / "module.py"
+    module = install_root / ".venv" / "lib" / "python3.12" / "site-packages" / "module.py"
     module.parent.mkdir(parents=True)
     module.touch()
     monkeypatch.delenv(HUMANOID_DATA_DIR_ENVIRONMENT_VARIABLE, raising=False)

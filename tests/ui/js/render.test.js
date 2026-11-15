@@ -61,6 +61,10 @@ function elements() {
     stackActionLabel: element(),
     nodeRateSummary: element(),
     nodeRateList: element(),
+    hostResources: {
+      cpu: element(), cpuMeter: element(), memory: element(),
+      memoryMeter: element(), memoryDetail: element(),
+    },
     actuatorHealthSummary: element(),
     actuatorHealthError: element(),
     actuatorHealthList: element(),

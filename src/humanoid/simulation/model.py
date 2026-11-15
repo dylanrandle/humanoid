@@ -39,7 +39,16 @@ def build_mujoco_spec(
     urdf_xml = robot.urdf_path.read_text()
     root_link_name = _find_root_link_name(urdf_xml)
     resolved_xml = _resolve_package_uris(urdf_xml, robot.urdf_path)
-    spec = mujoco.MjSpec.from_string(resolved_xml)
+    # URDF imports discard visuals by default. Retain them for RGB/depth rendering.
+    xml_root = ET.fromstring(resolved_xml)
+    extension = xml_root.find("mujoco")
+    if extension is None:
+        extension = ET.SubElement(xml_root, "mujoco")
+    compiler = extension.find("compiler")
+    if compiler is None:
+        compiler = ET.SubElement(extension, "compiler")
+    compiler.set("discardvisual", "false")
+    spec = mujoco.MjSpec.from_string(ET.tostring(xml_root, encoding="unicode"))
 
     spec.compiler.boundmass = config.minimum_body_mass
     spec.compiler.boundinertia = config.minimum_body_inertia
@@ -57,8 +66,29 @@ def build_mujoco_spec(
     # pairs are translated. They can still collide with future scene objects
     # configured with the reciprocal external contact bits.
     for geom in spec.geoms:
-        geom.contype = _ROBOT_CONTACT_TYPE
-        geom.conaffinity = _EXTERNAL_CONTACT_TYPE
+        if geom.contype or geom.conaffinity:
+            geom.contype = _ROBOT_CONTACT_TYPE
+            geom.conaffinity = _EXTERNAL_CONTACT_TYPE
+            geom.group = 3  # Hide collision proxies from camera images.
+
+    camera = config.camera
+    if camera is not None:
+        frames = (camera.rgb_frame, camera.depth_frame)
+        bodies = [spec.body(frame) for frame in frames]
+        if any(body is not None for body in bodies):
+            if any(body is None for body in bodies):
+                raise ValueError("Simulation camera requires both URDF optical frames.")
+            # Keep fixed optical links: static-body fusion can lose the local
+            # transforms of cameras added after the URDF import.
+            spec.compiler.fusestatic = False
+            for frame, body, fov in zip(
+                frames, bodies, (camera.rgb_vertical_fov, camera.depth_vertical_fov), strict=True
+            ):
+                assert body is not None
+                # Optical +Z forward/+Y down -> OpenGL -Z forward/+Y up.
+                body.add_camera(name=frame, quat=[0, 1, 0, 0], fovy=fov)
+            spec.visual.global_.offwidth = max(spec.visual.global_.offwidth, camera.width)
+            spec.visual.global_.offheight = max(spec.visual.global_.offheight, camera.height)
 
     if robot.config.base is not None:
         _add_ideal_planar_root(spec, root_link_name, robot, config)

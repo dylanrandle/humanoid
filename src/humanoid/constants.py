@@ -1,6 +1,8 @@
+import os
 from enum import Enum
 
 from humanoid.types.actuator import ActuatorHealthReport
+from humanoid.types.camera import CameraImage
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -14,7 +16,7 @@ from humanoid.types.robot import (
     RobotToolCommand,
 )
 
-DEFAULT_LCM_URL = "udpm://239.255.76.67:7667?ttl=1"
+DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", "udpm://239.255.76.67:7667?ttl=1")
 RUNTIME_ENVIRONMENT_VARIABLE = "HUMANOID_RUNTIME"
 ROBOT_ENVIRONMENT_VARIABLE = "HUMANOID_ROBOT"
 OCULUS_IP_ENVIRONMENT_VARIABLE = "HUMANOID_OCULUS_IP"
@@ -23,6 +25,10 @@ DEFAULT_HUMANOID_ROBOT = RobotName.TRISKEL
 
 
 class Topic(Enum):
+    # Native images, shared by the physical camera and simulated optical sensors.
+    CAMERA_RGB = "CAMERA/RGB"
+    CAMERA_DEPTH = "CAMERA/DEPTH"
+
     # Per-node loop-rate telemetry consumed by the operator console.
     NODE_RATE = "NODE/RATE"
 
@@ -62,6 +68,8 @@ class Topic(Enum):
 
 
 TOPIC_TO_TYPE: dict[Topic, type] = {
+    Topic.CAMERA_RGB: CameraImage,
+    Topic.CAMERA_DEPTH: CameraImage,
     Topic.NODE_RATE: NodeRateSample,
     Topic.ACTUATOR_HEALTH: ActuatorHealthReport,
     Topic.ROBOT_STATE: RobotState,

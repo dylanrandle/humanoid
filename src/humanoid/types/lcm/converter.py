@@ -1,14 +1,18 @@
 """Converter between LCM types and Python dataclasses."""
 
 import math
+import zlib
 
+import lz4.frame
 import numpy as np
 import pinocchio as pin
 
 from humanoid.types.actuator import ActuatorEffortSource, ActuatorHealth, ActuatorHealthReport
+from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     actuator_health_report_t,
+    camera_image_t,
     homing_target_t,
     logging_status_t,
     node_rate_sample_t,
@@ -38,6 +42,78 @@ from humanoid.types.robot import (
 
 class LCMConverter:
     """Handles conversion between LCM types and Python dataclasses."""
+
+    @staticmethod
+    def camera_image_to_lcm(image: CameraImage) -> camera_image_t:
+        message = camera_image_t()
+        message.timestamp = int(image.timestamp * 1e9)
+        message.device_timestamp = image.device_timestamp
+        message.timestamp_domain = image.timestamp_domain
+        message.frame_number = image.frame_number
+        message.frame_id = image.frame_id
+        message.serial_number = image.serial_number
+        message.encoding = image.encoding.value
+        intrinsic = image.intrinsics
+        message.width, message.height = intrinsic.width, intrinsic.height
+        message.fx, message.fy = intrinsic.fx, intrinsic.fy
+        message.cx, message.cy = intrinsic.cx, intrinsic.cy
+        message.distortion_model = intrinsic.distortion_model
+        message.distortion_coefficients = intrinsic.distortion_coefficients
+        message.num_distortion_coefficients = len(intrinsic.distortion_coefficients)
+        message.depth_scale = image.depth_scale
+        message.compression = "lz4"
+        dtype = "u1" if image.encoding is CameraEncoding.RGB8 else "<u2"
+        message.data = lz4.frame.compress(image.data.astype(dtype, copy=False).tobytes())
+        message.data_size = len(message.data)
+        return message
+
+    @staticmethod
+    def camera_image_from_lcm(message: camera_image_t) -> CameraImage:
+        if message.compression not in {"lz4", "zlib"}:
+            raise ValueError(f"Unsupported camera compression: {message.compression}")
+        encoding = CameraEncoding(message.encoding)
+        intrinsic = CameraIntrinsics(
+            width=message.width,
+            height=message.height,
+            fx=message.fx,
+            fy=message.fy,
+            cx=message.cx,
+            cy=message.cy,
+            distortion_model=message.distortion_model,
+            distortion_coefficients=tuple(message.distortion_coefficients),
+        )
+        shape = (intrinsic.height, intrinsic.width)
+        if encoding is CameraEncoding.RGB8:
+            shape = (*shape, 3)
+            dtype = np.dtype("u1")
+        else:
+            dtype = np.dtype("<u2")
+        expected_size = math.prod(shape) * dtype.itemsize
+        # Retain zlib support for recordings from before the LZ4 transport update.
+        decoder = (
+            lz4.frame.LZ4FrameDecompressor()
+            if message.compression == "lz4"
+            else zlib.decompressobj()
+        )
+        try:
+            raw = decoder.decompress(message.data, expected_size + 1)
+        except (RuntimeError, zlib.error) as error:
+            raise ValueError("Invalid compressed camera payload.") from error
+        if len(raw) != expected_size or not decoder.eof or decoder.unused_data:
+            raise ValueError("Camera payload size does not match image dimensions.")
+        pixels = np.frombuffer(raw, dtype=dtype).reshape(shape).astype(dtype.newbyteorder("="))
+        return CameraImage(
+            timestamp=message.timestamp / 1e9,
+            device_timestamp=message.device_timestamp,
+            timestamp_domain=message.timestamp_domain,
+            frame_number=message.frame_number,
+            frame_id=message.frame_id,
+            serial_number=message.serial_number,
+            encoding=encoding,
+            data=pixels,
+            intrinsics=intrinsic,
+            depth_scale=message.depth_scale,
+        )
 
     @staticmethod
     def actuator_health_report_to_lcm(

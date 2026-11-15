@@ -8,6 +8,7 @@ from flask.testing import FlaskClient
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.types.actuator import ActuatorHealth, ActuatorHealthStatus
 from humanoid.types.homing import HomingPreset
+from humanoid.types.host import HostResourceStatus
 from humanoid.types.logging import (
     ApplicationLogEntry,
     ApplicationLogSnapshot,
@@ -162,6 +163,7 @@ def test_rejects_invalid_application_log_cursor(server_client, cursor):
 def test_serializes_orchestrator_status_dataclass(server_client):
     service, client = server_client
     service.status.return_value = OrchestratorStatus(
+        host_resources=HostResourceStatus(25.0, 50.0, 4096, 8192),
         runtime=Runtime.SIM,
         robot=RobotName.PANDA,
         robots=[RobotName.PANDA],
@@ -243,6 +245,12 @@ def test_serializes_orchestrator_status_dataclass(server_client):
     assert response.status_code == HTTPStatus.OK
     assert response.json == {
         "runtime": "sim",
+        "host_resources": {
+            "cpu_percent": 25.0,
+            "memory_percent": 50.0,
+            "memory_used_bytes": 4096,
+            "memory_total_bytes": 8192,
+        },
         "robot": "panda",
         "robots": ["panda"],
         "processes": {
@@ -541,3 +549,24 @@ def test_static_path_cannot_escape_ui_directory(server_client):
     response = client.get("/../pyproject.toml")
 
     assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+def test_routes_camera_previews(server_client):
+    service, client = server_client
+    service.camera_previews.return_value = {
+        "rgb": {"connected": False},
+        "depth": {"connected": False},
+    }
+    response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far=5")
+    assert response.status_code == HTTPStatus.OK
+    assert response.json == service.camera_previews.return_value
+    assert response.headers["Cache-Control"] == "no-store"
+    service.camera_previews.assert_called_once_with(5.0)
+
+
+@pytest.mark.parametrize("value", ["bad", "nan", "inf", "0", "-1", "999"])
+def test_rejects_invalid_preview_range(server_client, value):
+    service, client = server_client
+    response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far={value}")
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    service.camera_previews.assert_not_called()
