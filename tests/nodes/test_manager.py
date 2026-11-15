@@ -28,7 +28,7 @@ from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
-from humanoid.nodes.robot.simulation import MujocoSimulationNode
+from humanoid.nodes.robot.simulation import SimulationNode
 from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import ProcessContext
 from humanoid.types.process import ProcessName, Runtime
@@ -98,7 +98,7 @@ def test_node_groups_reference_imported_node_classes():
     assert NODE_GROUPS[ProcessName.STACK].deferred_nodes == (HomingNode,)
     assert NODE_GROUPS[ProcessName.REPLAY].nodes == (RobotVisualizerNode,)
     assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.SIM) == (
-        MujocoSimulationNode,
+        SimulationNode,
         RobotControllerNode,
         RobotVisualizerNode,
         OrchestratorNode,
@@ -113,7 +113,7 @@ def test_node_groups_reference_imported_node_classes():
         RobotLoggerNode,
     )
     assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.SIM) == (
-        MujocoSimulationNode,
+        SimulationNode,
         RobotVisualizerNode,
     )
     assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.REAL) == (
@@ -135,7 +135,7 @@ def test_replay_group_starts_runtime_sensors_driver_and_visualizer(monkeypatch, 
     manager.start(ProcessName.REPLAY)
 
     expected_nodes = (
-        [MujocoSimulationNode, RobotVisualizerNode]
+        [SimulationNode, RobotVisualizerNode]
         if runtime is Runtime.SIM
         else [RobotDriverNode, CameraDriverNode, RobotVisualizerNode]
     )

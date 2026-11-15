@@ -27,3 +27,6 @@ htmlcov
 
 # Logging
 logs/
+
+# Mujoco
+MUJOCO_LOG.TXT

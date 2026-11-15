@@ -21,7 +21,7 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 0.25
 SUBSTEP_INTEGRAL_TOLERANCE = 1e-9
 
 
-class MujocoSimulationNode(Node):
+class SimulationNode(Node):
     """Replace the hardware driver with native physics behind the same LCM topics."""
 
     def __init__(  # noqa: PLR0913 - physics, transport, and timing are independently injectable
@@ -94,7 +94,7 @@ class MujocoSimulationNode(Node):
 
 
 def main() -> None:
-    MujocoSimulationNode().run()
+    SimulationNode().run()
 
 
 if __name__ == "__main__":

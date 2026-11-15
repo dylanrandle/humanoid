@@ -8,7 +8,7 @@ from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
-from humanoid.nodes.robot.simulation import MujocoSimulationNode
+from humanoid.nodes.robot.simulation import SimulationNode
 from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import NodeGroup
 from humanoid.types.process import ProcessName, Runtime
@@ -27,7 +27,7 @@ NODE_GROUPS = {
             ),
             deferred_nodes=(HomingNode,),
             runtime_nodes={
-                Runtime.SIM: (MujocoSimulationNode,),
+                Runtime.SIM: (SimulationNode,),
                 Runtime.REAL: (RobotDriverNode, CameraDriverNode),
             },
         ),
@@ -36,7 +36,7 @@ NODE_GROUPS = {
             display_name="Replay runtime",
             nodes=(RobotVisualizerNode,),
             runtime_nodes={
-                Runtime.SIM: (MujocoSimulationNode,),
+                Runtime.SIM: (SimulationNode,),
                 Runtime.REAL: (RobotDriverNode, CameraDriverNode),
             },
         ),

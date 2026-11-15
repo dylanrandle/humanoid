@@ -19,9 +19,6 @@
     <material name="black">
         <color rgba="0.04 0.04 0.04 1" />
     </material>
-    <material name="gray">
-        <color rgba="0.45 0.45 0.45 1" />
-    </material>
     <material name="finray_blue">
         <color rgba="0.03 0.25 0.85 1" />
     </material>
@@ -37,7 +34,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/lower_plate.obj" scale="1 1 1" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
     </link>
     <!-- Confirmed placement: mount rests on the lower plate's top surface (z = 7 mm).
@@ -52,7 +49,7 @@
                 <mesh filename="package://triskel/meshes/ego_camera_mount.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
     </link>
     <joint name="ego_camera_mount_joint" type="fixed">
@@ -105,7 +102,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/upper_plate.obj" scale="1 1 1" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
     </link>
     <link name="wheel_2_link">
@@ -121,7 +118,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
-            <material name="gray" />
+            <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0.015 0 0" rpy="0 0 0" />
@@ -143,7 +140,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
-            <material name="gray" />
+            <material name="silver" />
         </visual>
         <collision>
             <origin xyz="0.015 0 0" rpy="0 0 0" />
@@ -165,7 +162,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/wheel.obj" scale="1 1 1" />
             </geometry>
-            <material name="gray" />
+            <material name="silver" />
         </visual>
     </link>
     <link name="wheel_3_mount_link">
@@ -292,7 +289,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/base.stl" scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <collision name="arm_base_link_collision_shaft">
             <origin xyz="0.0 0.04 -0.03" rpy="-0.0 -1.570796 0.0" />
@@ -341,7 +338,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/arm_1.stl" scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <collision name="arm_1_link_collision_shaft">
             <origin xyz="0.0 0.001241 -0.010314" rpy="-3.132866 0.0 -0.0" />
@@ -390,7 +387,7 @@
             <geometry>
                 <mesh filename="package://triskel/meshes/arm_2.stl" scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <collision name="arm_2_link_collision_shaft">
             <origin xyz="0.020306 -0.000329 0.03498" rpy="0.008727 0.008727 3.8e-05" />
@@ -441,7 +438,7 @@
                 <mesh filename="package://triskel/meshes/arm_3.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
     </link>
     <link name="motor_4_link">
@@ -472,7 +469,7 @@
                 <mesh filename="package://triskel/meshes/arm_4.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <collision name="arm_4_link_collision_shaft">
             <origin xyz="0.020528 0.040745 0.009999" rpy="-1.562222 0.008725 -0.008651" />
@@ -522,7 +519,7 @@
                 <mesh filename="package://triskel/meshes/arm_5.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
     </link>
     <link name="motor_6_link">
@@ -553,7 +550,7 @@
                 <mesh filename="package://triskel/meshes/arm_6.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <collision name="arm_6_link_collision_shaft">
             <origin xyz="0.020647 0.027264 0.009639" rpy="-1.571101 0.017298 -0.017303" />
@@ -603,7 +600,7 @@
                 <mesh filename="package://triskel/meshes/gripper_base.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <collision name="gripper_base_link_collision_shaft">
             <origin xyz="0 0.08 0" rpy="2.362663 1.546168 -2.345207" />
@@ -674,7 +671,7 @@
                 <mesh filename="package://triskel/meshes/finger_2_mount.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <visual>
             <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
@@ -697,7 +694,7 @@
                 <mesh filename="package://triskel/meshes/finger_1_mount.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
-            <material name="black" />
+            <material name="silver" />
         </visual>
         <visual>
             <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />

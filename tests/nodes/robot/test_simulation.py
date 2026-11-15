@@ -10,7 +10,7 @@ from humanoid.config.robot.so101 import SO101_CONFIG
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
-from humanoid.nodes.robot.simulation import MujocoSimulationNode
+from humanoid.nodes.robot.simulation import SimulationNode
 from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.camera import CameraFrames
 from humanoid.types.robot import NormalizedRobotJointCommand, RobotJointCommand, RobotState
@@ -22,7 +22,7 @@ EXPECTED_SIMULATION_SUBSTEPS = 1
 
 
 def _run_spawned_simulation(result_queue) -> None:
-    node = MujocoSimulationNode(robot_config=SO101_CONFIG, lcm_url="memq://")
+    node = SimulationNode(robot_config=SO101_CONFIG, lcm_url="memq://")
     try:
         for _ in range(10):
             node.step()
@@ -60,7 +60,7 @@ def _make_node(monkeypatch, *, clock=None, timeout: float = 0.25):
         "humanoid.nodes.robot.simulation.Publisher",
         MagicMock(return_value=publisher),
     )
-    node = MujocoSimulationNode(
+    node = SimulationNode(
         robot_config=SO101_CONFIG,
         engine=engine,
         command_timeout_seconds=timeout,
@@ -148,7 +148,7 @@ def test_rejects_invalid_timing_or_watchdog(monkeypatch):
     engine = MagicMock(spec=NativeMujocoEngine)
     engine.physics_timestep = 0.003
     with pytest.raises(ValueError, match="integer multiple"):
-        MujocoSimulationNode(
+        SimulationNode(
             robot_config=SO101_CONFIG,
             simulation_config=MujocoSimulationConfig(publish_rate_hz=500.0),
             engine=engine,
