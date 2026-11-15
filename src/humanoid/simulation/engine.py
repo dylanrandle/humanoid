@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import mujoco
 import numpy as np
@@ -37,10 +38,14 @@ class NativeMujocoEngine:
         self,
         robot_config: RobotConfig,
         config: MujocoSimulationConfig = DEFAULT_MUJOCO_SIMULATION_CONFIG,
+        *,
+        configure_scene: Callable[[mujoco.MjSpec], None] | None = None,
     ) -> None:
         self.config = config
         self.robot = Robot(robot_config)
         self.spec = build_mujoco_spec(self.robot, config)
+        if configure_scene is not None:
+            configure_scene(self.spec)
         self.model = self.spec.compile()
         self.data = mujoco.MjData(self.model)
         self.binding: MujocoRobotBinding = resolve_mujoco_robot_binding(

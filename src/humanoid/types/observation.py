@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from humanoid.types.camera import CameraFrames
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotBaseCommand, RobotJointCommand, RobotState, RobotToolCommand
 
@@ -11,3 +12,4 @@ class Observation:
     robot_tool_command: RobotToolCommand | None = None
     robot_base_command: RobotBaseCommand | None = None
     mode: Mode | None = None
+    camera_frames: CameraFrames | None = None
