@@ -9,6 +9,7 @@ from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.action import Action
+from humanoid.types.camera import CameraFrames, CameraImage
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import (
@@ -82,6 +83,8 @@ class RealtimeEnvironment(Environment):
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
                 Topic.ORCHESTRATOR_MODE,
+                Topic.CAMERA_RGB,
+                Topic.CAMERA_DEPTH,
             ],
         )
 
@@ -100,6 +103,9 @@ class RealtimeEnvironment(Environment):
         self._last_tool_command: RobotToolCommand | None = None
         self._last_base_command: RobotBaseCommand | None = None
         self._last_mode: Mode | None = None
+        self._rgb: CameraImage | None = None
+        self._depth: CameraImage | None = None
+        self._camera_frames: CameraFrames | None = None
 
         logger.info("Initialized environment")
 
@@ -122,6 +128,10 @@ class RealtimeEnvironment(Environment):
         logger.info("Environment reset!")
 
         return observation
+
+    def observe(self) -> Observation:
+        """Read available asynchronous state without issuing an action."""
+        return self._build_observation()
 
     def step(self, action: Action) -> Transition:
         """Execute one step in the environment.
@@ -245,7 +255,24 @@ class RealtimeEnvironment(Environment):
             robot_tool_command=self._last_tool_command,
             robot_base_command=self._last_base_command,
             mode=self._last_mode,
+            camera_frames=self._read_camera_frames(),
         )
+
+    def _read_camera_frames(self) -> CameraFrames | None:
+        rgb = self.subscriber.receive(Topic.CAMERA_RGB)
+        depth = self.subscriber.receive(Topic.CAMERA_DEPTH)
+        if rgb is not None:
+            self._rgb = rgb
+        if depth is not None:
+            self._depth = depth
+        if (
+            self._rgb is not None
+            and self._depth is not None
+            and self._rgb.timestamp == self._depth.timestamp
+            and self._rgb.serial_number == self._depth.serial_number
+        ):
+            self._camera_frames = CameraFrames(rgb=self._rgb, depth=self._depth)
+        return self._camera_frames
 
     @staticmethod
     def _default_reward(

@@ -1,3 +1,5 @@
+from dataclasses import replace
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -7,6 +9,7 @@ import pytest
 from humanoid.constants import Topic
 from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.types.action import Action
+from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
@@ -72,6 +75,8 @@ class TestInit:
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
                 Topic.ORCHESTRATOR_MODE,
+                Topic.CAMERA_RGB,
+                Topic.CAMERA_DEPTH,
             ]
         )
 
@@ -103,7 +108,7 @@ class TestInit:
 class TestReset:
     def test_returns_observation_from_robot_state(self, env):
         state = _make_state(timestamp=1.5)
-        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None])
+        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None, None, None])
 
         observation = env.reset()
 
@@ -123,7 +128,9 @@ class TestReset:
     def test_observation_includes_orchestrator_mode(self, env):
         state = _make_state()
         mode_msg = OrchestratorMode(timestamp=0.0, mode=Mode.OCULUS)
-        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, mode_msg])
+        env.subscriber.receive = MagicMock(
+            side_effect=[state, None, None, None, mode_msg, None, None]
+        )
 
         observation = env.reset()
 
@@ -137,11 +144,11 @@ class TestReset:
     def test_falls_back_to_cached_state_when_receive_returns_none(self, env):
         state = _make_state(timestamp=1.0)
         # First reset populates the cache.
-        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None])
+        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None, None, None])
         env.reset()
 
         # Second reset: ROBOT_STATE returns None — should use cached state.
-        env.subscriber.receive = MagicMock(side_effect=[None, None, None, None, None])
+        env.subscriber.receive = MagicMock(side_effect=[None, None, None, None, None, None, None])
         observation = env.reset()
 
         assert observation.robot_state is state
@@ -150,11 +157,13 @@ class TestReset:
         state = _make_state()
         joint_cmd = RobotJointCommand(timestamp=0.0, joint_positions=np.zeros(7))
         # First reset populates the caches.
-        env.subscriber.receive = MagicMock(side_effect=[state, joint_cmd, None, None, None])
+        env.subscriber.receive = MagicMock(
+            side_effect=[state, joint_cmd, None, None, None, None, None]
+        )
         env.reset()
 
         # Second reset: command topics return None — cached joint_cmd should be reused.
-        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None])
+        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None, None, None])
         observation = env.reset()
 
         assert observation.robot_joint_command is joint_cmd
@@ -327,3 +336,50 @@ class TestClose:
     def test_close_closes_subscriber(self, env):
         env.close()
         env.subscriber.close.assert_called_once()
+
+
+def test_optional_camera_observations_pair_by_host_timestamp():
+    with (
+        patch("humanoid.environment.realtime.Publisher"),
+        patch("humanoid.environment.realtime.Subscriber"),
+    ):
+        environment = RealtimeEnvironment(_TEST_TOPICS)
+    intrinsics = CameraIntrinsics(
+        width=1,
+        height=1,
+        fx=1,
+        fy=1,
+        cx=0,
+        cy=0,
+        distortion_model="none",
+        distortion_coefficients=(),
+    )
+    rgb = CameraImage(
+        timestamp=1,
+        device_timestamp=1,
+        timestamp_domain="test",
+        frame_number=1,
+        frame_id="rgb",
+        serial_number="camera",
+        encoding=CameraEncoding.RGB8,
+        data=np.zeros((1, 1, 3), dtype=np.uint8),
+        intrinsics=intrinsics,
+    )
+    depth = replace(
+        rgb,
+        frame_id="depth",
+        encoding=CameraEncoding.DEPTH16,
+        data=np.ones((1, 1), dtype=np.uint16),
+        depth_scale=0.001,
+        timestamp=2,
+    )
+    messages = {Topic.ROBOT_STATE: _make_state(), Topic.CAMERA_RGB: rgb, Topic.CAMERA_DEPTH: depth}
+    cast(MagicMock, environment.subscriber).receive.side_effect = lambda topic, **_: messages.pop(
+        topic, None
+    )
+    assert environment.observe().camera_frames is None
+    messages[Topic.CAMERA_RGB] = replace(rgb, timestamp=2)
+    paired = environment.observe().camera_frames
+    assert paired is not None and paired.depth is depth
+    messages[Topic.CAMERA_RGB] = replace(rgb, timestamp=3)
+    assert environment.observe().camera_frames is paired
