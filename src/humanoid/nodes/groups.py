@@ -10,6 +10,7 @@ from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.nodes.robot.simulation import SimulationNode
 from humanoid.nodes.robot.visualizer import RobotVisualizerNode
+from humanoid.remote_control.server import RemoteControlServerNode
 from humanoid.types.node import NodeGroup
 from humanoid.types.process import ProcessName, Runtime
 
@@ -41,6 +42,11 @@ NODE_GROUPS = {
             },
         ),
         NodeGroup(
+            name=ProcessName.AUTONOMY,
+            display_name="Autonomy policy",
+            nodes=(RemoteControlServerNode,),
+        ),
+        NodeGroup(
             name=ProcessName.KEYBOARD,
             display_name="Keyboard teleop",
             nodes=(KeyboardTeleopNode,),
@@ -54,6 +60,7 @@ NODE_GROUPS = {
 }
 PROCESS_ORDER = tuple(NODE_GROUPS)
 PROCESS_STOP_ORDER = (
+    ProcessName.AUTONOMY,
     ProcessName.KEYBOARD,
     ProcessName.OCULUS,
     ProcessName.REPLAY,

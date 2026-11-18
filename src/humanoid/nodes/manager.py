@@ -3,6 +3,8 @@
 import contextlib
 import logging
 import os
+import queue
+import secrets
 import signal
 import threading
 import time
@@ -13,6 +15,7 @@ from multiprocessing.queues import Queue
 from typing import cast
 
 from humanoid.config.process import PROCESS_START_METHOD
+from humanoid.config.remote_api import get_remote_control_server_config
 from humanoid.constants import (
     ROBOT_ENVIRONMENT_VARIABLE,
     RUNTIME_ENVIRONMENT_VARIABLE,
@@ -26,9 +29,14 @@ from humanoid.nodes.groups import (
     PROCESS_ORDER,
     PROCESS_STOP_ORDER,
 )
+from humanoid.nodes.robot.simulation import SimulationNode
+from humanoid.remote_control.server import RemoteControlServerNode
+from humanoid.tasks import make_task
 from humanoid.types.node import ManagedNodeGroup, NodeGroup, ProcessContext
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
+from humanoid.types.remote_api import RemoteControlEndpoint, RemoteControlServerConfig
 from humanoid.types.robot import RobotName
+from humanoid.types.tasks import SimulationTaskSelection, TaskEvaluation
 
 logger = get_logger(__name__)
 
@@ -62,6 +70,31 @@ class NodeManager:
         self._log_queue = log_queue
         self._groups: dict[ProcessName, ManagedNodeGroup] = {}
         self._lock = threading.RLock()
+        self.simulation_task: SimulationTaskSelection | None = None
+        self._task_evaluations = self._process_context.Queue(maxsize=1)
+        self._task_evaluation: TaskEvaluation | None = None
+        self.remote_control_endpoint: RemoteControlEndpoint | None = None
+        self._remote_control_config: RemoteControlServerConfig | None = None
+
+    def set_simulation_task(self, selection: SimulationTaskSelection | None) -> None:
+        with self._lock:
+            self._require_configuration_change_allowed_locked()
+            if selection is not None:
+                if self.runtime is not Runtime.SIM:
+                    raise NodeManagerError("Simulation scenes require the simulation runtime.")
+                make_task(selection.name)
+            self.simulation_task = selection
+            self._task_evaluation = None
+            self.task_evaluation()
+            self._task_evaluation = None
+
+    def task_evaluation(self) -> TaskEvaluation | None:
+        while True:
+            try:
+                value = self._task_evaluations.get_nowait()
+            except queue.Empty:
+                return self._task_evaluation
+            self._task_evaluation = value
 
     def set_runtime(self, runtime: Runtime) -> None:
         with self._lock:
@@ -86,6 +119,12 @@ class NodeManager:
             )
             self._groups[name] = group
             try:
+                if name is ProcessName.AUTONOMY:
+                    config = get_remote_control_server_config(secrets.token_urlsafe(32))
+                    self._remote_control_config = config
+                    self.remote_control_endpoint = RemoteControlEndpoint(
+                        f"http://{config.host}:{config.port}", config.token
+                    )
                 self._start_nodes(group, definition.nodes_for_runtime(self.runtime))
             except Exception as exc:
                 message = f"Could not start {definition.display_name}: {exc}"
@@ -172,10 +211,19 @@ class NodeManager:
         nodes: Sequence[type[Node]],
     ) -> None:
         for node in nodes:
+            kwargs = {}
+            if node is SimulationNode and self.simulation_task is not None:
+                kwargs = {
+                    "task_selection": self.simulation_task,
+                    "evaluation_queue": self._task_evaluations,
+                }
+            elif node is RemoteControlServerNode:
+                kwargs = {"server_config": self._remote_control_config}
             process = self._process_context.Process(
                 target=_run_node,
                 name=node.__name__,
                 args=(node, self._log_queue),
+                **({"kwargs": kwargs} if kwargs else {}),
             )
             with _node_environment(group.runtime, group.robot):
                 process.start()
@@ -346,10 +394,11 @@ def _stopped_status() -> ProcessStatus:
 def _run_node(
     node: type[Node],
     log_queue: Queue[logging.LogRecord] | None,
+    **kwargs,
 ) -> None:
     if log_queue is not None:
         setup_queue_logging(log_queue)
-    node.main()
+    node.main(**kwargs)
 
 
 @contextlib.contextmanager

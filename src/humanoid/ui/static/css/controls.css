@@ -258,3 +258,17 @@ footer {
   background: var(--danger);
   font-weight: 850;
 }
+
+.autonomy-panel {
+  min-height: 0;
+  margin-top: 20px;
+}
+
+.autonomy-panel .logging-actions {
+  margin-top: 16px;
+}
+
+#autonomy-status {
+  color: var(--muted);
+  margin-bottom: 0;
+}

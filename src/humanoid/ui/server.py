@@ -161,6 +161,42 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
         )
         return _success(orchestrator_service.request_mode(orchestrator_request))
 
+    @app.get(ApiRoute.AUTONOMY)
+    def autonomy_status():
+        return jsonify(orchestrator_service.autonomy.status())
+
+    @app.post(ApiRoute.AUTONOMY_SELECT)
+    def select_autonomy_task():
+        payload = _json_payload()
+        task = payload.get("task")
+        if not isinstance(task, str):
+            raise ApiError("Select an autonomy task.", HTTPStatus.BAD_REQUEST)
+        return _success(orchestrator_service.autonomy.select(task, _safety_context(payload)))
+
+    @app.post(ApiRoute.AUTONOMY_START)
+    def start_autonomy():
+        return _success(orchestrator_service.autonomy.start(_safety_context(_json_payload())))
+
+    @app.post(ApiRoute.AUTONOMY_STOP)
+    def stop_autonomy():
+        _json_payload()
+        return _success(orchestrator_service.autonomy.stop())
+
+    @app.post(ApiRoute.AUTONOMY_RPC)
+    def autonomy_rpc():
+        payload = _json_payload()
+        try:
+            result = orchestrator_service.autonomy.rpc(
+                request.headers.get("Authorization", ""), payload
+            )
+            return jsonify(result=result)
+        except PermissionError:
+            raise ApiError(
+                "Invalid autonomy supervisor credential.", HTTPStatus.FORBIDDEN
+            ) from None
+        except (ValueError, TypeError, KeyError, RuntimeError) as error:
+            return jsonify(error=str(error))
+
     @app.route(f"{ApiRoute.ROOT}/<path:_path>", methods=["GET", "POST"])
     def unknown_api(_path: str):
         raise ApiError("Unknown endpoint.", HTTPStatus.NOT_FOUND)

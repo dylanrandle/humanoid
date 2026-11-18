@@ -49,6 +49,12 @@ MODE_FORWARDS: dict[Mode, dict[Topic, Topic]] = {
     },
     Mode.SYSTEM: {
         Topic.SYSTEM_TOOL_COMMAND: Topic.ROBOT_TOOL_COMMAND,
+        Topic.SYSTEM_BASE_COMMAND: Topic.ROBOT_BASE_COMMAND,
+        Topic.CONTROLLER_JOINT_COMMAND: Topic.ROBOT_JOINT_COMMAND,
+    },
+    Mode.AUTONOMY: {
+        Topic.AUTONOMY_TOOL_COMMAND: Topic.ROBOT_TOOL_COMMAND,
+        Topic.AUTONOMY_BASE_COMMAND: Topic.ROBOT_BASE_COMMAND,
         Topic.CONTROLLER_JOINT_COMMAND: Topic.ROBOT_JOINT_COMMAND,
     },
 }
@@ -128,6 +134,9 @@ class OrchestratorNode(Node):
         elif kind is EventKind.REQUEST_SYSTEM:
             self.return_mode = None
             self._transition_to(Mode.SYSTEM)
+        elif kind is EventKind.REQUEST_AUTONOMY:
+            self.return_mode = None
+            self._transition_to(Mode.AUTONOMY)
         elif kind is EventKind.REQUEST_IDLE:
             self.return_mode = None
             self._transition_to(Mode.IDLE)

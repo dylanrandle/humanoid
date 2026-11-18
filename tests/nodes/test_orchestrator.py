@@ -162,13 +162,20 @@ class TestStepIntegration:
         assert isinstance(msg, OrchestratorMode)
         assert msg.mode is Mode.IDLE
 
-    def test_system_mode_routes_only_system_tool_commands(self, node):
-        node.mode = Mode.SYSTEM
+    @pytest.mark.parametrize(
+        ("mode", "active_topic", "inactive_topic"),
+        [
+            (Mode.SYSTEM, Topic.SYSTEM_TOOL_COMMAND, Topic.AUTONOMY_TOOL_COMMAND),
+            (Mode.AUTONOMY, Topic.AUTONOMY_TOOL_COMMAND, Topic.SYSTEM_TOOL_COMMAND),
+        ],
+    )
+    def test_programmatic_sources_are_isolated(self, node, mode, active_topic, inactive_topic):
+        node.mode = mode
         system_command = RobotToolCommand(timestamp=1.0, pose=pin.SE3.Identity())
         keyboard_command = RobotToolCommand(timestamp=2.0, pose=pin.SE3.Identity())
         messages = {
-            Topic.SYSTEM_TOOL_COMMAND: system_command,
-            Topic.KEYBOARD_TOOL_COMMAND: keyboard_command,
+            active_topic: system_command,
+            inactive_topic: keyboard_command,
         }
 
         def receive(topic, timeout=0):

@@ -750,10 +750,18 @@
             </geometry>
             <material name="finray_blue" />
         </visual>
+        <!-- Separate convex parts preserve the empty space behind the fin. -->
         <collision>
             <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://triskel/meshes/finger_2.stl"
+                <mesh filename="package://triskel/meshes/finger_2_mount.stl"
+                    scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+        <collision>
+            <origin xyz="-0.314659 -0.059918 -0.251741" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://triskel/meshes/finger_2_fin.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>
@@ -780,10 +788,18 @@
             </geometry>
             <material name="finray_blue" />
         </visual>
+        <!-- Separate convex parts preserve the empty space behind the fin. -->
         <collision>
             <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />
             <geometry>
-                <mesh filename="package://triskel/meshes/finger_1.stl"
+                <mesh filename="package://triskel/meshes/finger_1_mount.stl"
+                    scale="0.001 0.001 0.001" />
+            </geometry>
+        </collision>
+        <collision>
+            <origin xyz="-0.311498 -0.016199 -0.171401" rpy="0 0 0" />
+            <geometry>
+                <mesh filename="package://triskel/meshes/finger_1_fin.stl"
                     scale="0.001 0.001 0.001" />
             </geometry>
         </collision>

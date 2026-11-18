@@ -26,6 +26,11 @@ class ApiRoute(StrEnum):
     LOGGING = f"{ROOT}/logging/<action>"
     REPLAY = f"{ROOT}/replay/<action>"
     ORCHESTRATOR = f"{ROOT}/orchestrator"
+    AUTONOMY = f"{ROOT}/autonomy"
+    AUTONOMY_SELECT = f"{AUTONOMY}/select"
+    AUTONOMY_START = f"{AUTONOMY}/start"
+    AUTONOMY_STOP = f"{AUTONOMY}/stop"
+    AUTONOMY_RPC = f"{AUTONOMY}/rpc"
 
 
 class PayloadKey(StrEnum):

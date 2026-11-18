@@ -1,7 +1,8 @@
 """Configuration types for the native MuJoCo digital twin."""
 
 import math
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from humanoid.types.camera import SimulatedCameraConfig
 
@@ -11,6 +12,8 @@ class MujocoSimulationConfig:
     """Physics and actuator defaults shared by every generated robot model."""
 
     physics_timestep: float = 0.005
+    contact_impedance_ratio: float = 1.0
+    mesh_sliding_friction: Mapping[str, float] = field(default_factory=dict)
     publish_rate_hz: float = 200.0
     position_kp: float = 1000.0
     position_damping_ratio: float = 1.0
@@ -26,6 +29,7 @@ class MujocoSimulationConfig:
     def __post_init__(self) -> None:
         positive_values = (
             self.physics_timestep,
+            self.contact_impedance_ratio,
             self.publish_rate_hz,
             self.position_kp,
             self.position_damping_ratio,
@@ -40,3 +44,8 @@ class MujocoSimulationConfig:
         for value in positive_values:
             if not math.isfinite(value) or value <= 0.0:
                 raise ValueError(f"MuJoCo {value=} must be positive and finite.")
+        for mesh_name, friction in self.mesh_sliding_friction.items():
+            if not mesh_name.strip() or not math.isfinite(friction) or friction < 0.0:
+                raise ValueError(
+                    "Mesh friction requires a nonempty name and a finite nonnegative value."
+                )

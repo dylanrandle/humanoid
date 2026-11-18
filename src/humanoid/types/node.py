@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from collections.abc import Callable
     from multiprocessing.process import BaseProcess
+    from multiprocessing.queues import Queue as ProcessQueue
 
     from humanoid.nodes.base import Node
     from humanoid.types.process import ProcessName, Runtime
@@ -17,12 +18,15 @@ if TYPE_CHECKING:
 
 
 class ProcessContext(Protocol):
+    def Queue(self, maxsize: int = 0) -> ProcessQueue: ...
+
     def Process(
         self,
         *,
         target: Callable[..., None],
         name: str,
         args: tuple[object, ...] = (),
+        kwargs: dict[str, object] | None = None,
     ) -> BaseProcess: ...
 
 

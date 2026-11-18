@@ -272,6 +272,29 @@ To inspect LCM messages:
 
 Robot and system configuration can be customized through the configuration package. Robot definitions live in [`src/humanoid/config/robot/`](src/humanoid/config/robot/), with shared selection and visualizer settings alongside them.
 
+## Autonomy (experimental)
+
+Select a task in the UI's **Run a task** panel. The selected scene runs in the
+normal digital twin. `RemoteControlPolicy` executes tool, base, and gripper
+commands through the same environment, LCM topics, and controllers as hardware.
+A standalone [robot-control API](src/humanoid/remote_control/README.md) exposes
+commands and observations independently of the dashboard. RAX uses that API;
+other agents and scripts can use it too. Model calls never block the policy loop.
+
+Autonomy uses `AUTONOMY/*`; `SYSTEM/*` remains available for controller-tracking
+tools. Policy limits live in `RemoteControlPolicyConfig`, with physical motion
+limits supplied by robot configuration and the URDF.
+
+The initial task is toy-car cleanup (50 × 25 mm cars and a nine-inch bin rim).
+Task geometry is configured in `src/humanoid/config/tasks.py`. Car height, mass,
+and bin width are provisional. Simulation scoring requires lifting, release,
+and settling inside the bin.
+
+The local Linux RAX runner uses Docker Desktop and your existing Codex login on
+the Mac. Follow the [runner setup](deploy/rax/README.md), restart the UI, then use
+**Start autonomy** and **Stop**. Run artifacts are saved in `logs/rax/`. The learned
+cleanup program is not yet verified, and hardware autonomy remains disabled.
+
 ## Troubleshooting
 
 For common issues and solutions, see [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md).

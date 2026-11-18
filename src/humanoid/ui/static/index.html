@@ -301,6 +301,33 @@
         </div>
 
         <section
+          class="panel autonomy-panel"
+          aria-labelledby="autonomy-heading"
+        >
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Autonomy</p>
+              <h2 id="autonomy-heading">Run a task</h2>
+            </div>
+          </div>
+          <label for="autonomy-task">Task</label>
+          <select id="autonomy-task" class="replay-recording-select" disabled>
+            <option value="">Select a task</option>
+          </select>
+          <div class="logging-actions">
+            <button id="autonomy-start" class="secondary-action" disabled>
+              Start autonomy
+            </button>
+            <button id="autonomy-stop" class="secondary-action" disabled>
+              Stop autonomy
+            </button>
+          </div>
+          <p id="autonomy-status" role="status" aria-live="polite">
+            Connecting…
+          </p>
+        </section>
+
+        <section
           class="panel camera-panel"
           id="camera-panel"
           aria-labelledby="camera-heading"

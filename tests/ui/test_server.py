@@ -570,3 +570,24 @@ def test_rejects_invalid_preview_range(server_client, value):
     response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far={value}")
     assert response.status_code == HTTPStatus.BAD_REQUEST
     service.camera_previews.assert_not_called()
+
+
+def test_ui_autonomy_selection_and_stop(server_client):
+    service, client = server_client
+    service.autonomy.select.return_value = {"task": "toy_car_cleanup"}
+    response = client.post(
+        "/api/autonomy/select", json={"task": "toy_car_cleanup", **_safety_payload()}
+    )
+    assert response.status_code == HTTPStatus.OK
+    service.autonomy.select.assert_called_once_with("toy_car_cleanup", _safety_context())
+    service.autonomy.stop.return_value = {"running": False}
+    response = client.post("/api/autonomy/stop", json={})
+    assert response.status_code == HTTPStatus.OK
+    service.autonomy.stop.assert_called_once()
+
+
+def test_autonomy_rpc_requires_supervisor_authentication(server_client):
+    service, client = server_client
+    service.autonomy.rpc.side_effect = PermissionError()
+    response = client.post("/api/autonomy/rpc", json={"method": "start", "arguments": {}})
+    assert response.status_code == HTTPStatus.FORBIDDEN

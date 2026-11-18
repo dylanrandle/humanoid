@@ -55,6 +55,10 @@ def build_mujoco_spec(
     spec.compiler.balanceinertia = True
     spec.option.timestep = config.physics_timestep
     spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+    # Elliptic cones allow stronger tangential constraint impedance without
+    # increasing material friction or artificially attaching grasped objects.
+    spec.option.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
+    spec.option.impratio = config.contact_impedance_ratio
 
     # Some generated OBJ/STL meshes are open shells. MuJoCo can still compute a
     # physically useful inertia from their surface instead of rejecting them as
@@ -70,6 +74,8 @@ def build_mujoco_spec(
             geom.contype = _ROBOT_CONTACT_TYPE
             geom.conaffinity = _EXTERNAL_CONTACT_TYPE
             geom.group = 3  # Hide collision proxies from camera images.
+            if (friction := config.mesh_sliding_friction.get(geom.meshname)) is not None:
+                geom.friction[0] = friction
 
     camera = config.camera
     if camera is not None:
@@ -92,6 +98,7 @@ def build_mujoco_spec(
 
     if robot.config.base is not None:
         _add_ideal_planar_root(spec, root_link_name, robot, config)
+        _configure_ideal_wheel_contacts(spec, robot)
     _add_robot_actuators(spec, robot, config)
     _add_mimic_constraints(spec, urdf_xml)
     return spec
@@ -176,6 +183,26 @@ def _add_ideal_planar_root(
         actuator.ctrlrange = [-control_limit, control_limit]
         actuator.forcelimited = True
         actuator.forcerange = [-config.root_force_limit, config.root_force_limit]
+
+
+def _configure_ideal_wheel_contacts(spec: mujoco.MjSpec, robot: Robot) -> None:
+    """Keep wheel collisions without duplicating the ideal root's traction.
+
+    The wheel meshes have no passive omniwheel rollers. Frictional contacts on
+    those rigid meshes resist sideways travel even though the planar actuators
+    already implement the base drive. Normal contacts still prevent penetration;
+    this model deliberately does not simulate tire traction or wheel slip.
+    """
+    for joint_index in robot.get_wheel_joint_indices():
+        joint_name = robot.joint_idx_to_name(joint_index)
+        joint = spec.joint(joint_name)
+        if joint is None:
+            raise ValueError(f"MuJoCo model has no wheel joint named {joint_name!r}.")
+        for geom in joint.parent.geoms:
+            if geom.contype or geom.conaffinity:
+                geom.condim = 1
+                # Override the default floor's frictional contact dimensionality.
+                geom.priority = 1
 
 
 def _add_robot_actuators(

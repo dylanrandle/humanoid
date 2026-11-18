@@ -52,7 +52,10 @@ class Topic(Enum):
     OCULUS_BASE_COMMAND = "OCULUS/BASE_COMMAND"
     KEYBOARD_TOOL_COMMAND = "KEYBOARD/TOOL_COMMAND"
     KEYBOARD_BASE_COMMAND = "KEYBOARD/BASE_COMMAND"
+    SYSTEM_BASE_COMMAND = "SYSTEM/BASE_COMMAND"
     SYSTEM_TOOL_COMMAND = "SYSTEM/TOOL_COMMAND"
+    AUTONOMY_BASE_COMMAND = "AUTONOMY/BASE_COMMAND"
+    AUTONOMY_TOOL_COMMAND = "AUTONOMY/TOOL_COMMAND"
 
     # Orchestrator broadcasts its currently active mode here.
     ORCHESTRATOR_MODE = "ORCHESTRATOR/MODE"
@@ -83,6 +86,9 @@ TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.KEYBOARD_TOOL_COMMAND: RobotToolCommand,
     Topic.KEYBOARD_BASE_COMMAND: RobotBaseCommand,
     Topic.SYSTEM_TOOL_COMMAND: RobotToolCommand,
+    Topic.SYSTEM_BASE_COMMAND: RobotBaseCommand,
+    Topic.AUTONOMY_TOOL_COMMAND: RobotToolCommand,
+    Topic.AUTONOMY_BASE_COMMAND: RobotBaseCommand,
     Topic.ORCHESTRATOR_MODE: OrchestratorMode,
     Topic.ORCHESTRATOR_EVENT: OrchestratorEvent,
     Topic.LOGGING_STATUS: LoggingStatus,

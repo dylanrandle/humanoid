@@ -1,6 +1,7 @@
 """LCM boundary tests for the MuJoCo simulation node."""
 
 import multiprocessing
+import queue
 from unittest.mock import MagicMock, call
 
 import numpy as np
@@ -15,6 +16,7 @@ from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.camera import CameraFrames
 from humanoid.types.robot import NormalizedRobotJointCommand, RobotJointCommand, RobotState
 from humanoid.types.simulation import MujocoSimulationConfig
+from humanoid.types.tasks import TaskEvaluation
 
 SPAWNED_SIMULATION_TIMEOUT_SECONDS = 15.0
 EXPECTED_SIMULATION_RATE_HZ = 200.0
@@ -171,3 +173,20 @@ def test_simulation_constructs_and_steps_in_a_spawned_process():
             process.join()
         result_queue.close()
         result_queue.join_thread()
+
+
+def test_task_runs_in_simulation_node_and_scores_while_stepping(monkeypatch):
+    node, engine, subscriber, _ = _make_node(monkeypatch)
+    subscriber.receive.return_value = None
+    task = MagicMock()
+    expected = TaskEvaluation(
+        task_complete=False, objects_delivered=0, objects_total=3, reason="cars_remaining"
+    )
+    task.evaluate.return_value = expected
+    node.task = task
+    engine.model = MagicMock()
+    engine.data = MagicMock()
+    node._evaluation_queue = queue.Queue(maxsize=1)
+    node.step()
+    task.evaluate.assert_called_once_with(engine.model, engine.data)
+    assert node._evaluation_queue.get_nowait() == expected

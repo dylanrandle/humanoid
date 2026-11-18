@@ -10,6 +10,7 @@ from humanoid.config.application_logging import get_application_log_path
 from humanoid.logger import get_logger
 from humanoid.nodes.groups import process_display_name
 from humanoid.nodes.manager import NodeManager, NodeManagerError
+from humanoid.orchestrator.autonomy.manager import AutonomyManager
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.orchestrator.constants import (
     CONTROLLED_PROCESS_NAMES,
@@ -102,6 +103,13 @@ class OrchestratorService:
         self._parameterized_mode_seen = False
         self._handled_stack_failure: ProcessStatus | None = None
         self._camera_monitor: CameraPreviewMonitor | None = None
+        self._autonomy_manager: AutonomyManager | None = None
+
+    @property
+    def autonomy(self) -> AutonomyManager:
+        if self._autonomy_manager is None:
+            self._autonomy_manager = AutonomyManager(self)
+        return self._autonomy_manager
 
     def status(self) -> OrchestratorStatus:
         with self._lock:
@@ -196,6 +204,8 @@ class OrchestratorService:
             return self.status()
 
     def stop_process(self, process_name: ProcessName) -> OrchestratorStatus:
+        if process_name is ProcessName.STACK and self._autonomy_manager is not None:
+            self._autonomy_manager.stop()
         with self._lock:
             if process_name not in CONTROLLED_PROCESS_NAMES:
                 raise OrchestratorError(REPLAY_DEDICATED_CONTROL_ERROR)
@@ -211,6 +221,8 @@ class OrchestratorService:
             return self.status()
 
     def request_mode(self, request: OrchestratorRequest) -> OrchestratorStatus:
+        if request.mode is not Mode.AUTONOMY and self._autonomy_manager is not None:
+            self._autonomy_manager.stop()
         with self._lock:
             current = self.status()
             self._require_ready_stack(current)
@@ -234,6 +246,7 @@ class OrchestratorService:
                 Mode.KEYBOARD: self.orchestrator_client.request_keyboard,
                 Mode.OCULUS: self.orchestrator_client.request_oculus,
                 Mode.SYSTEM: self.orchestrator_client.request_system,
+                Mode.AUTONOMY: self.orchestrator_client.request_autonomy,
             }
             mode_requests[request.mode]()
             self._clear_parameterized_request()
@@ -312,6 +325,8 @@ class OrchestratorService:
             return self.status()
 
     def close(self) -> None:
+        if self._autonomy_manager is not None:
+            self._autonomy_manager.stop()
         try:
             self._stop_stack()
         except Exception:

@@ -36,6 +36,14 @@ Mobile robots use three internal slide/hinge joints for x, y, and yaw. The upstr
 already publishes these generalized velocities alongside hardware wheel velocities, so
 the digital twin can drive the ideal base without changing LCM messages. Wheel joints
 continue to receive and simulate their commanded angular velocities.
+Wheel collision meshes use normal contact forces only: their rigid geometry does not
+model passive omniwheel rollers, and adding friction would oppose the ideal drive.
+They still collide with floors and obstacles. Tire traction and wheel slip are not
+simulated; gripper and object contacts retain friction.
+
+Triskel's FinRay fingers remain rigid. Their collision surfaces use sliding
+friction 2.0 to represent the added grip tape, configured through
+`MujocoSimulationConfig.mesh_sliding_friction`.
 
 ## Timing and safety
 

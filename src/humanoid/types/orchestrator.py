@@ -29,6 +29,7 @@ class Mode(StrEnum):
     OCULUS = "oculus"
     KEYBOARD = "keyboard"
     SYSTEM = "system"
+    AUTONOMY = "autonomy"
 
 
 class OrchestratorParameter(StrEnum):
@@ -135,6 +136,7 @@ class EventKind(StrEnum):
     REQUEST_OCULUS = "request_oculus"
     REQUEST_KEYBOARD = "request_keyboard"
     REQUEST_SYSTEM = "request_system"
+    REQUEST_AUTONOMY = "request_autonomy"
     REQUEST_IDLE = "request_idle"
     COMPLETE = "complete"
     START_LOGGING = "start_logging"

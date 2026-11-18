@@ -1,6 +1,7 @@
 """Physics and state-mapping tests for the native MuJoCo engine."""
 
 import math
+from dataclasses import replace
 
 import mujoco
 import numpy as np
@@ -9,6 +10,8 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.robot.so101 import SO101_CONFIG
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
+from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
+from humanoid.robots.wheels import WheelKinematics
 from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.actuator import ActuatorEffortSource
 from humanoid.types.homing import HomingPreset
@@ -19,6 +22,8 @@ MAXIMUM_HOME_ERROR = 0.03
 MINIMUM_ROOT_RESPONSE = 0.05
 MAXIMUM_STOPPED_ROOT_VELOCITY = 0.01
 MAXIMUM_ORTHOGONAL_ROOT_DRIFT = 0.02
+MINIMUM_FLOOR_TRAVEL = 0.35
+MAXIMUM_OBSTRUCTED_TRAVEL = 0.30
 
 
 @pytest.mark.parametrize("robot_config", ROBOT_CONFIGS.values(), ids=lambda config: config.name)
@@ -117,6 +122,75 @@ def test_mobile_root_follows_the_commanded_generalized_velocity():
     engine.step(1000)
     stopped = engine.read_robot_state(timestamp=2.0)
     assert abs(stopped.joint_velocities[root_v_slice][0]) < MAXIMUM_STOPPED_ROOT_VELOCITY
+
+
+@pytest.mark.parametrize("axis", [0, 1], ids=["forward", "sideways"])
+@pytest.mark.parametrize("obstructed", [False, True], ids=["floor", "wall"])
+def test_ideal_mobile_drive_crosses_floor_but_stops_at_obstacles(axis, obstructed):
+    def configure_scene(spec):
+        spec.worldbody.add_geom(
+            name="floor",
+            type=mujoco.mjtGeom.mjGEOM_PLANE,
+            size=[2, 2, 0.1],
+            pos=[0, 0, -0.032],
+            contype=2,
+            conaffinity=3,
+        )
+        if obstructed:
+            position = [0, 0, 0.4]
+            position[axis] = 0.45
+            size = [2, 2, 0.5]
+            size[axis] = 0.01
+            spec.worldbody.add_geom(
+                name="wall",
+                type=mujoco.mjtGeom.mjGEOM_BOX,
+                size=size,
+                pos=position,
+                contype=2,
+                conaffinity=3,
+            )
+
+    engine = NativeMujocoEngine(
+        TRISKEL_CONFIG,
+        replace(DEFAULT_MUJOCO_SIMULATION_CONFIG, camera=None),
+        configure_scene=configure_scene,
+    )
+    root_q = engine.robot.get_root_q_slice()
+    root_v = engine.robot.get_root_v_slice()
+    assert root_q is not None and root_v is not None
+    wheels = WheelKinematics(engine.robot)
+    wheel_indices = engine.robot.get_joint_velocity_indices(engine.robot.get_wheel_joint_indices())
+    home = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    velocity = np.zeros(3)
+    velocity[axis] = 0.2
+    for tick in range(400):  # Two simulated seconds, commands at approximately 30 Hz.
+        if tick % 7 == 0:
+            state = engine.read_robot_state(timestamp=0)
+            commanded = np.zeros(engine.robot.model.nv)
+            commanded[root_v] = velocity
+            commanded[wheel_indices] = wheels.compute_wheel_velocities(
+                state.joint_positions, velocity
+            )
+            engine.apply_joint_command(
+                RobotJointCommand(timestamp=0, joint_positions=home, joint_velocities=commanded)
+            )
+        engine.step()
+
+    pose = engine.read_robot_state(timestamp=2).joint_positions[root_q]
+    if obstructed:
+        assert pose[axis] < MAXIMUM_OBSTRUCTED_TRAVEL
+        wall_id = engine.model.geom("wall").id
+        assert any(wall_id in contact.geom for contact in engine.data.contact)
+    else:
+        assert pose[axis] > MINIMUM_FLOOR_TRAVEL
+        assert abs(pose[1 - axis]) < MAXIMUM_ORTHOGONAL_ROOT_DRIFT
+        assert engine.data.ncon > 0  # Wheels still contact the floor.
+
+    engine.stop_velocity_actuators()
+    engine.step(200)
+    stopped = engine.read_robot_state(timestamp=3)
+    assert np.linalg.norm(stopped.joint_velocities[root_v]) < MAXIMUM_STOPPED_ROOT_VELOCITY
+    engine.close()
 
 
 def test_mobile_body_velocity_rotates_into_the_mujoco_world_frame():

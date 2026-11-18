@@ -1,3 +1,4 @@
+import { startAutonomyPanel } from "./autonomy.js";
 import { fetchApplicationLogs, fetchStatus, post } from "./api.js";
 import { startCameraPreviews } from "./cameras.js";
 import {
@@ -160,6 +161,7 @@ els.orchestratorButtons.forEach((button) => {
 
 refresh();
 startCameraPreviews(els.cameras);
+startAutonomyPanel(() => state.snapshot, showToast);
 window.setInterval(() => {
   void refresh();
 }, 1000);
