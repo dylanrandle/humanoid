@@ -1,4 +1,4 @@
-import { TELEOP_PROCESSES } from "./constants.js";
+import { INPUT_PROCESSES } from "./constants.js";
 
 export const els = {
   systemState: document.querySelector("#system-state"),
@@ -44,7 +44,7 @@ export const els = {
     far: document.querySelector("#camera-depth-far"),
   },
   processes: Object.fromEntries(
-    TELEOP_PROCESSES.map((name) => [
+    INPUT_PROCESSES.map((name) => [
       name,
       {
         row: document.querySelector(`[data-process-row="${name}"]`),

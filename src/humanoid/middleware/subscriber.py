@@ -170,6 +170,7 @@ class Subscriber:
             Topic.OCULUS_TOOL_COMMAND,
             Topic.KEYBOARD_TOOL_COMMAND,
             Topic.SYSTEM_TOOL_COMMAND,
+            Topic.AUTONOMY_TOOL_COMMAND,
         ],
         timeout: int | None = None,
     ) -> RobotToolCommand | None: ...
@@ -181,6 +182,7 @@ class Subscriber:
             Topic.ROBOT_BASE_COMMAND,
             Topic.OCULUS_BASE_COMMAND,
             Topic.KEYBOARD_BASE_COMMAND,
+            Topic.AUTONOMY_BASE_COMMAND,
         ],
         timeout: int | None = None,
     ) -> RobotBaseCommand | None: ...

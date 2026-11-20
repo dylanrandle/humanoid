@@ -60,7 +60,7 @@ uv run start
 ```
 
 The panel opens at [http://127.0.0.1:8765](http://127.0.0.1:8765). Use it to select the
-robot and runtime, manage the stack and teleoperation processes, choose a control mode,
+robot and runtime, manage the stack and control inputs, choose a control mode,
 monitor node health and application logs, and record or replay LCM sessions.
 Host telemetry shows total CPU usage and used/total memory for the backend machine,
 including all processes, even when the robot stack is stopped.
@@ -71,6 +71,13 @@ Simulation uses MuJoCo and real-hardware mode uses the hardware driver; both exp
 same LCM interface to the rest of the stack. Hardware actions require explicit operator
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
+
+### Agent control API
+
+Start **Agent API** under **Control inputs** in the operator console, then select
+**Autonomy** to let an agent control the robot through HTTP. Agents can read state and RGB-D frames, move the tool or
+mobile base, set the gripper, and cancel motion. The Python client is
+`AgentControlClient`. See the [MuJoCo quickstart and HTTP contract](src/humanoid/agent/README.md).
 
 ### RGB and depth cameras
 

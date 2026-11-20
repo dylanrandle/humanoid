@@ -39,8 +39,9 @@ logger = get_logger(__name__)
 # Modes in which the OSC's joint commands are forwarded to the robot. In any
 # other mode (HOMING, IDLE) the OSC continuously re-syncs from ROBOT_STATE so
 # that reactivation holds the current pose.
-OSC_ACTIVE_MODES = {Mode.OCULUS, Mode.KEYBOARD, Mode.SYSTEM}
+OSC_ACTIVE_MODES = {Mode.OCULUS, Mode.KEYBOARD, Mode.SYSTEM, Mode.AUTONOMY}
 MAX_FEEDFORWARD_COMMAND_AGE_PERIODS = 1.0
+COMMAND_TIMEOUT_SECONDS = 0.25
 
 
 class RobotControllerNode(Node):
@@ -105,7 +106,10 @@ class RobotControllerNode(Node):
         # Reference for current tool and base commands
         self.current_tool_command: RobotToolCommand | None = None
         self._tool_command_received_s: float | None = None
+        self._tool_holding = False
         self.current_base_command: RobotBaseCommand | None = None
+        self._base_command_received_s: float | None = None
+        self._feedback_state: RobotState | None = None
 
         # Orchestrator gate. Default to IDLE so we re-sync from state until the
         # orchestrator announces its mode.
@@ -128,14 +132,16 @@ class RobotControllerNode(Node):
 
         self.current_tool_command = RobotToolCommand(
             timestamp=timestamp,
-            pose=self.robot.get_tool_command_pose(q),
+            pose=self.robot.get_tool_command_pose(q).copy(),
             gripper_positions=gripper_positions,
         )
         self._tool_command_received_s = None
+        self._base_command_received_s = None
+        self._tool_holding = False
 
         base_pose = self.robot.get_base_pose(q)
         if base_pose is not None:
-            self.current_base_command = RobotBaseCommand(timestamp=timestamp, pose=base_pose)
+            self.current_base_command = RobotBaseCommand(timestamp=timestamp, pose=base_pose.copy())
 
     def _update_controller_states(self, joint_positions: NDArray[np.float64]) -> None:
         """Synchronize every controller to one composed full-model state."""
@@ -197,34 +203,30 @@ class RobotControllerNode(Node):
 
     def step(self) -> None:
         """Receive tool command and compute joint commands."""
-        mode_msg = self.subscriber.receive(Topic.ORCHESTRATOR_MODE)
-        if mode_msg is not None:
-            if mode_msg.mode != self.current_mode:
-                logger.debug(f"Updated mode: {self.current_mode} -> {mode_msg.mode}")
-                self._last_control_time = None
-                self.arm_controller.reset_motion()
-            self.current_mode = mode_msg.mode
+        agent_handoff = self._receive_mode()
 
         robot_state = self.subscriber.receive(Topic.ROBOT_STATE)
+        if robot_state is not None:
+            self._feedback_state = robot_state
 
-        if not self.is_active:
+        if agent_handoff or not self.is_active:
             # Inactive: track the robot continuously so reactivation starts
             # from the current pose. Drain command queues so we don't act on
             # stale messages when reactivated.
-            if robot_state is not None:
-                self._update_controller_states(robot_state.joint_positions)
-                self._reset_commands_from_state(robot_state)
+            state = self._feedback_state if agent_handoff else robot_state
+            if state is not None:
+                self._update_controller_states(state.joint_positions)
+                self._reset_commands_from_state(state)
             self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND)
             self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
             return
 
         # Active: existing OSC logic.
-        # Initialize controller state from robot state feedback until the first
-        # command is received, and run open-loop thereafter.
-        if robot_state is not None and (
-            self.arm_controller.configuration is None
-            or (self.current_tool_command is None and self.current_base_command is None)
-        ):
+        # Seed the arm reference from feedback. Fresh commands then advance its
+        # internal trajectory; command expiry resynchronizes it to a measured hold.
+        has_no_targets = self.current_tool_command is None and self.current_base_command is None
+        needs_initial_state = self.arm_controller.configuration is None or has_no_targets
+        if robot_state is not None and needs_initial_state:
             logger.debug(f"Received robot state: {robot_state}")
             self._update_controller_states(robot_state.joint_positions)
 
@@ -234,12 +236,17 @@ class RobotControllerNode(Node):
             logger.debug(f"Received tool command: {tool_command}")
             self.current_tool_command = tool_command
             self._tool_command_received_s = self._clock()
+            self._tool_holding = False
 
         # Check for new base command (non-blocking)
         base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND)
         if base_command is not None:
             logger.debug(f"Received base command: {base_command}")
             self.current_base_command = base_command
+            self._base_command_received_s = self._clock()
+
+        if self.current_mode is Mode.AUTONOMY and not self._prepare_agent_feedback():
+            return
 
         dt = self._control_timestep()
 
@@ -257,13 +264,9 @@ class RobotControllerNode(Node):
                     arm_result,
                 )
             )
-        if self.base_controller is not None and self.current_base_command is not None:
-            results.append(
-                (
-                    self.base_controller,
-                    self.base_controller.compute_control(self.current_base_command.pose, dt=dt),
-                )
-            )
+        base_result = self._compute_base_control(dt)
+        if self.base_controller is not None and base_result is not None:
+            results.append((self.base_controller, base_result))
         if not results:
             return
 
@@ -293,6 +296,71 @@ class RobotControllerNode(Node):
 
         logger.debug(f"Publishing joint command: {joint_command}")
         self.publisher.publish(joint_command, topic=Topic.CONTROLLER_JOINT_COMMAND)
+
+    def _compute_base_control(self, dt: float) -> ControlResult | None:
+        if self.base_controller is None or self.current_base_command is None:
+            return None
+        if self.current_mode is Mode.AUTONOMY and self._feedback_state is not None:
+            self.base_controller.update_state(self._feedback_state.joint_positions)
+        return self.base_controller.compute_control(self.current_base_command.pose, dt=dt)
+
+    def _receive_mode(self) -> bool:
+        """Report handoffs to or from autonomy so queued targets can be drained."""
+        mode_msg = self.subscriber.receive(Topic.ORCHESTRATOR_MODE)
+        if mode_msg is None or mode_msg.mode == self.current_mode:
+            return False
+        agent_handoff = Mode.AUTONOMY in (self.current_mode, mode_msg.mode)
+
+        logger.debug(f"Updated mode: {self.current_mode} -> {mode_msg.mode}")
+        self._last_control_time = None
+        self.arm_controller.reset_motion()
+        self._tool_holding = False
+        self._tool_command_received_s = None
+        self._base_command_received_s = None
+        self.current_mode = mode_msg.mode
+        return agent_handoff
+
+    def _prepare_agent_feedback(self) -> bool:
+        """Require fresh feedback and expire tool/base references in autonomy mode."""
+        state = self._feedback_state
+        now = self._clock()
+        feedback_is_fresh = (
+            state is not None and 0 <= now - state.timestamp <= COMMAND_TIMEOUT_SECONDS
+        )
+        if not feedback_is_fresh:
+            self._tool_holding = False
+            return False  # Driver watchdog stops velocities if feedback disappears.
+        assert state is not None
+        q = state.joint_positions
+
+        tool_command_expired = (
+            self._tool_command_received_s is None
+            or now - self._tool_command_received_s > COMMAND_TIMEOUT_SECONDS
+        )
+        needs_tool_hold = tool_command_expired and not self._tool_holding
+        if needs_tool_hold:
+            self.arm_controller.update_state(q)
+            self.arm_controller.reset_motion()
+            if self.gripper_controller is not None:
+                self.gripper_controller.update_state(q)
+            self.current_tool_command = RobotToolCommand(
+                timestamp=now,
+                pose=self.robot.get_tool_command_pose(q).copy(),
+                gripper_positions=q[self.robot.get_gripper_position_indices()].copy(),
+            )
+            # Latch once: continuously following measured sag would lower the
+            # position-servo reference every tick while the command source is silent.
+            self._tool_holding = True
+        base_command_expired = (
+            self._base_command_received_s is None
+            or now - self._base_command_received_s > COMMAND_TIMEOUT_SECONDS
+        )
+        if base_command_expired:
+            pose = self.robot.get_base_pose(q)
+            self.current_base_command = (
+                None if pose is None else RobotBaseCommand(timestamp=now, pose=pose.copy())
+            )
+        return True
 
     def _control_timestep(self) -> float:
         """Return measured elapsed time, bounded around the configured period."""

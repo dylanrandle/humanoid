@@ -184,7 +184,7 @@ class NodeManager:
     def _require_configuration_change_allowed_locked(self) -> None:
         if any(self._status_locked(name).running for name in PROCESS_ORDER):
             raise NodeManagerError(
-                "Stop the stack and teleop processes before changing configuration."
+                "Stop the stack and input processes before changing configuration."
             )
 
     def _wait_for_robot_state(self, stop_event: threading.Event) -> bool:

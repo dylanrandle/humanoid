@@ -77,6 +77,7 @@ function elements() {
         error: element(),
         action: element(),
       },
+      autonomy: { row: element(), status: element(), error: element(), action: element() },
       oculus: {
         row: element(),
         status: element(),
@@ -167,6 +168,7 @@ function snapshot() {
       replay: processStatus(),
       keyboard: processStatus(),
       oculus: processStatus(),
+      autonomy: processStatus(),
     },
     node_rates: [],
     actuator_health: {

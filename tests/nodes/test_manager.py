@@ -21,6 +21,7 @@ from humanoid.nodes.manager import (
     _run_node,
 )
 from humanoid.nodes.orchestrator import OrchestratorNode
+from humanoid.nodes.policy.agent import AgentControlServerNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
 from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
@@ -122,6 +123,7 @@ def test_node_groups_reference_imported_node_classes():
         RobotVisualizerNode,
     )
     assert NODE_GROUPS[ProcessName.KEYBOARD].nodes == (KeyboardTeleopNode,)
+    assert NODE_GROUPS[ProcessName.AUTONOMY].nodes == (AgentControlServerNode,)
     assert NODE_GROUPS[ProcessName.OCULUS].nodes == (OculusTeleopNode,)
 
 
@@ -295,9 +297,9 @@ def test_rejects_configuration_change_and_duplicate_start_while_group_is_running
     manager = NodeManager(runtime=Runtime.SIM)
     manager.start(ProcessName.KEYBOARD)
 
-    with pytest.raises(NodeManagerError, match="Stop the stack and teleop"):
+    with pytest.raises(NodeManagerError, match="Stop the stack and input"):
         manager.set_runtime(Runtime.REAL)
-    with pytest.raises(NodeManagerError, match="Stop the stack and teleop"):
+    with pytest.raises(NodeManagerError, match="Stop the stack and input"):
         manager.set_robot(RobotName.PANDA)
     with pytest.raises(NodeManagerError, match="already running"):
         manager.start(ProcessName.KEYBOARD)

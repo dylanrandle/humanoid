@@ -14,6 +14,7 @@ from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.orchestrator.constants import (
     CONTROLLED_PROCESS_NAMES,
     EXTERNAL_STACK_ERROR,
+    INPUT_PROCESSES,
     MODE_TRANSITION_POLL_INTERVAL_SECONDS,
     MODE_TRANSITION_TIMEOUT_SECONDS,
     PARAMETERIZED_REQUEST_TIMEOUT_SECONDS,
@@ -23,7 +24,6 @@ from humanoid.orchestrator.constants import (
     REPLAY_ACTIVE_PROCESSES_ERROR,
     REPLAY_DEDICATED_CONTROL_ERROR,
     STALE_CONFIGURATION_ERROR,
-    TELEOP_PROCESSES,
 )
 from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
 from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
@@ -112,11 +112,15 @@ class OrchestratorService:
             stack = processes[ProcessName.STACK]
             stack_failure = stack if stack.exit_code not in {None, 0} else None
             if stack_failure != self._handled_stack_failure:
-                self._handled_stack_failure = stack_failure
                 if stack_failure is not None:
+                    for name in INPUT_PROCESSES.values():
+                        if processes[name].running:
+                            self.node_manager.stop(name)
+                    processes = self.node_manager.status()
                     self.mode_monitor.reset()
                     self.logging_monitor.reset()
                     self._clear_parameterized_request()
+                self._handled_stack_failure = stack_failure
             orchestrator = self._orchestrator_state()
             stack_running = stack.running
             replay_running = processes[ProcessName.REPLAY].running or replay.running
@@ -187,11 +191,20 @@ class OrchestratorService:
                 self._require_real_hardware_acknowledgement(safety)
             if process_name is ProcessName.STACK and current.replay.running:
                 raise OrchestratorError(REPLAY_ACTIVE_ERROR)
-            if process_name is not ProcessName.STACK:
-                self._require_ready_stack(current)
-            else:
+            if process_name is ProcessName.STACK:
                 self.actuator_health_monitor.reset()
                 self._reset_camera_previews()
+            else:
+                self._require_ready_stack(current)
+                if (
+                    not current.processes[process_name].running
+                    and current.orchestrator.mode is PROCESS_MODES[process_name]
+                ):
+                    self.orchestrator_client.request_idle()
+                    if not self._wait_for_mode(Mode.IDLE):
+                        raise OrchestratorError(
+                            f"Select Idle before restarting {process_display_name(process_name)}."
+                        )
             self._run_manager_action(lambda: self.node_manager.start(process_name))
             return self.status()
 
@@ -223,10 +236,10 @@ class OrchestratorService:
                 self._select_parameterized_request(request)
                 return self.status()
 
-            teleop_process = TELEOP_PROCESSES.get(request.mode)
-            if teleop_process is not None and not current.processes[teleop_process].running:
+            input_process = INPUT_PROCESSES.get(request.mode)
+            if input_process is not None and not current.processes[input_process].running:
                 raise OrchestratorError(
-                    f"Start {process_display_name(teleop_process)} before activating its mode."
+                    f"Start {process_display_name(input_process)} before activating its mode."
                 )
 
             mode_requests: dict[Mode, Callable[[], None]] = {
@@ -234,6 +247,7 @@ class OrchestratorService:
                 Mode.KEYBOARD: self.orchestrator_client.request_keyboard,
                 Mode.OCULUS: self.orchestrator_client.request_oculus,
                 Mode.SYSTEM: self.orchestrator_client.request_system,
+                Mode.AUTONOMY: self.orchestrator_client.request_autonomy,
             }
             mode_requests[request.mode]()
             self._clear_parameterized_request()

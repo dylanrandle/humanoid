@@ -7,7 +7,7 @@ import {
   ProcessName,
   ReplayOutcome,
   Runtime,
-  TELEOP_PROCESSES,
+  INPUT_PROCESSES,
 } from "./constants.js";
 import { renderHostResources } from "./host.js";
 
@@ -69,7 +69,7 @@ export function render(snapshot, busy, elements) {
     stackActive || replayActive,
     elements,
   );
-  for (const name of TELEOP_PROCESSES) {
+  for (const name of INPUT_PROCESSES) {
     renderProcess(name, processes[name], controlsReady, busy, elements);
   }
   renderLogging(snapshot.logging, controlsReady, busy, elements);
@@ -431,7 +431,7 @@ function renderReplay(snapshot, anyRunning, replayActive, busy, elements) {
   } else if (anyRunning) {
     elements.replayStatus.textContent = "Unavailable";
     elements.replayDetail.textContent =
-      "Stop the stack and teleop nodes before replaying.";
+      "Stop the stack and input nodes before replaying.";
   } else if (snapshot.recordings.length === 0) {
     elements.replayStatus.textContent = "Unavailable";
     elements.replayDetail.textContent =
@@ -508,13 +508,13 @@ function renderOrchestrator(
     const active = requestedPreset
       ? requestedMode === Mode.HOMING && requestedPreset === preset
       : preset === null && requestedMode === mode;
-    const teleopUnavailable =
-      TELEOP_PROCESSES.includes(requestedMode) &&
+    const inputUnavailable =
+      INPUT_PROCESSES.includes(requestedMode) &&
       !processes[requestedMode].running;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
     button.disabled =
-      !controlsReady || busy.has(BusyKey.ORCHESTRATOR) || teleopUnavailable;
+      !controlsReady || busy.has(BusyKey.ORCHESTRATOR) || inputUnavailable;
   }
 }
 

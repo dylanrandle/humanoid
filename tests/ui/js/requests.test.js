@@ -23,6 +23,7 @@ function snapshot(runtime = Runtime.SIM) {
       stack: { running: false },
       replay: { running: false },
       keyboard: { running: false },
+      autonomy: { running: false },
       oculus: { running: false },
     },
     replay: {
@@ -132,5 +133,16 @@ test("teleop start and robot selection carry stale-configuration guards", () => 
       expected_robot: "panda",
       real_hardware_acknowledged: false,
     },
+  });
+});
+
+test("agent API uses the dashboard process lifecycle", () => {
+  const current = snapshot();
+  const start = processRequest(current, ProcessName.AUTONOMY, () => true);
+  assert.equal(start.path, "/api/processes/autonomy/start");
+  assert.deepEqual(start.payload, {expected_runtime: "sim", expected_robot: "panda", real_hardware_acknowledged: false});
+  current.processes.autonomy.running = true;
+  assert.deepEqual(processRequest(current, ProcessName.AUTONOMY, () => true), {
+    path: "/api/processes/autonomy/stop", payload: {},
   });
 });

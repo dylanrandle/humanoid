@@ -109,19 +109,28 @@ class RealtimeEnvironment(Environment):
 
         logger.info("Initialized environment")
 
-    def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> Observation:
+    def reset(
+        self,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+        *,
+        state_timeout_ms: int | None = None,
+    ) -> Observation:
         """Reset the environment to an initial state.
 
         Args:
             seed: Optional random seed (not used in LCM environment)
             options: Optional dictionary of environment-specific options
+            state_timeout_ms: Override the startup wait for the first robot state.
 
         Returns:
             Initial observation after reset
         """
         logger.info("Resetting environment")
 
-        observation = self._build_observation(timeout_ms=self.timeout_ms)
+        observation = self._build_observation(
+            timeout_ms=self.timeout_ms, state_timeout_ms=state_timeout_ms
+        )
         self._prev_observation = observation
         self._last_action = None
 
@@ -218,7 +227,9 @@ class RealtimeEnvironment(Environment):
 
         return timestamp
 
-    def _build_observation(self, timeout_ms: int = 0) -> Observation:
+    def _build_observation(
+        self, timeout_ms: int = 0, state_timeout_ms: int | None = None
+    ) -> Observation:
         """Receive the latest messages and build an Observation.
 
         Each topic is cached; if receive() returns None the last known value is
@@ -227,7 +238,9 @@ class RealtimeEnvironment(Environment):
         Raises:
             RuntimeError: If no robot state has ever been received
         """
-        robot_state = self.subscriber.receive(Topic.ROBOT_STATE, timeout=timeout_ms)
+        robot_state = self.subscriber.receive(
+            Topic.ROBOT_STATE, timeout=timeout_ms if state_timeout_ms is None else state_timeout_ms
+        )
         if robot_state is not None:
             self._last_robot_state = robot_state
         if self._last_robot_state is None:

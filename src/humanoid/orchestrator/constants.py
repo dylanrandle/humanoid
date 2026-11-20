@@ -18,15 +18,16 @@ REPLAY_CHANNELS = (
     Topic.ORCHESTRATOR_MODE,
 )
 REPLAY_CHANNEL_PATTERN = "|".join(topic.value for topic in REPLAY_CHANNELS)
-TELEOP_PROCESSES: dict[Mode, ProcessName] = {
+INPUT_PROCESSES: dict[Mode, ProcessName] = {
     Mode.KEYBOARD: ProcessName.KEYBOARD,
     Mode.OCULUS: ProcessName.OCULUS,
+    Mode.AUTONOMY: ProcessName.AUTONOMY,
 }
-PROCESS_MODES = {process: mode for mode, process in TELEOP_PROCESSES.items()}
-CONTROLLED_PROCESS_NAMES = frozenset({ProcessName.STACK, *TELEOP_PROCESSES.values()})
+PROCESS_MODES = {process: mode for mode, process in INPUT_PROCESSES.items()}
+CONTROLLED_PROCESS_NAMES = frozenset({ProcessName.STACK, *INPUT_PROCESSES.values()})
 EXTERNAL_STACK_ERROR = "Another stack is already broadcasting. Stop it before using this console."
 STALE_CONFIGURATION_ERROR = "Configuration changed. Refresh the console and try again."
 REAL_HARDWARE_ACKNOWLEDGEMENT_ERROR = "Real hardware acknowledgement is required."
-REPLAY_ACTIVE_PROCESSES_ERROR = "Stop the stack and teleop processes before starting replay."
+REPLAY_ACTIVE_PROCESSES_ERROR = "Stop the stack and input processes before starting replay."
 REPLAY_ACTIVE_ERROR = "Stop replay before starting the main stack."
 REPLAY_DEDICATED_CONTROL_ERROR = "Use the dedicated replay controls to manage replay."

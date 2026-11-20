@@ -11,6 +11,7 @@ export const ProcessName = Object.freeze({
   REPLAY: "replay",
   KEYBOARD: "keyboard",
   OCULUS: "oculus",
+  AUTONOMY: "autonomy",
 });
 
 export const ProcessAction = Object.freeze({
@@ -24,6 +25,7 @@ export const Mode = Object.freeze({
   OCULUS: "oculus",
   KEYBOARD: "keyboard",
   SYSTEM: "system",
+  AUTONOMY: "autonomy",
 });
 
 export const LoggingState = Object.freeze({
@@ -76,9 +78,10 @@ export const BusyKey = Object.freeze({
   ORCHESTRATOR: ApiRoute.ORCHESTRATOR,
 });
 
-export const TELEOP_PROCESSES = Object.freeze([
+export const INPUT_PROCESSES = Object.freeze([
   ProcessName.KEYBOARD,
   ProcessName.OCULUS,
+  ProcessName.AUTONOMY,
 ]);
 
 export const API = Object.freeze({

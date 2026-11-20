@@ -1,5 +1,5 @@
 from typing import cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
@@ -7,6 +7,7 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.orchestrator.client import OrchestratorClient
+from humanoid.orchestrator.constants import INPUT_PROCESSES
 from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
 from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
@@ -59,6 +60,7 @@ def _all_processes(
         ProcessName.REPLAY: _process_status(replay),
         ProcessName.KEYBOARD: _process_status(keyboard),
         ProcessName.OCULUS: _process_status(oculus),
+        ProcessName.AUTONOMY: _process_status(),
     }
 
 
@@ -183,6 +185,27 @@ def test_starting_teleop_uses_ready_stack():
     manager.start.assert_called_once_with(ProcessName.KEYBOARD)
 
 
+@pytest.mark.parametrize(("mode", "process"), INPUT_PROCESSES.items())
+@pytest.mark.parametrize("idle_acknowledged", [True, False])
+def test_restarting_selected_input_requires_idle(mode, process, idle_acknowledged, monkeypatch):
+    service, manager, client, _ = _make_service(stack=True, connected=True, mode=mode)
+
+    def wait_for_idle(requested):
+        assert requested is Mode.IDLE
+        client.request_idle.assert_called_once_with()
+        manager.start.assert_not_called()
+        return idle_acknowledged
+
+    monkeypatch.setattr(service, "_wait_for_mode", wait_for_idle)
+    if idle_acknowledged:
+        service.start_process(process, _safety_context())
+        manager.start.assert_called_once_with(process)
+    else:
+        with pytest.raises(OrchestratorError, match="Select Idle before restarting"):
+            service.start_process(process, _safety_context())
+        manager.start.assert_not_called()
+
+
 def test_manager_start_failure_is_returned_as_control_error():
     service, manager, _, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
     manager.start.side_effect = NodeManagerError("process failed")
@@ -207,7 +230,7 @@ def test_status_rejects_external_orchestrator():
         service.status()
 
 
-def test_stack_failure_clears_its_recent_mode_before_reporting_status():
+def test_stack_failure_stops_inputs_and_clears_its_recent_mode_before_reporting_status():
     failure_code = 7
     service, manager, _, monitor = _make_service(connected=True, mode=Mode.IDLE)
     processes = _all_processes()
@@ -219,13 +242,18 @@ def test_stack_failure_clears_its_recent_mode_before_reporting_status():
         uptime_seconds=2.0,
         last_output="RobotDriverNode exited unexpectedly with code 7",
     )
-    manager.status.return_value = processes
+    for name in INPUT_PROCESSES.values():
+        processes[name] = _process_status(True)
+    manager.status.side_effect = processes.copy
+    manager.stop.side_effect = lambda name: processes.update({name: _process_status()})
     monitor.reset.side_effect = lambda: monitor.snapshot.configure_mock(
         return_value=ModeStatus(mode=None, connected=False, age_seconds=None)
     )
 
     status = service.status()
 
+    assert manager.stop.call_args_list == [call(name) for name in INPUT_PROCESSES.values()]
+    assert all(not status.processes[name].running for name in INPUT_PROCESSES.values())
     assert status.processes[ProcessName.STACK].exit_code == failure_code
     assert status.orchestrator.connected is False
     monitor.reset.assert_called_once_with()
@@ -367,12 +395,23 @@ def test_teleop_mode_uses_running_process():
     client.request_keyboard.assert_called_once_with()
 
 
-def test_system_mode_does_not_require_a_teleop_process():
+def test_system_mode_does_not_require_an_input_process():
     service, _, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
-
     service.request_mode(OrchestratorRequest(mode=Mode.SYSTEM))
-
     client.request_system.assert_called_once_with()
+
+
+def test_agent_start_requires_separate_autonomy_selection():
+    service, manager, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
+    request = OrchestratorRequest(mode=Mode.AUTONOMY)
+    with pytest.raises(OrchestratorError, match="Start Agent API"):
+        service.request_mode(request)
+    service.start_process(ProcessName.AUTONOMY, _safety_context())
+    manager.start.assert_called_once_with(ProcessName.AUTONOMY)
+    client.request_autonomy.assert_not_called()
+    manager.status.return_value[ProcessName.AUTONOMY] = _process_status(True)
+    service.request_mode(request)
+    client.request_autonomy.assert_called_once_with()
 
 
 @pytest.mark.parametrize(
@@ -615,7 +654,7 @@ def test_replay_requires_all_managed_processes_to_be_stopped(tmp_path):
     recording = _recording(tmp_path)
     cast(MagicMock, service.recording_catalog).get.return_value = recording
 
-    with pytest.raises(OrchestratorError, match="Stop the stack and teleop"):
+    with pytest.raises(OrchestratorError, match="Stop the stack and input"):
         service.start_replay(recording.id, _safety_context())
 
     manager.start.assert_not_called()

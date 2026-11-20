@@ -4,7 +4,7 @@ import argparse
 import json
 from enum import StrEnum
 
-from humanoid.orchestrator.constants import TELEOP_PROCESSES
+from humanoid.orchestrator.constants import INPUT_PROCESSES
 from humanoid.types.logging import LoggingState
 from humanoid.types.orchestrator import Mode, OrchestratorParameter
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
@@ -31,7 +31,7 @@ def render_javascript_constants() -> str:
         _enum_object("PayloadKey", PayloadKey),
         _enum_object("ApiRoute", ApiRoute),
         _busy_keys(),
-        _teleop_processes(),
+        _input_processes(),
         _api_routes(),
     ]
     return "\n".join(sections)
@@ -53,9 +53,9 @@ def _busy_keys() -> str:
 """
 
 
-def _teleop_processes() -> str:
-    entries = "\n".join(f"  ProcessName.{process.name}," for process in TELEOP_PROCESSES.values())
-    return f"export const TELEOP_PROCESSES = Object.freeze([\n{entries}\n]);\n"
+def _input_processes() -> str:
+    entries = "\n".join(f"  ProcessName.{process.name}," for process in INPUT_PROCESSES.values())
+    return f"export const INPUT_PROCESSES = Object.freeze([\n{entries}\n]);\n"
 
 
 def _api_routes() -> str:

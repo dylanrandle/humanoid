@@ -220,7 +220,7 @@ class TestInactiveMode:
         controller.robot.get_tool_command_pose.assert_called_once()
         assert (
             controller.current_tool_command.pose
-            is controller.robot.get_tool_command_pose.return_value
+            is not controller.robot.get_tool_command_pose.return_value
         )
 
     def test_inactive_does_not_publish(self, controller):
@@ -532,3 +532,162 @@ def test_measured_control_timestep_is_used_and_bounded():
 def test_close_closes_subscriber(controller):
     controller.close()
     controller.subscriber.close.assert_called_once()
+
+
+def test_active_expiry_holds_each_source_and_requires_fresh_feedback():
+    now = 10.0
+    controller = _make_controller(TRISKEL_CONFIG, clock=lambda: now)
+    q = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    state = RobotState(
+        timestamp=now,
+        joint_positions=q,
+        joint_velocities=np.zeros(17),
+        actuator_temperatures=np.zeros(18),
+    )
+    controller.current_mode = Mode.AUTONOMY
+    controller._feedback_state = state
+    stale_pose = pin.SE3.Identity()
+    stale_pose.translation[0] = 1
+    controller.current_tool_command = RobotToolCommand(timestamp=now - 1, pose=stale_pose)
+    controller.current_base_command = RobotBaseCommand(timestamp=now - 1, pose=stale_pose)
+    controller._tool_command_received_s = now - 1
+    controller._base_command_received_s = now - 1
+    assert controller._prepare_agent_feedback()
+    np.testing.assert_array_equal(controller.current_tool_command.pose.translation, 0)
+    np.testing.assert_array_equal(controller.current_base_command.pose.translation, 0)
+    cast(MagicMock, controller.arm_controller).reset_motion.assert_called()
+    state.timestamp -= 1
+    assert not controller._prepare_agent_feedback()
+
+
+def test_active_base_controller_receives_measured_odometry():
+    controller = _make_controller(TRISKEL_CONFIG)
+    controller.current_mode = Mode.AUTONOMY
+    q = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    q[0] = 0.7
+    controller._feedback_state = RobotState(
+        timestamp=1,
+        joint_positions=q,
+        joint_velocities=np.zeros(17),
+        actuator_temperatures=np.zeros(18),
+    )
+    controller.current_base_command = RobotBaseCommand(timestamp=1, pose=pin.SE3.Identity())
+    controller._compute_base_control(0.005)
+    np.testing.assert_array_equal(
+        cast(MagicMock, controller.base_controller).update_state.call_args.args[0], q
+    )
+
+
+def test_expired_tool_latches_hold_instead_of_following_sag():
+    now = 10.0
+    controller = _make_controller(TRISKEL_CONFIG, clock=lambda: now)
+    q = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
+    controller._feedback_state = RobotState(
+        timestamp=now,
+        joint_positions=q,
+        joint_velocities=np.zeros(17),
+        actuator_temperatures=np.zeros(18),
+    )
+    controller.current_mode = Mode.AUTONOMY
+    assert controller._prepare_agent_feedback()
+    hold = controller.current_tool_command
+    arm = cast(MagicMock, controller.arm_controller)
+    arm.update_state.reset_mock()
+    arm.reset_motion.reset_mock()
+    now += 0.1
+    controller._feedback_state.timestamp = now
+    controller._feedback_state.joint_positions = q + 0.01
+    assert controller._prepare_agent_feedback()
+    assert controller.current_tool_command is hold
+    arm.update_state.assert_not_called()
+    arm.reset_motion.assert_not_called()
+
+
+@pytest.mark.parametrize("feedback", ["missing", "stale"])
+def test_active_modes_do_not_publish_without_fresh_feedback(feedback):
+    controller = _make_controller(clock=lambda: 1.0)
+    controller.current_mode = Mode.AUTONOMY
+    if feedback == "stale":
+        controller._feedback_state = _make_state()
+    command = _make_tool_cmd()
+    cast(MagicMock, controller.subscriber).receive = Mock(
+        side_effect=lambda topic: command if topic is Topic.ROBOT_TOOL_COMMAND else None
+    )
+
+    controller.step()
+
+    cast(MagicMock, controller.arm_controller).compute_control.assert_not_called()
+    cast(MagicMock, controller.publisher).publish.assert_not_called()
+
+
+@pytest.mark.parametrize("expired_source", ["tool", "base"])
+def test_active_modes_expire_tool_and_base_independently(expired_source):
+    now = 1.0
+    controller = _make_controller(TRISKEL_CONFIG, clock=lambda: now)
+    controller.current_mode = Mode.AUTONOMY
+    state = _make_state(controller.robot.model.nq, controller.robot.model.nv)
+    state.timestamp = now
+    tool = _make_tool_cmd(velocity=CartesianVelocity(linear=np.ones(3), angular=np.zeros(3)))
+    base = _make_base_cmd()
+    messages = {
+        Topic.ROBOT_STATE: state,
+        Topic.ROBOT_TOOL_COMMAND: tool,
+        Topic.ROBOT_BASE_COMMAND: base,
+    }
+    cast(MagicMock, controller.subscriber).receive = Mock(side_effect=messages.get)
+    controller.step()
+    now += 0.3
+    state.timestamp = now
+    expired_topic = (
+        Topic.ROBOT_TOOL_COMMAND if expired_source == "tool" else Topic.ROBOT_BASE_COMMAND
+    )
+    del messages[expired_topic]
+
+    controller.step()
+
+    assert controller.current_tool_command is not None
+    assert controller.current_base_command is not None
+    if expired_source == "tool":
+        assert controller.current_base_command is base
+        assert controller.current_tool_command is not tool
+        assert controller.current_tool_command.velocity is None
+        assert (
+            "target_velocity"
+            not in cast(MagicMock, controller.arm_controller).compute_control.call_args.kwargs
+        )
+        np.testing.assert_array_equal(controller.current_tool_command.pose.translation, 0)
+    else:
+        assert controller.current_tool_command is tool
+        assert controller.current_base_command is not base
+        np.testing.assert_array_equal(controller.current_base_command.pose.translation, 0)
+
+
+@pytest.mark.parametrize(
+    ("old_mode", "new_mode"),
+    [(Mode.KEYBOARD, Mode.AUTONOMY), (Mode.AUTONOMY, Mode.OCULUS)],
+)
+def test_agent_handoff_drains_queued_targets_and_resets_to_feedback(old_mode, new_mode):
+    controller = _make_controller(TRISKEL_CONFIG, clock=lambda: 1.0)
+    controller.current_mode = old_mode
+    state = _make_state(controller.robot.model.nq, controller.robot.model.nv)
+    state.timestamp = 1.0
+    tool = _make_tool_cmd()
+    base = _make_base_cmd()
+    controller.current_tool_command = tool
+    controller.current_base_command = base
+    messages = {
+        Topic.ORCHESTRATOR_MODE: OrchestratorMode(timestamp=1.0, mode=new_mode),
+        Topic.ROBOT_STATE: state,
+        Topic.ROBOT_TOOL_COMMAND: tool,
+        Topic.ROBOT_BASE_COMMAND: base,
+    }
+    cast(MagicMock, controller.subscriber).receive = Mock(side_effect=messages.pop)
+    controller.step()
+    assert not messages
+    assert (
+        controller.current_tool_command is not tool and controller.current_tool_command is not None
+    )
+    assert (
+        controller.current_base_command is not base and controller.current_base_command is not None
+    )
+    cast(MagicMock, controller.publisher).publish.assert_not_called()

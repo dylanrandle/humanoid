@@ -130,11 +130,14 @@
         </section>
 
         <div class="control-grid">
-          <section class="panel teleop-panel" aria-labelledby="teleop-heading">
+          <section
+            class="panel control-inputs-panel"
+            aria-labelledby="control-inputs-heading"
+          >
             <div class="section-heading">
               <div>
                 <p class="eyebrow">02 · Input nodes</p>
-                <h2 id="teleop-heading">Teleoperation</h2>
+                <h2 id="control-inputs-heading">Control inputs</h2>
               </div>
               <span class="panel-note">Start independently</span>
             </div>
@@ -199,6 +202,39 @@
                 <button
                   class="secondary-action"
                   data-process-action="keyboard"
+                  type="button"
+                  disabled
+                >
+                  Start
+                </button>
+              </article>
+
+              <article class="process-row" data-process-row="autonomy">
+                <div class="process-glyph" aria-hidden="true">
+                  <svg viewBox="0 0 32 32" role="img">
+                    <path d="m10 10-6 6 6 6m12-12 6 6-6 6m-4-14-4 16" />
+                  </svg>
+                </div>
+                <div class="process-copy">
+                  <div class="process-title">
+                    <h3>Agent API</h3>
+                    <span class="mini-status" data-process-status="autonomy"
+                      >Stopped</span
+                    >
+                  </div>
+                  <p>
+                    Local HTTP access to robot state, cameras, and motion
+                    commands.
+                  </p>
+                  <p
+                    class="process-error"
+                    data-process-error="autonomy"
+                    hidden
+                  ></p>
+                </div>
+                <button
+                  class="secondary-action"
+                  data-process-action="autonomy"
                   type="button"
                   disabled
                 >
@@ -293,6 +329,19 @@
                 <span>
                   <strong>Keyboard teleop</strong>
                   <small>Route keyboard commands</small>
+                </span>
+                <span class="mode-check" aria-hidden="true">●</span>
+              </button>
+              <button
+                class="mode-option"
+                data-orchestrator-mode="autonomy"
+                type="button"
+                disabled
+              >
+                <span class="mode-index">F</span>
+                <span>
+                  <strong>Autonomy</strong>
+                  <small>Route agent API commands</small>
                 </span>
                 <span class="mode-check" aria-hidden="true">●</span>
               </button>

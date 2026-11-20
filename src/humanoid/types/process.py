@@ -30,6 +30,7 @@ class ProcessName(StrEnum):
     REPLAY = "replay"
     KEYBOARD = "keyboard"
     OCULUS = "oculus"
+    AUTONOMY = "autonomy"
 
 
 class ProcessAction(StrEnum):
