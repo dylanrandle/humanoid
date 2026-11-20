@@ -1,5 +1,6 @@
 """Base robot class for loading robot models in Pinocchio."""
 
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
@@ -110,11 +111,12 @@ class Robot:
         # Add a planar joint if a mobile base is configured.
         root_joint = pin.JointModelPlanar() if config.base is not None else None
 
-        # Load the kinematic model and visual model from main URDF
-        self.model, self.visual_model = pin.buildModelsFromUrdf(
+        # Most control processes need kinematics, not display meshes. Defer the
+        # high-resolution visual geometry until a visualizer/planner requests it.
+        (self.model,) = pin.buildModelsFromUrdf(
             str(urdf_path),
             package_dirs=package_dirs_str,
-            geometry_types=[pin.GeometryType.VISUAL],
+            geometry_types=[],
             root_joint=root_joint,
             mimic=True,
         )
@@ -147,13 +149,25 @@ class Robot:
         # Create data structures for computations
         self.data = self.model.createData()
         self.collision_data = pin.GeometryData(self.collision_model)
-        self.visual_data = pin.GeometryData(self.visual_model)
 
         self._joint_name_to_idx = {
             str(self.model.names[model_idx]): model_idx - 1
             for model_idx in range(1, self.model.njoints)
         }
         self._validate_actuator_configuration()
+
+    @cached_property
+    def visual_model(self) -> pin.GeometryModel:
+        return pin.buildGeomFromUrdf(
+            self.model,
+            str(self.urdf_path),
+            pin.GeometryType.VISUAL,
+            package_dirs=[str(path) for path in self.package_dirs or []],
+        )
+
+    @cached_property
+    def visual_data(self) -> pin.GeometryData:
+        return pin.GeometryData(self.visual_model)
 
     def _validate_actuator_configuration(self) -> None:
         """Validate logical controlled joints and optional physical bindings."""

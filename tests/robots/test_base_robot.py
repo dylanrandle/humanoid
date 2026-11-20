@@ -25,6 +25,22 @@ def mobile_robot() -> Robot:
 
 
 class TestConstruction:
+    @pytest.mark.parametrize("name", ["panda", "triskel"])
+    def test_visual_meshes_load_on_demand_and_keep_kinematic_placements(self, name):
+        robot = Robot(ROBOT_CONFIGS[name])
+        assert "visual_model" not in robot.__dict__
+        assert "visual_data" not in robot.__dict__
+        visuals = robot.visual_model
+        assert visuals.ngeoms > 0
+        assert robot.visual_model is visuals
+        data = robot.visual_data
+        assert robot.visual_data is data
+        q = pin.neutral(robot.model)
+        pin.updateGeometryPlacements(robot.model, robot.data, visuals, data, q)
+        for geometry, placement in zip(visuals.geometryObjects, data.oMg, strict=True):
+            expected = robot.data.oMi[geometry.parentJoint] * geometry.placement
+            assert placement.isApprox(expected)
+
     def test_loads_fixed_base_robot(self, panda_robot):
         assert panda_robot.model.nq > 0
         assert panda_robot.model.nv > 0
