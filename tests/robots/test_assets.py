@@ -21,8 +21,8 @@ VERSION_PATTERN = re.compile(r"(?:^|_)v\d+(?:_|$)")
 @pytest.mark.parametrize(
     ("frame", "expected_translation"),
     [
-        ("ego_camera_depth_optical_frame", [-0.0175, 0.10875, 0.032]),
-        ("ego_camera_color_optical_frame", [-0.0325, 0.10875, 0.032]),
+        ("ego_camera_depth_optical_frame", [-0.0175, 0.08875, 0.032]),
+        ("ego_camera_color_optical_frame", [-0.0325, 0.08875, 0.032]),
     ],
 )
 def test_triskel_camera_frames_match_confirmed_mount(filename, frame, expected_translation):

@@ -6,6 +6,8 @@ After=network-online.target
 [Service]
 Type=simple
 User=@HUMANOID_USER@
+# Access the robot's USB serial motor adapters.
+SupplementaryGroups=dialout
 WorkingDirectory=@HUMANOID_INSTALL_DIR@
 Environment=HUMANOID_DATA_DIR=@HUMANOID_INSTALL_DIR@
 Environment=PYTHONUNBUFFERED=1

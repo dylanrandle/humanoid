@@ -37,10 +37,11 @@
             <material name="silver" />
         </visual>
     </link>
-    <!-- Confirmed placement: mount rests on the lower plate's top surface (z = 7 mm).
-         The 40 mm hole pair aligns with base-frame (x, y) = (+/-20, 100) mm.
-         Camera rear mounting face is at y = 88 mm, facing forward (+Y).
-         Camera screw centers are at (x, y, z) = (+/-22.5, 88, 32) mm.
+    <!-- Mount moved one 20 mm hole row toward the plate center.
+         Mount rests on the lower plate's top surface (z = 7 mm).
+         The 40 mm hole pair aligns with base-frame (x, y) = (+/-20, 80) mm.
+         Camera rear mounting face is at y = 68 mm, facing forward (+Y).
+         Camera screw centers are at (x, y, z) = (+/-22.5, 68, 32) mm.
          Mount mass is unmeasured; the bracket is represented visually only. -->
     <link name="ego_camera_mount_link">
         <visual>
@@ -53,11 +54,11 @@
         </visual>
     </link>
     <joint name="ego_camera_mount_joint" type="fixed">
-        <origin xyz="0 0.088 0.032" rpy="1.5707963267948966 0 0" />
+        <origin xyz="0 0.068 0.032" rpy="1.5707963267948966 0 0" />
         <parent link="lower_plate_link" />
         <child link="ego_camera_mount_link" />
     </joint>
-    <!-- Upright RealSense D435, rear face flush at base y = 88 mm.
+    <!-- Upright RealSense D435, rear face flush at base y = 68 mm.
          camera_link uses forward/left/up axes at the nominal depth origin.
          Optical frames use right/down/forward; derive base transforms from this tree.
          Official mesh converted to OBJ; provenance/license: meshes/d435_notice.txt.
