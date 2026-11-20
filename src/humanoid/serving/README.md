@@ -21,8 +21,11 @@ Defaults are in `humanoid/config/serving.py`:
 - `~/humanoid-models/exports/yoloe26-s`: exported vision model, text encoder,
   tokenizer, and artifact manifest.
 
-Install the current Humanoid wheel **with `--no-deps` in both model environments**
-as well as deploying it to the robot stack. Preserve the JetPack CUDA wheels:
+`./scripts/deploy` updates the robot stack and each prepared model environment
+listed in `humanoid/config/deployment.py` with the same Humanoid wheel. Model
+environments use **`--no-deps`**; missing environments are skipped. Keep these
+paths synchronized with any custom worker paths in `humanoid/config/serving.py`.
+Preserve the JetPack CUDA wheels:
 PyTorch `2.14.1+cu132` and torchvision `0.29.2+cu132` on the tested JetPack 7.2.1
 board. Do not apply the generic development lockfile over those CUDA environments.
 The `model-serving` dependency group lists the lightweight runtime dependencies;

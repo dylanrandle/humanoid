@@ -109,6 +109,7 @@ COPYFILE_DISABLE=1 tar --no-xattrs -C "$BUILD_DIR" -czf "$BUNDLE_PATH" \
 if [[ "$DRY_RUN" == true ]]; then
     echo "Would upload the deployment bundle to $REMOTE_HOST"
     echo "Would install Humanoid into $INSTALL_DIR"
+    echo "Would update Humanoid in prepared model environments without changing their dependencies"
     echo "Would configure persistent 8 MiB LCM receive buffers"
     echo "Would install EGL/Mesa libraries for headless simulation cameras"
     echo "Would install, enable, and restart humanoid.service"
@@ -188,6 +189,8 @@ fi
     --reinstall-package humanoid \
     --requirements "$STAGING_DIR/requirements.txt" \
     "$STAGING_DIR/$WHEEL_NAME"
+"$UV_BIN" run --no-project --python "$INSTALL_DIR/.venv/bin/python" \
+    python -m humanoid.utils.model_install "$STAGING_DIR/$WHEEL_NAME" --uv "$UV_BIN"
 ln -sfn .venv/bin/start "$INSTALL_DIR/start"
 
 cp "$STAGING_DIR/humanoid.service.template" "$STAGING_DIR/humanoid.service"

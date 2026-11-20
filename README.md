@@ -143,6 +143,8 @@ Package the current local code and deploy it to `/opt/humanoid`:
 ```
 
 This installs locked dependencies, enables `humanoid.service`, and restarts the web console.
+Prepared model environments listed in `src/humanoid/config/deployment.py` receive the same
+Humanoid wheel with `--no-deps`, preserving their CUDA dependencies; missing environments are skipped.
 The robot needs no source checkout. The stack remains stopped until started from the UI.
 Deployment may prompt for `sudo`; use `--dry-run` to build without deploying. Override the
 defaults with `HUMANOID_ROBOT_HOST` and `HUMANOID_ROBOT_DIR`.
