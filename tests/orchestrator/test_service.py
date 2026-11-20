@@ -878,3 +878,17 @@ def test_camera_monitor_is_lazy_reset_on_configuration_change_and_closed(monkeyp
     camera.reset.assert_called_once()
     service.close()
     camera.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "runtime,stack,replay",
+    [(Runtime.SIM, True, False), (Runtime.REAL, False, False), (Runtime.REAL, True, True)],
+)
+def test_hardware_observation_requires_live_hardware(runtime, stack, replay):
+    service, manager, client, _ = _make_service(stack=stack)
+    manager.runtime = runtime
+    manager.status.return_value = _all_processes(stack=stack, replay=replay)
+    with pytest.raises(OrchestratorError):
+        service.hardware_observation()
+    manager.start.assert_not_called()
+    assert client.method_calls == []

@@ -75,7 +75,7 @@ def install(checkout: Path) -> None:
         raise ValueError("RAX launcher has local edits; refusing to overwrite them.")
     changes[launcher] = launcher_expected
     package = checkout / "services/humanoid"
-    for name in ("__init__.py", "tools.py", "backend.py", "benchmark.py"):
+    for name in ("__init__.py", "tools.py", "backend.py", "contact_preview.py", "benchmark.py"):
         contents = (
             Path(__file__)
             .with_name(name)

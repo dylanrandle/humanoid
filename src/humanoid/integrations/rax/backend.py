@@ -12,7 +12,7 @@ import urllib.request
 from typing import override
 from urllib.parse import urlsplit
 
-from humanoid.integrations.rax.tools import tool_definitions, validate_request
+from humanoid.integrations.rax.tools import simulation_tools, validate_request
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -37,7 +37,7 @@ class HumanoidBackend:
         self._active = False
 
     def tools(self) -> list[dict]:
-        return tool_definitions()
+        return simulation_tools()
 
     @staticmethod
     def validate(name: str, arguments: dict) -> None:

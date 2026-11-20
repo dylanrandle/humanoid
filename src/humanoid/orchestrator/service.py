@@ -33,8 +33,10 @@ from humanoid.orchestrator.monitor.host import HostResourceMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
+from humanoid.orchestrator.monitor.observation import hardware_snapshot
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
+from humanoid.robots.base import Robot
 from humanoid.types.camera import CameraPreviewSnapshot
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import ApplicationLogSnapshot
@@ -102,6 +104,8 @@ class OrchestratorService:
         self._parameterized_request_at: float | None = None
         self._parameterized_mode_seen = False
         self._handled_stack_failure: ProcessStatus | None = None
+        self._snapshot_lock = threading.Lock()
+        self._snapshot_robot: Robot | None = None
         self._camera_monitor: CameraPreviewMonitor | None = None
         self._autonomy_manager: AutonomyManager | None = None
 
@@ -153,6 +157,33 @@ class OrchestratorService:
                 self._camera_monitor = CameraPreviewMonitor()
             monitor = self._camera_monitor
         return monitor.snapshot(depth_far)
+
+    def hardware_observation(self) -> dict:
+        def require_live_stack() -> None:
+            with self._lock:
+                if (
+                    self.node_manager.runtime is not Runtime.REAL
+                    or self.node_manager.robot != RobotName.TRISKEL
+                ):
+                    raise OrchestratorError(
+                        "Select the real Triskel stack for hardware observations."
+                    )
+                processes = self.node_manager.status()
+                if (
+                    not processes[ProcessName.STACK].running
+                    or processes[ProcessName.REPLAY].running
+                ):
+                    raise OrchestratorError(
+                        "Start the live hardware stack for hardware observations."
+                    )
+
+        with self._snapshot_lock:
+            require_live_stack()
+            if self._snapshot_robot is None:
+                self._snapshot_robot = Robot(ROBOT_CONFIGS[RobotName.TRISKEL])
+            snapshot = hardware_snapshot(self._snapshot_robot)
+            require_live_stack()
+            return snapshot
 
     def _reset_camera_previews(self) -> None:
         if self._camera_monitor is not None:

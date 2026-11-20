@@ -105,6 +105,10 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
         cursor = parse_application_log_cursor(request.args.get("after"))
         return jsonify(orchestrator_service.application_logs(cursor))
 
+    @app.get(ApiRoute.HARDWARE_OBSERVATION)
+    def hardware_observation():
+        return jsonify(orchestrator_service.hardware_observation())
+
     @app.get(ApiRoute.CAMERA_PREVIEWS)
     def camera_previews():
         try:

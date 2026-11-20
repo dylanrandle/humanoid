@@ -1,11 +1,22 @@
 """Import-light MCP schemas shared by RAX and the trusted execution service."""
 
+import os
+
+CONTACT_PREVIEW_TASK = "toy_car_contact_preview"
+
+
+def tool_definitions() -> list[dict]:
+    """The pinned RAX discovery hook receives no config. Each runner hosts one task."""
+    if os.environ.get("HUMANOID_RAX_TASK") == CONTACT_PREVIEW_TASK:
+        return contact_preview_tools()
+    return simulation_tools()
+
 
 def _vector(length: int) -> dict:
     return {"type": "array", "minItems": length, "maxItems": length, "items": {"type": "number"}}
 
 
-def tool_definitions() -> list[dict]:
+def simulation_tools() -> list[dict]:
     duration = {"type": "number", "exclusiveMinimum": 0, "maximum": 2, "default": 1}
     specs = (
         ("status", "Measured robot state and tool limits. No scene ground truth.", {}, []),
@@ -65,7 +76,7 @@ def tool_definitions() -> list[dict]:
 
 
 def validate_request(name: str, arguments: dict) -> None:
-    schemas = {tool["name"]: tool["inputSchema"] for tool in tool_definitions()}
+    schemas = {tool["name"]: tool["inputSchema"] for tool in simulation_tools()}
     if not isinstance(name, str) or name not in schemas:
         raise ValueError(f"Unknown tool {name!r}.")
     schema = schemas[name]
@@ -75,3 +86,36 @@ def validate_request(name: str, arguments: dict) -> None:
         or set(schema["required"]) - arguments.keys()
     ):
         raise ValueError("Missing or unsupported tool arguments.")
+
+
+def contact_preview_tools() -> list[dict]:
+    tools = [t for t in simulation_tools() if t["name"] in {"humanoid_observe", "humanoid_status"}]
+    tools.append(
+        {
+            "name": "humanoid_mark_contacts",
+            "description": (
+                "Save two proposed finger contacts on the latest native RGB image for "
+                "operator review. Coordinates are integer [u, v] pixels with top-left origin."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "observation_id": {"type": "string"},
+                    "contacts": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {"type": "integer"},
+                        },
+                    },
+                },
+                "required": ["observation_id", "contacts"],
+                "additionalProperties": False,
+            },
+        }
+    )
+    return tools

@@ -61,6 +61,7 @@ export const ApiRoute = Object.freeze({
   ROOT: "/api",
   STATUS: "/api/status",
   APPLICATION_LOGS: "/api/application-logs",
+  HARDWARE_OBSERVATION: "/api/hardware/observation",
   CAMERA_PREVIEWS: "/api/camera-previews",
   RUNTIME: "/api/runtime",
   ROBOT: "/api/robot",

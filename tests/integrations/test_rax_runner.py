@@ -186,3 +186,16 @@ def test_replay_rejects_invalid_source_before_creating_run(local_runner, saved_c
             destination, "toy_car_cleanup", source, seed=-1 if problem == "seed" else 0
         )
     assert not destination.exists()
+
+
+def test_contact_preview_uses_read_only_endpoint_and_single_formal_run(local_runner):
+    directory = local_runner / "preview"
+    runner.prepare_run(directory, runner.CONTACT_PREVIEW_TASK)
+    command = runner.docker_command(directory, "preview", prepare_only=False)
+    assert f"HUMANOID_RAX_TASK={runner.CONTACT_PREVIEW_TASK}" in command
+    assert "HUMANOID_OBSERVATION_ENDPOINT" in command
+    assert not any(
+        arg.startswith(("HUMANOID_RAX_TOKEN", "HUMANOID_RAX_ENDPOINT")) for arg in command
+    )
+    config = json.loads((directory / "input.json").read_text())
+    assert config["formal_episodes"] == 1

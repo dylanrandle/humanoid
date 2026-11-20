@@ -3,7 +3,8 @@
 from pathlib import Path
 
 from .backend import HumanoidBackend
-from .tools import tool_definitions
+from .contact_preview import ContactPreviewBackend
+from .tools import CONTACT_PREVIEW_TASK, tool_definitions
 
 
 def registration(benchmark_type):
@@ -56,11 +57,13 @@ def registration(benchmark_type):
 
 def backend(config):
     validate_config(config)
+    if config.task == CONTACT_PREVIEW_TASK:
+        return ContactPreviewBackend(config)
     return HumanoidBackend(config)
 
 
 def task_names():
-    return ("toy_car_cleanup",)
+    return ("toy_car_cleanup", CONTACT_PREVIEW_TASK)
 
 
 def task_timeouts(task):
@@ -106,6 +109,23 @@ def exploration_seeds(task, collection, start, episodes, **_):
 
 def task_context(config, demonstration, *, live_formal):
     task_timeouts(config.task)
+    if config.task == CONTACT_PREVIEW_TASK:
+        return (
+            "# Propose finger contacts on a real toy car\n\n"
+            "Triskel is stationary. Inspect a fresh humanoid_observe result and choose your "
+            "own method to identify the car and propose one finger contact on each side. "
+            "RGB and depth are native, unaligned images. Each attachment has its own "
+            "intrinsics, distortion, depth scale, optical-to-base pose, and frame number. "
+            "Use RGB pixel coordinates [u,v] from the full resolution color image.\n\n"
+            "Write reusable code under code/ with controller.py:main(ctx). The program "
+            "must take a fresh observation on every execution, compute its own contacts, "
+            "and call humanoid_mark_contacts(observation_id, contacts) on that observation. "
+            "Never hardcode scene pixels. If the car is absent or contacts are ambiguous, "
+            "explain why and abstain. Rehearse and submit the bundle so the operator can "
+            "replay it after repositioning the car. The operator reviews physical plausibility. "
+            "The automatic score only records delivery of a frame-linked overlay. "
+            "Episode boundaries attach to the current scene; seeds do not move the robot.\n"
+        )
     return (
         "# Toy car cleanup\n\n"
         "Search the entire room for toy cars. Pick up each car individually, carry it to the "

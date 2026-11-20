@@ -9,10 +9,10 @@ import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
-import pinocchio as pin
 from PIL import Image
 
-from humanoid.integrations.rax.tools import tool_definitions, validate_request
+from humanoid.integrations.rax.tools import simulation_tools, validate_request
+from humanoid.remote_control.observation import measured_geometry, optical_to_base
 from humanoid.types.autonomy import EpisodeLifecycle, RobotExecution
 
 if TYPE_CHECKING:
@@ -47,7 +47,7 @@ class RealtimeSession:
         return self.call("humanoid_status", {})
 
     def tools(self) -> list[dict]:
-        return tool_definitions()
+        return simulation_tools()
 
     def status(self) -> dict:
         execution = self.execution
@@ -55,8 +55,7 @@ class RealtimeSession:
             return {"active": False, "task": self.task_name, "episode_id": self.episode_id}
         state = execution.state()
         robot = execution.robot
-        tool = robot.get_tool_command_pose(state.joint_positions).copy()
-        base = robot.get_base_pose(state.joint_positions)
+        geometry = measured_geometry(robot, state)
         return {
             "active": True,
             "runtime": "sim",
@@ -64,22 +63,20 @@ class RealtimeSession:
             "episode_id": self.episode_id,
             "step_id": execution.step_id,
             "limits": asdict(execution.config),
-            "tool_velocity_limits": asdict(robot.config.tool.velocity_limits),
+            "tool_velocity_limits": geometry["tool_velocity_limits"],
             "base_velocity_limits": (
                 asdict(robot.config.base.velocity_limits) if robot.config.base else None
             ),
-            "tool_frame": robot.config.tool.frame,
-            "gripper_limits": robot.get_gripper_limits(),
+            "tool_frame": geometry["tool_frame"],
+            "gripper_limits": geometry["gripper_limits"],
             "state": {
                 "timestamp": state.timestamp,
                 "joint_positions": state.joint_positions.tolist(),
-                "gripper_positions": state.joint_positions[
-                    robot.get_gripper_position_indices()
-                ].tolist(),
+                "gripper_positions": geometry["gripper_positions"],
                 "joint_velocities": state.joint_velocities.tolist(),
                 "arm_joints": self._arm_joint_state(robot, state),
-                "tool_pose_base": self._pose(tool),
-                "base_pose_world": None if base is None else self._pose(base),
+                "tool_pose_base": geometry["tool_pose_base"],
+                "base_pose_world": geometry["base_pose_world"],
             },
             "localization": "robot_state_base_pose",
             "camera_frames": "native_unaligned",
@@ -102,13 +99,6 @@ class RealtimeSession:
                 "upper_position_limit": upper if joint.nq == 1 and math.isfinite(upper) else None,
             }
         return joints
-
-    @staticmethod
-    def _pose(pose: pin.SE3) -> dict:
-        return {
-            "position": pose.translation.tolist(),
-            "quaternion_xyzw": pin.Quaternion(pose.rotation).coeffs().tolist(),
-        }
 
     def call(self, name: str, arguments: dict) -> tuple[dict, list[dict]]:
         validate_request(name, arguments)
@@ -137,17 +127,13 @@ class RealtimeSession:
                     "data": base64.b64encode(output.getvalue()).decode("ascii"),
                 }
             )
-            pose = robot.get_frame_pose(frame.frame_id, state.joint_positions).copy()
-            base = robot.get_base_pose(state.joint_positions)
-            if base is not None:
-                pose = base.inverse() * pose
             metadata.append(
                 {
                     "kind": name,
                     "content_index": len(images),
                     "frame_id": frame.frame_id,
                     "intrinsics": asdict(frame.intrinsics),
-                    "optical_to_base": self._pose(pose),
+                    "optical_to_base": optical_to_base(robot, state, frame.frame_id),
                     "encoding": frame.encoding.value,
                     "depth_scale": frame.depth_scale,
                     "timestamp": frame.timestamp,

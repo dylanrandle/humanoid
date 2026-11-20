@@ -22,6 +22,7 @@ from humanoid.config.rax import (
     RAX_MODEL,
 )
 from humanoid.integrations.rax.install import RAX_REVISION, install
+from humanoid.integrations.rax.tools import CONTACT_PREVIEW_TASK
 from humanoid.utils.paths import find_data_root, find_repo_root
 
 
@@ -73,10 +74,12 @@ def configuration(task: str) -> dict:
         "task": task,
         "benchmark": "humanoid",
         "sim_gpu": "external",
-        "exploration_seeds": list(RAX_EXPLORATION_SEEDS),
+        "exploration_seeds": [0, 1]
+        if task == CONTACT_PREVIEW_TASK
+        else list(RAX_EXPLORATION_SEEDS),
         "formal_seed": RAX_FORMAL_SEED,
         "eval_seed": 0,
-        "formal_episodes": RAX_FORMAL_EPISODES,
+        "formal_episodes": 1 if task == CONTACT_PREVIEW_TASK else RAX_FORMAL_EPISODES,
         "formal_workers": 1,
         "exploration_envs": 1,
         "subagents": 0,
@@ -113,7 +116,7 @@ def prepare_run(directory: Path, task: str, *, adapt_from: Path | None = None) -
         )
         seed = max(original["exploration_seeds"]) + 1
         seeds = []
-        while len(seeds) < len(RAX_EXPLORATION_SEEDS):
+        while len(seeds) < len(config["exploration_seeds"]):
             if seed not in held_out:
                 seeds.append(seed)
             seed += 1
@@ -154,14 +157,21 @@ def docker_command(
         f"type=bind,source={directory},target=/home/rax/runtime",
         "--env",
         "HOME=/home/rax/runtime/operator",
-        "--env",
-        "HUMANOID_RAX_TOKEN",
-        "--env",
-        "HUMANOID_RAX_ENDPOINT="
-        + os.environ.get(
-            "HUMANOID_RAX_ENDPOINT", "http://host.docker.internal:8765/api/autonomy/rpc"
-        ),
     ]
+    task = json.loads((directory / "input.json").read_text())["task"]
+    command += ["--env", f"HUMANOID_RAX_TASK={task}"]
+    if task == CONTACT_PREVIEW_TASK:
+        command += ["--env", "HUMANOID_OBSERVATION_ENDPOINT"]
+    else:
+        command += [
+            "--env",
+            "HUMANOID_RAX_TOKEN",
+            "--env",
+            "HUMANOID_RAX_ENDPOINT="
+            + os.environ.get(
+                "HUMANOID_RAX_ENDPOINT", "http://host.docker.internal:8765/api/autonomy/rpc"
+            ),
+        ]
     if replay.is_file():
         selection = json.loads(replay.read_text())
         source = Path(selection["trial"]).resolve(strict=True)
@@ -401,11 +411,20 @@ def main() -> None:
         "--adapt-from", type=Path, help="Transfer a finished run into a new RAX trial"
     )
     parser.add_argument(
-        "--replay-from", type=Path, help="Run a saved controller in simulation without a model"
+        "--replay-from",
+        type=Path,
+        help="Run a saved controller for the selected task without a model",
     )
     parser.add_argument("--bundle", help="Registered bundle ID to replay; defaults to submission")
     parser.add_argument("--seed", type=int, default=0, help="Simulation layout seed for replay")
+    parser.add_argument(
+        "--contact-preview",
+        action="store_true",
+        help="Run the read-only toy car contact trial against the forwarded hardware dashboard",
+    )
     args = parser.parse_args()
+    if args.contact_preview:
+        os.environ["HUMANOID_RAX_TASK"] = CONTACT_PREVIEW_TASK
     if args.replay_from and (args.resume or args.adapt_from or args.prepare_only):
         parser.error("Replay cannot be combined with resume, adaptation, or prepare-only.")
     if (args.bundle is not None or args.seed != 0) and args.replay_from is None:

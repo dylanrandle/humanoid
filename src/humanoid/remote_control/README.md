@@ -65,3 +65,12 @@ Python callers can use `RemoteControlClient` from `humanoid.remote_control.clien
 with a `RemoteControlEndpoint`. `execute()` waits on the calling thread while the
 policy runs independently. RAX is one adapter of this general interface. Task
 setup, learning runs, and evaluation remain in the RAX/operator integration.
+
+The Jetson operator console also serves `GET /api/hardware/observation` for
+read-only clients attached to a running real Triskel stack. This route works
+in Idle mode. It returns measured state, tool pose, gripper limits and a paired
+native RGB-D snapshot with separate intrinsics, optical-to-base transforms,
+frame numbers, timestamps, depth scale and lossless PNGs. Use the console SSH
+tunnel. A stopped stack, replay, simulation, or missing fresh data returns HTTP
+409. The [read-only RAX trial](../../../deploy/rax/README.md#read-only-trial-on-the-real-triskel)
+uses this same endpoint.

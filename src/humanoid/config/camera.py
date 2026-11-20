@@ -2,6 +2,8 @@
 
 from humanoid.types.camera import CameraPreviewConfig, RealSenseCameraConfig, SimulatedCameraConfig
 
+HARDWARE_SNAPSHOT_MAX_AGE_SECONDS = 0.5
+
 REALSENSE_CAMERA_CONFIG = RealSenseCameraConfig(
     width=640,
     height=480,

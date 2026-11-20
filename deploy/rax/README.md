@@ -75,3 +75,48 @@ so RAX can construct its nested namespaces. Other default syscall restrictions
 remain in place. `systempaths=unconfined` lets bubblewrap mount a private proc
 filesystem; the kernel still enforces the non-root user's permissions.
 These settings apply only to this runner container, not to Docker globally.
+
+## Read-only trial on the real Triskel
+
+Place one toy car in view of the D435. Use the Jetson dashboard from this
+revision (install with `./scripts/deploy` while the stack is stopped), select
+Triskel and Real, and start the hardware stack. Idle mode is
+sufficient. On the Mac, start `./scripts/forward-ports` for the Jetson (set
+`HUMANOID_ROBOT_HOST` if its SSH alias differs from `triskel`). The existing
+**Start autonomy** button runs simulation tasks. Launch the hardware trial
+from a second Mac terminal:
+
+```sh
+uv run python -m humanoid.integrations.rax.runner --build
+uv run python -m humanoid.integrations.rax.runner --contact-preview
+```
+
+Rebuild the runner once to install the new adapter. The trusted backend reads
+`GET /api/hardware/observation` over the dashboard tunnel. Docker Desktop uses
+`http://host.docker.internal:8765/api/hardware/observation` by default.
+Set `HUMANOID_OBSERVATION_ENDPOINT` for a different forwarded port. To test the
+live feed first, run this on the Mac:
+
+```sh
+curl -fsS http://localhost:8765/api/hardware/observation | jq '{runtime, robot, rgb: .frames.rgb.frame_number, depth: .frames.depth.frame_number, tool: .state.tool_pose_base}'
+```
+
+RAX sees native RGB and depth, calibration and measured robot state. Its
+program chooses the two contact pixels and reports them against the RGB
+observation ID. The three tools are `humanoid_observe`, `humanoid_status` (state
+at the last observation) and `humanoid_mark_contacts`. The Jetson receives only
+snapshot GET requests. Starting, stopping and replaying this trial leaves robot
+control with the operator. Each observation reads the current scene. A new
+episode does not physically reposition the car.
+
+Open `trial/contact-previews/<episode_id>/contacts.png` under the run directory
+printed by the launcher. The original RGB, native depth and `contacts.json`
+are alongside it. The JSON records the pixels, observation ID, frame metadata
+and measured state. An accepted report means an overlay was saved. Inspect
+whether the marked contacts lie on opposing sides of the intended car.
+The registered program is under `trial/bundles/`. To try the same program
+on a different placement without a model call:
+
+```sh
+uv run python -m humanoid.integrations.rax.runner --contact-preview --replay-from /absolute/path/to/the/run
+```
