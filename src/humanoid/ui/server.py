@@ -117,6 +117,20 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
             raise ApiError("Invalid depth preview range.", HTTPStatus.BAD_REQUEST)
         return jsonify(orchestrator_service.camera_previews(depth_far))
 
+    @app.post(ApiRoute.PICK_RUN)
+    def run_pick():
+        payload = _json_payload()
+        description = payload.get("object")
+        if not isinstance(description, str) or not any(c.isalnum() for c in description):
+            raise ApiError("Enter an object name or description.", HTTPStatus.BAD_REQUEST)
+        return _success(
+            orchestrator_service.run_pick(description.strip(), _safety_context(payload))
+        )
+
+    @app.post(ApiRoute.PICK_CANCEL)
+    def cancel_pick():
+        return _success(orchestrator_service.cancel_pick())
+
     @app.post(ApiRoute.RUNTIME)
     def set_runtime():
         payload = _json_payload()

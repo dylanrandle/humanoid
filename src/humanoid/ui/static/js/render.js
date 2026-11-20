@@ -9,6 +9,7 @@ import {
   Runtime,
   TELEOP_PROCESSES,
 } from "./constants.js";
+import { renderPick } from "./pick.js";
 import { renderHostResources } from "./host.js";
 
 export function render(snapshot, busy, elements) {
@@ -72,6 +73,7 @@ export function render(snapshot, busy, elements) {
   for (const name of TELEOP_PROCESSES) {
     renderProcess(name, processes[name], controlsReady, busy, elements);
   }
+  renderPick(snapshot, busy, elements.pick);
   renderLogging(snapshot.logging, controlsReady, busy, elements);
   renderReplay(snapshot, anyRunning, replayActive, busy, elements);
   renderOrchestrator(
@@ -522,6 +524,12 @@ export function renderDisconnected(
   message = "Check the start process",
   elements,
 ) {
+  if (elements.pick) {
+    for (const key of ["process", "object", "run", "cancel"])
+      elements.pick[key].disabled = true;
+    elements.pick.status.textContent = "Operator console disconnected";
+  }
+
   renderHostResources(null, elements.hostResources);
   elements.systemState.classList.remove("online");
   elements.systemStateLabel.textContent = "Console disconnected";

@@ -244,6 +244,7 @@ def test_serializes_orchestrator_status_dataclass(server_client):
 
     assert response.status_code == HTTPStatus.OK
     assert response.json == {
+        "pick": None,
         "runtime": "sim",
         "host_resources": {
             "cpu_percent": 25.0,
@@ -570,3 +571,28 @@ def test_rejects_invalid_preview_range(server_client, value):
     response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far={value}")
     assert response.status_code == HTTPStatus.BAD_REQUEST
     service.camera_previews.assert_not_called()
+
+
+def test_pick_run_forwards_prompt_and_safety_context(server_client):
+    service, client = server_client
+    service.run_pick.return_value = {"runtime": Runtime.SIM}
+    response = client.post(
+        ApiRoute.PICK_RUN, json={"object": "  red toy car  ", **_safety_payload()}
+    )
+    assert response.status_code == HTTPStatus.OK
+    service.run_pick.assert_called_once_with("red toy car", _safety_context())
+
+
+@pytest.mark.parametrize("description", [None, " ", "...", [], {}])
+def test_pick_rejects_invalid_object_before_starting(server_client, description):
+    service, client = server_client
+    response = client.post(ApiRoute.PICK_RUN, json={"object": description, **_safety_payload()})
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    service.run_pick.assert_not_called()
+
+
+def test_pick_cancel_route(server_client):
+    service, client = server_client
+    service.cancel_pick.return_value = {"runtime": Runtime.SIM}
+    assert client.post(ApiRoute.PICK_CANCEL, json={}).status_code == HTTPStatus.OK
+    service.cancel_pick.assert_called_once_with()

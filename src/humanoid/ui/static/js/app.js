@@ -22,6 +22,7 @@ import {
   robotRequest,
   runtimeRequest,
 } from "./requests.js";
+import { bindPick } from "./pick.js";
 import { showToast } from "./toast.js";
 
 const state = {
@@ -87,6 +88,10 @@ async function perform(key, action) {
     refresh,
   });
 }
+
+bindPick(state, els.pick, perform, post, () =>
+  render(state.snapshot, state.busy, els),
+);
 
 els.runtimeButtons.forEach((button) => {
   button.addEventListener("click", () => {

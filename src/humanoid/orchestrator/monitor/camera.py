@@ -1,14 +1,11 @@
 """Latest-frame camera previews for the browser, separate from control telemetry."""
 
-import base64
-import io
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import replace
 
 import numpy as np
-from PIL import Image
 
 from humanoid.config.camera import CAMERA_PREVIEW_CONFIG
 from humanoid.constants import Topic
@@ -20,6 +17,7 @@ from humanoid.types.camera import (
     CameraPreviewConfig,
     CameraPreviewSnapshot,
 )
+from humanoid.utils.camera_preview import colorize_depth, encode_preview
 
 
 class CameraPreviewMonitor:
@@ -75,36 +73,11 @@ class CameraPreviewMonitor:
             pixels = (
                 frame.data if frame.encoding is CameraEncoding.RGB8 else self._colorize_depth(frame)
             )
-            image = Image.fromarray(pixels)
-            image.thumbnail((self._config.max_width, self._config.max_width))
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=self._config.jpeg_quality)
-            encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-            self._previews[topic] = CameraPreview(
-                connected=True,
-                image=f"data:image/jpeg;base64,{encoded}",
-                width=frame.intrinsics.width,
-                height=frame.intrinsics.height,
-                frame_id=frame.frame_id,
-                frame_number=frame.frame_number,
-            )
+            self._previews[topic] = encode_preview(frame, pixels, self._config)
         return replace(self._previews[topic], age_seconds=age)
 
     def _colorize_depth(self, frame: CameraImage) -> np.ndarray:
-        meters = frame.data.astype(np.float32) * frame.depth_scale
-        distance = np.clip(
-            (meters - self._config.depth_near_meters)
-            / (self._depth_far - self._config.depth_near_meters),
-            0,
-            1,
-        )
-        # Amber (near) -> teal -> blue (far). CSS legend uses the same stops.
-        palette = np.array([[248, 196, 66], [49, 184, 186], [51, 71, 169]])
-        colors = np.stack(
-            [np.interp(distance, [0, 0.5, 1], channel) for channel in palette.T], axis=-1
-        ).astype(np.uint8)
-        colors[frame.data == 0] = 0
-        return colors
+        return colorize_depth(frame, self._config.depth_near_meters, self._depth_far)
 
     def reset(self) -> None:
         with self._lock:

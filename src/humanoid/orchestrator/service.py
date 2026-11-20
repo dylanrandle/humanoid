@@ -4,9 +4,11 @@ import contextlib
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.application_logging import get_application_log_path
+from humanoid.config.pick import PICK_CONTROL_SOCKET
 from humanoid.logger import get_logger
 from humanoid.nodes.groups import process_display_name
 from humanoid.nodes.manager import NodeManager, NodeManagerError
@@ -32,6 +34,7 @@ from humanoid.orchestrator.monitor.host import HostResourceMonitor
 from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
+from humanoid.orchestrator.pick import PickClient
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.camera import CameraPreviewSnapshot
@@ -46,6 +49,7 @@ from humanoid.types.orchestrator import (
     OrchestratorStatus,
     SafetyContext,
 )
+from humanoid.types.pick import PickPhase, PickStatus
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import ReplayOutcome, ReplayStatus
 from humanoid.types.robot import RobotName
@@ -102,6 +106,7 @@ class OrchestratorService:
         self._parameterized_mode_seen = False
         self._handled_stack_failure: ProcessStatus | None = None
         self._camera_monitor: CameraPreviewMonitor | None = None
+        self.pick_client = PickClient(PICK_CONTROL_SOCKET)
 
     def status(self) -> OrchestratorStatus:
         with self._lock:
@@ -134,6 +139,14 @@ class OrchestratorService:
                 recordings=self.recording_catalog.list(),
                 replay=replay,
                 orchestrator=orchestrator,
+                pick=(
+                    self.pick_client.status()
+                    if processes.get(ProcessName.PICK) is not None
+                    and processes[ProcessName.PICK].running
+                    else PickStatus(
+                        phase=PickPhase.READY, message="Start the pick policy to load models"
+                    )
+                ),
             )
 
     def application_logs(self, after: int | None = None) -> ApplicationLogSnapshot:
@@ -144,7 +157,12 @@ class OrchestratorService:
             if self._camera_monitor is None:
                 self._camera_monitor = CameraPreviewMonitor()
             monitor = self._camera_monitor
-        return monitor.snapshot(depth_far)
+            pick = self.node_manager.status().get(ProcessName.PICK)
+            pick_running = pick is not None and pick.running
+        snapshot = monitor.snapshot(depth_far)
+        if not pick_running:
+            return snapshot
+        return replace(snapshot, inference=self.pick_client.preview(depth_far))
 
     def _reset_camera_previews(self) -> None:
         if self._camera_monitor is not None:
@@ -192,6 +210,11 @@ class OrchestratorService:
             else:
                 self.actuator_health_monitor.reset()
                 self._reset_camera_previews()
+            if (
+                process_name is ProcessName.PICK
+                and self.node_manager.robot is not RobotName.TRISKEL
+            ):
+                raise OrchestratorError("Pickup is configured for Triskel")
             self._run_manager_action(lambda: self.node_manager.start(process_name))
             return self.status()
 
@@ -237,6 +260,33 @@ class OrchestratorService:
             }
             mode_requests[request.mode]()
             self._clear_parameterized_request()
+            return self.status()
+
+    def run_pick(self, description: str, safety: SafetyContext) -> OrchestratorStatus:
+        with self._lock:
+            current = self.status()
+            self._require_expected_configuration(safety)
+            self._require_ready_stack(current)
+            if self.node_manager.runtime is Runtime.REAL:
+                self._require_real_hardware_acknowledgement(safety)
+            if not current.processes[ProcessName.PICK].running:
+                raise OrchestratorError("Start the pick policy first")
+            if current.orchestrator.mode is not Mode.IDLE:
+                raise OrchestratorError("Select Idle before running pickup")
+            try:
+                self.pick_client.run(description)
+            except (OSError, RuntimeError, ValueError) as error:
+                raise OrchestratorError(str(error)) from error
+            return self.status()
+
+    def cancel_pick(self) -> OrchestratorStatus:
+        with self._lock:
+            try:
+                self.pick_client.cancel()
+            except (OSError, RuntimeError) as error:
+                raise OrchestratorError(str(error)) from error
+            if self.mode_monitor.snapshot().mode is Mode.SYSTEM:
+                self.orchestrator_client.request_idle()
             return self.status()
 
     def set_logging(self, action: ProcessAction) -> OrchestratorStatus:

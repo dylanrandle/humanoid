@@ -258,3 +258,32 @@ footer {
   background: var(--danger);
   font-weight: 850;
 }
+
+.pick-panel {
+  margin-top: 24px;
+}
+.pick-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.pick-form label {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.pick-form input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+}
+.pick-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pick-actions .primary-action {
+  width: auto;
+  min-width: 130px;
+}

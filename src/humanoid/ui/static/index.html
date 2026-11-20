@@ -300,6 +300,55 @@
           </section>
         </div>
 
+        <section class="panel pick-panel" aria-labelledby="pick-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Autonomy</p>
+              <h2 id="pick-heading">Pick an object</h2>
+            </div>
+            <button
+              id="pick-process"
+              class="secondary-action"
+              type="button"
+              disabled
+            >
+              Start pick policy
+            </button>
+          </div>
+          <p id="pick-status" class="panel-footnote" aria-live="polite">
+            Start the pick policy to load models.
+          </p>
+          <form id="pick-form" class="pick-form">
+            <label for="pick-object">Object to pick</label>
+            <input
+              id="pick-object"
+              type="text"
+              placeholder="e.g. red toy car"
+              maxlength="256"
+              autocomplete="off"
+              disabled
+            />
+            <div class="pick-actions">
+              <button
+                id="pick-run"
+                class="primary-action"
+                type="submit"
+                disabled
+              >
+                Run pick
+              </button>
+              <button
+                id="pick-cancel"
+                class="secondary-action"
+                type="button"
+                disabled
+              >
+                Cancel pick
+              </button>
+            </div>
+          </form>
+        </section>
+
         <section
           class="panel camera-panel"
           id="camera-panel"
@@ -310,6 +359,10 @@
               <p class="eyebrow">04 · Perception</p>
               <h2 id="camera-heading">Camera views</h2>
             </div>
+            <label class="camera-range">
+              <input id="camera-model-overlays" type="checkbox" checked />
+              Model overlays
+            </label>
             <label class="camera-range" for="camera-depth-range">
               Depth scale
               <select id="camera-depth-range">
@@ -320,6 +373,14 @@
               </select>
             </label>
           </div>
+          <p
+            class="camera-model-summary"
+            id="camera-model-summary"
+            aria-live="polite"
+          >
+            Model overlays appear after running pickup. Live images shown until
+            results arrive.
+          </p>
           <div class="camera-grid">
             <figure class="camera-view">
               <figcaption>

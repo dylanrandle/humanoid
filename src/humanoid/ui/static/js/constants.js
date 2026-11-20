@@ -11,6 +11,7 @@ export const ProcessName = Object.freeze({
   REPLAY: "replay",
   KEYBOARD: "keyboard",
   OCULUS: "oculus",
+  PICK: "pick",
 });
 
 export const ProcessAction = Object.freeze({
@@ -66,6 +67,8 @@ export const ApiRoute = Object.freeze({
   LOGGING: "/api/logging/<action>",
   REPLAY: "/api/replay/<action>",
   ORCHESTRATOR: "/api/orchestrator",
+  PICK_RUN: "/api/pick/run",
+  PICK_CANCEL: "/api/pick/cancel",
 });
 
 export const BusyKey = Object.freeze({

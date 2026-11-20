@@ -37,6 +37,18 @@
   background: var(--danger-soft);
 }
 
+.camera-view .mini-status.inference {
+  color: #80520a;
+  background: #fff1cf;
+}
+
+.camera-model-summary {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
 .camera-image-area {
   display: grid;
   place-items: center;

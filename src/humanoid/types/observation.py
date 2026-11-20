@@ -13,3 +13,4 @@ class Observation:
     robot_base_command: RobotBaseCommand | None = None
     mode: Mode | None = None
     camera_frames: CameraFrames | None = None
+    mode_timestamp: float | None = None

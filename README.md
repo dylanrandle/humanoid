@@ -87,6 +87,17 @@ use simulation there; the real camera driver intentionally fails.
 Linux needs USB permissions. Python 3.12 uses the official ARM64 wheel on Raspberry Pi.
 See [camera setup and message format](src/humanoid/hardware/cameras/README.md).
 
+### Camera-guided object pickup
+
+Start the stack, then click **Start pick policy** in the UI. This loads and warms
+YOLOE-26S segmentation and GraspGenX once. When models are ready, enter an object
+such as "red toy car" and click **Run pick**. **Cancel pick** or a control-mode change
+stops the task; **Stop pick policy** also unloads the models.
+
+Pickup uses native depth, geometric gripper-width estimation and the existing LCM
+controller. Grasp generation requires Linux/CUDA. See [model serving setup](src/humanoid/serving/README.md)
+and [pickup geometry and limits](src/humanoid/manipulation/README.md).
+
 ### Controller Tracking Diagnostic
 
 Run the diagnostic with the main stack in **Idle**:

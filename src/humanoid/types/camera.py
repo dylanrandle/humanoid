@@ -161,8 +161,21 @@ class CameraPreview:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CameraInferencePreview:
+    """Annotated source frames, never annotations over unrelated live images."""
+
+    rgb: CameraPreview
+    depth: CameraPreview
+    object_description: str
+    mask_count: int
+    grasp_count: int
+    selected: bool
+
+
+@dataclass(frozen=True, kw_only=True)
 class CameraPreviewSnapshot:
     rgb: CameraPreview
     depth: CameraPreview
     depth_near_meters: float
     depth_far_meters: float
+    inference: CameraInferencePreview | None = None

@@ -103,6 +103,7 @@ class RealtimeEnvironment(Environment):
         self._last_tool_command: RobotToolCommand | None = None
         self._last_base_command: RobotBaseCommand | None = None
         self._last_mode: Mode | None = None
+        self._mode_timestamp: float | None = None
         self._rgb: CameraImage | None = None
         self._depth: CameraImage | None = None
         self._camera_frames: CameraFrames | None = None
@@ -248,6 +249,7 @@ class RealtimeEnvironment(Environment):
         mode_msg = self.subscriber.receive(Topic.ORCHESTRATOR_MODE, timeout=timeout_ms)
         if mode_msg is not None:
             self._last_mode = mode_msg.mode
+            self._mode_timestamp = mode_msg.timestamp
 
         return Observation(
             robot_state=self._last_robot_state,
@@ -255,6 +257,7 @@ class RealtimeEnvironment(Environment):
             robot_tool_command=self._last_tool_command,
             robot_base_command=self._last_base_command,
             mode=self._last_mode,
+            mode_timestamp=self._mode_timestamp,
             camera_frames=self._read_camera_frames(),
         )
 

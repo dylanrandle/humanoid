@@ -16,6 +16,7 @@ from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.orchestrator.service import OrchestratorService
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.actuator import ActuatorHealthStatus
+from humanoid.types.camera import CameraInferencePreview, CameraPreview, CameraPreviewSnapshot
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import (
     ApplicationLogEntry,
@@ -59,6 +60,7 @@ def _all_processes(
         ProcessName.REPLAY: _process_status(replay),
         ProcessName.KEYBOARD: _process_status(keyboard),
         ProcessName.OCULUS: _process_status(oculus),
+        ProcessName.PICK: _process_status(False),
     }
 
 
@@ -878,3 +880,32 @@ def test_camera_monitor_is_lazy_reset_on_configuration_change_and_closed(monkeyp
     camera.reset.assert_called_once()
     service.close()
     camera.close.assert_called_once()
+
+
+def test_camera_inference_is_only_requested_while_pick_process_runs():
+    service, manager, _, _ = _make_service(stack=True)
+    frame = CameraPreview(connected=False)
+    camera = MagicMock()
+    camera.snapshot.return_value = CameraPreviewSnapshot(
+        rgb=frame,
+        depth=frame,
+        depth_near_meters=0.2,
+        depth_far_meters=3,
+    )
+    service._camera_monitor = camera
+    service.pick_client = MagicMock()
+    inference = CameraInferencePreview(
+        rgb=frame,
+        depth=frame,
+        object_description="car",
+        mask_count=0,
+        grasp_count=0,
+        selected=False,
+    )
+    service.pick_client.preview.return_value = inference
+    assert service.camera_previews(3).inference is None
+    service.pick_client.preview.assert_not_called()
+    manager.status.return_value[ProcessName.PICK] = _process_status(True)
+    assert service.camera_previews(3).inference is inference
+    manager.status.return_value[ProcessName.PICK] = _process_status(False)
+    assert service.camera_previews(3).inference is None

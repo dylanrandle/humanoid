@@ -26,6 +26,8 @@ class ApiRoute(StrEnum):
     LOGGING = f"{ROOT}/logging/<action>"
     REPLAY = f"{ROOT}/replay/<action>"
     ORCHESTRATOR = f"{ROOT}/orchestrator"
+    PICK_RUN = f"{ROOT}/pick/run"
+    PICK_CANCEL = f"{ROOT}/pick/cancel"
 
 
 class PayloadKey(StrEnum):

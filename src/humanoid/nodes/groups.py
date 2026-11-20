@@ -1,6 +1,7 @@
 """Imported node groups exposed to the process manager."""
 
 from humanoid.nodes.orchestrator import OrchestratorNode
+from humanoid.nodes.policy.autonomy.pick import ModelServerNode, PickNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
 from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
@@ -41,6 +42,11 @@ NODE_GROUPS = {
             },
         ),
         NodeGroup(
+            name=ProcessName.PICK,
+            display_name="Pick policy",
+            nodes=(ModelServerNode, PickNode),
+        ),
+        NodeGroup(
             name=ProcessName.KEYBOARD,
             display_name="Keyboard teleop",
             nodes=(KeyboardTeleopNode,),
@@ -54,6 +60,7 @@ NODE_GROUPS = {
 }
 PROCESS_ORDER = tuple(NODE_GROUPS)
 PROCESS_STOP_ORDER = (
+    ProcessName.PICK,
     ProcessName.KEYBOARD,
     ProcessName.OCULUS,
     ProcessName.REPLAY,

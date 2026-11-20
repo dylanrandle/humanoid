@@ -23,7 +23,10 @@ TELEOP_PROCESSES: dict[Mode, ProcessName] = {
     Mode.OCULUS: ProcessName.OCULUS,
 }
 PROCESS_MODES = {process: mode for mode, process in TELEOP_PROCESSES.items()}
-CONTROLLED_PROCESS_NAMES = frozenset({ProcessName.STACK, *TELEOP_PROCESSES.values()})
+PROCESS_MODES[ProcessName.PICK] = Mode.SYSTEM
+CONTROLLED_PROCESS_NAMES = frozenset(
+    {ProcessName.STACK, ProcessName.PICK, *TELEOP_PROCESSES.values()}
+)
 EXTERNAL_STACK_ERROR = "Another stack is already broadcasting. Stop it before using this console."
 STALE_CONFIGURATION_ERROR = "Configuration changed. Refresh the console and try again."
 REAL_HARDWARE_ACKNOWLEDGEMENT_ERROR = "Real hardware acknowledgement is required."

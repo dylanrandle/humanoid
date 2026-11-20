@@ -33,10 +33,26 @@ check = "humanoid.check:main"
 
 [dependency-groups]
 dev = [
+    { include-group = "model-serving" },
     "pytest>=8.0.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.15",
     "ty>=0.0.17",
+]
+perception = [
+    { include-group = "model-serving" },
+    "torch>=2.6,<3",
+    "torchvision>=0.21,<1",
+    "ultralytics==8.4.215",
+    "huggingface-hub>=0.34,<1",
+    "clip",
+    "onnx>=1.19,<2",
+]
+model-serving = [
+    "opencv-python>=4.11,<5",
+    "onnxruntime>=1.23,<2",
+    "tokenizers>=0.22,<0.23",
+    "ftfy>=6.3,<7",
 ]
 
 [tool.ruff]
@@ -45,6 +61,9 @@ target-version = "py312"
 exclude = [
     "src/humanoid/types/lcm/*_t.py",  # Auto-generated LCM types
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff.lint]
 select = [
@@ -76,8 +95,13 @@ exclude = [
 [tool.ty.environment]
 extra-paths = ["typings"]
 
+[tool.ty.analysis]
+# Model workers and offline exporters use their own dependency environments.
+allowed-unresolved-imports = ["torch", "ultralytics.**", "huggingface_hub", "graspgenx.**", "gsnet", "onnx", "onnxruntime", "tokenizers", "ftfy", "clip"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/humanoid"]
 
 [tool.uv.sources]
+clip = { git = "https://github.com/ultralytics/CLIP.git", rev = "7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40" }
 oculus-reader = { git = "https://github.com/rail-berkeley/oculus_reader.git", rev = "17bc7b3923f5754d70c4e358867a3bcac1a3c0c3" }

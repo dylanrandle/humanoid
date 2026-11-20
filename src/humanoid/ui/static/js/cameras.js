@@ -13,26 +13,36 @@ export async function fetchCameraPreviews(depthFar) {
 }
 
 export function renderCameraPreviews(snapshot, elements) {
+  const inference = elements.overlays?.checked ? snapshot?.inference : null;
+  if (elements.summary) {
+    elements.summary.textContent = inference
+      ? `Inference snapshot for “${inference.object_description}” · ${inference.mask_count} mask${inference.mask_count === 1 ? "" : "s"} · ${inference.grasp_count} candidate${inference.grasp_count === 1 ? "" : "s"} shown. Cyan: segmentation; amber: generated grasps (not all executable); green: selected grasp. Uncheck Model overlays for live images.`
+      : "Live images. Model overlays appear after running pickup.";
+  }
   for (const stream of ["rgb", "depth"]) {
-    const frame = snapshot?.[stream];
+    const frame = inference?.[stream] ?? snapshot?.[stream];
     const view = elements[stream];
     const live = Boolean(frame?.connected && frame.image);
     const stale = !live && frame?.age_seconds != null;
     view.image.hidden = !live;
     view.empty.hidden = live;
     view.status.textContent = live
-      ? "Live"
+      ? inference
+        ? "Inference snapshot"
+        : "Live"
       : stale
         ? "Stale"
         : snapshot
           ? "Waiting"
           : "Unavailable";
-    view.status.classList.toggle("live", live);
+    view.status.classList.toggle("live", live && !inference);
+    view.status.classList.toggle("inference", Boolean(inference));
     view.status.classList.toggle("stale", stale);
+    view.image.alt = `${inference ? "Annotated inference snapshot" : "Live camera view"}: ${stream === "rgb" ? "RGB" : "native depth"}`;
     if (live) {
       if (view.image.getAttribute("src") !== frame.image)
         view.image.src = frame.image;
-      view.detail.textContent = `${frame.width} × ${frame.height} · ${frame.frame_id} · ${frame.age_seconds.toFixed(1)} s ago`;
+      view.detail.textContent = `${frame.width} × ${frame.height} · ${frame.frame_id} · ${inference ? `Frame ${frame.frame_number} · captured ` : ""}${frame.age_seconds.toFixed(1)} s ago`;
     } else {
       view.image.removeAttribute("src");
       view.empty.textContent = stale
@@ -53,6 +63,7 @@ export function renderCameraPreviews(snapshot, elements) {
 
 export function startCameraPreviews(elements) {
   let pending = false;
+  let latest = null;
   async function refresh() {
     if (pending || document.hidden) return;
     pending = true;
@@ -60,15 +71,21 @@ export function startCameraPreviews(elements) {
     try {
       const snapshot = await fetchCameraPreviews(range);
       // A range change while loading must not relabel an image using the old scale.
-      if (range === elements.range.value)
+      if (range === elements.range.value) {
+        latest = snapshot;
         renderCameraPreviews(snapshot, elements);
+      }
     } catch {
+      latest = null;
       renderCameraPreviews(null, elements);
     } finally {
       pending = false;
     }
   }
   elements.range.addEventListener("change", refresh);
+  elements.overlays.addEventListener("change", () =>
+    renderCameraPreviews(latest, elements),
+  );
   document.addEventListener("visibilitychange", refresh);
   void refresh();
   window.setInterval(refresh, 200);

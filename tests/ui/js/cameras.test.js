@@ -53,3 +53,29 @@ test("camera polling uses its own endpoint, range and bounded request", async ()
     assert.ok(request[1].signal instanceof AbortSignal);
   } finally { globalThis.fetch = original; }
 });
+
+test("overlays show source snapshots, switch to live immediately, and clear on stop", () => {
+  const els = elements();
+  els.overlays = { checked: true };
+  els.summary = element();
+  const annotated = { ...live, image: "annotated", frame_number: 12, age_seconds: 8 };
+  const snapshot = { rgb: live, depth: live, inference: {
+    rgb: annotated, depth: { ...annotated, frame_number: 13 },
+    object_description: "toy car <img>", mask_count: 1, grasp_count: 2, selected: true,
+  }};
+  renderCameraPreviews(snapshot, els);
+  assert.equal(els.rgb.image.src, "annotated");
+  assert.equal(els.rgb.status.textContent, "Inference snapshot");
+  assert.match(els.depth.detail.textContent, /Frame 13 · captured 8.0 s ago/);
+  assert.match(els.summary.textContent, /toy car <img>/);
+  els.overlays.checked = false;
+  renderCameraPreviews(snapshot, els);
+  assert.equal(els.rgb.image.src, live.image);
+  assert.equal(els.rgb.status.textContent, "Live");
+  els.overlays.checked = true;
+  renderCameraPreviews({ rgb: live, depth: live, inference: null }, els);
+  assert.equal(els.rgb.image.src, live.image);
+  renderCameraPreviews(null, els);
+  assert.equal(els.rgb.image.src, null);
+  assert.equal(els.rgb.status.textContent, "Unavailable");
+});

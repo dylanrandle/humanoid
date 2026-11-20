@@ -8,6 +8,7 @@ from humanoid.types.homing import HomingPreset
 from humanoid.types.host import HostResourceStatus
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateStatus
+from humanoid.types.pick import PickStatus
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
@@ -111,6 +112,7 @@ class OrchestratorStatus:
     recordings: list[RecordingSummary]
     replay: ReplayStatus
     orchestrator: OrchestratorState
+    pick: PickStatus | None = None
 
 
 @dataclass(frozen=True)

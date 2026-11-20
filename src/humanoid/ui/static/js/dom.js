@@ -1,6 +1,14 @@
 import { TELEOP_PROCESSES } from "./constants.js";
 
 export const els = {
+  pick: {
+    process: document.querySelector("#pick-process"),
+    form: document.querySelector("#pick-form"),
+    object: document.querySelector("#pick-object"),
+    run: document.querySelector("#pick-run"),
+    cancel: document.querySelector("#pick-cancel"),
+    status: document.querySelector("#pick-status"),
+  },
   systemState: document.querySelector("#system-state"),
   systemStateLabel: document.querySelector("#system-state-label"),
   robotName: document.querySelector("#robot-name"),
@@ -40,6 +48,8 @@ export const els = {
       ]),
     ),
     range: document.querySelector("#camera-depth-range"),
+    overlays: document.querySelector("#camera-model-overlays"),
+    summary: document.querySelector("#camera-model-summary"),
     near: document.querySelector("#camera-depth-near"),
     far: document.querySelector("#camera-depth-far"),
   },
