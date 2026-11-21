@@ -21,6 +21,18 @@ _OUTPUT = (1, *_NETWORK)
 _MAX_DEPTH_M = 25
 
 
+def colorize_depth(metres: np.ndarray, near: float, far: float) -> np.ndarray:
+    """Render metric depth with the console's amber, teal and blue distance scale."""
+    valid = np.isfinite(metres) & (metres > 0)
+    distance = np.clip((np.where(valid, metres, near) - near) / (far - near), 0, 1)
+    palette = np.array([[248, 196, 66], [49, 184, 186], [51, 71, 169]])
+    colors = np.stack(
+        [np.interp(distance, [0, 0.5, 1], channel) for channel in palette.T], axis=-1
+    ).astype(np.uint8)
+    colors[~valid] = 0
+    return colors
+
+
 def _prepare(rgb: np.ndarray, depth: np.ndarray, scale: float) -> np.ndarray:
     if rgb.shape != (*_FRAME, 3) or rgb.dtype != np.uint8:
         raise ValueError("Expected a 480 x 640 uint8 RGB image")

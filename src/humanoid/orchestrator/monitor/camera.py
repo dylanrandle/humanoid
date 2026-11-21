@@ -13,6 +13,7 @@ from PIL import Image
 from humanoid.config.camera import CAMERA_PREVIEW_CONFIG
 from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
+from humanoid.perception.depth import colorize_depth
 from humanoid.types.camera import (
     CameraEncoding,
     CameraImage,
@@ -92,19 +93,7 @@ class CameraPreviewMonitor:
 
     def _colorize_depth(self, frame: CameraImage) -> np.ndarray:
         meters = frame.data.astype(np.float32) * frame.depth_scale
-        distance = np.clip(
-            (meters - self._config.depth_near_meters)
-            / (self._depth_far - self._config.depth_near_meters),
-            0,
-            1,
-        )
-        # Amber (near) -> teal -> blue (far). CSS legend uses the same stops.
-        palette = np.array([[248, 196, 66], [49, 184, 186], [51, 71, 169]])
-        colors = np.stack(
-            [np.interp(distance, [0, 0.5, 1], channel) for channel in palette.T], axis=-1
-        ).astype(np.uint8)
-        colors[frame.data == 0] = 0
-        return colors
+        return colorize_depth(meters, self._config.depth_near_meters, self._depth_far)
 
     def reset(self) -> None:
         with self._lock:

@@ -19,6 +19,7 @@ dependencies = [
     "pin>=3.2.0",
     "pin-pink>=4.0.0",
     "pillow>=11.0",
+    "pydantic>=2.12,<3",
     "pynput>=1.8.1",
     "pyrealsense2>=2.56.5,<3; sys_platform != 'darwin'",
     "pyserial>=3.5",

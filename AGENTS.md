@@ -6,6 +6,10 @@
 
 # Verification and Code Quality Rules
 
+Enforce type safety wherever practical. Give shared data with a known shape an
+explicit type, validate external input at the boundary, and pass typed values
+between components so static analysis can catch mismatches.
+
 Before submitting major changes, run the complete project verification suite. You do not need to run it for minor changes or small tweaks:
 
 ```bash

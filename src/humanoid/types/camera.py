@@ -3,7 +3,7 @@
 import math
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Literal, NewType, Protocol
 
 import numpy as np
 
@@ -89,6 +89,27 @@ class CameraIntrinsics:
             raise ValueError("Camera focal lengths must be positive.")
         if not all(math.isfinite(x) for x in self.distortion_coefficients):
             raise ValueError("Camera distortion coefficients must be finite.")
+
+
+ObservationId = NewType("ObservationId", str)
+
+
+@dataclass(frozen=True, kw_only=True)
+class CaptureMetadata:
+    observation_id: ObservationId
+    camera_model: DepthCamera | None
+    serial_number: str
+    rgb_frame_id: str
+    depth_frame_id: str | None
+    rgb_frame_number: int
+    depth_frame_number: int | None
+    depth_scale_m_per_unit: float | None
+    rgb_device_timestamp: float
+    depth_device_timestamp: float | None
+    rgb_timestamp_domain: str
+    depth_timestamp_domain: str | None
+    intrinsics: CameraIntrinsics
+    depth_units: Literal["metres"] = "metres"
 
 
 @dataclass(frozen=True, kw_only=True)

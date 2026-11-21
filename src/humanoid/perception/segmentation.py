@@ -9,12 +9,11 @@ import numpy as np
 from PIL import Image
 
 from humanoid.perception.depth import _cuda
-from humanoid.types.segmentation import Pixel
+from humanoid.types.segmentation import MAX_TOKENS, Pixel
 from humanoid.utils.paths import find_data_root
 
 ENCODER_SIZE = 1024
 MASK_SIZE = 256
-MAX_TOKENS = 16
 
 
 class _Engine:
