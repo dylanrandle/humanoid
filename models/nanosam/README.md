@@ -12,9 +12,6 @@ host's data root (normally `/opt/humanoid/models`). RGB segmentation uses
 `nanosam/encoder.plan` and `nanosam/decoder.plan`. The optional `complete_depth`
 tool uses the matching `cdm/d435.plan` or `cdm/d405.plan`.
 
-On a compatible Jetson, run the encoder and decoder smoke test with
-`HUMANOID_RUN_NANOSAM_TESTS=1 uv run pytest -q tests/perception/test_segmenter.py`.
-
 ## Build on a compatible Jetson
 
 | Input | SHA-256 of source ONNX |

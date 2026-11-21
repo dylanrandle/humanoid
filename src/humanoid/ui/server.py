@@ -18,6 +18,7 @@ from humanoid.config.teleop import get_oculus_teleop_policy_config
 from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE
 from humanoid.logger import get_logger, setup_logging
 from humanoid.orchestrator.service import OrchestratorService
+from humanoid.types.http import HttpKey
 from humanoid.types.orchestrator import Mode, OrchestratorError
 from humanoid.types.process import ProcessAction
 from humanoid.ui.constants import (
@@ -102,7 +103,7 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
 
     @app.get(ApiRoute.APPLICATION_LOGS)
     def application_logs():
-        cursor = parse_application_log_cursor(request.args.get("after"))
+        cursor = parse_application_log_cursor(request.args.get(HttpKey.AFTER))
         return jsonify(orchestrator_service.application_logs(cursor))
 
     @app.get(ApiRoute.AGENT)
@@ -141,7 +142,7 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
     def camera_previews():
         try:
             depth_far = float(
-                request.args.get("depth_far", CAMERA_PREVIEW_CONFIG.default_depth_far_meters)
+                request.args.get(HttpKey.DEPTH_FAR, CAMERA_PREVIEW_CONFIG.default_depth_far_meters)
             )
         except ValueError as exc:
             raise ApiError("Invalid depth preview range.", HTTPStatus.BAD_REQUEST) from exc

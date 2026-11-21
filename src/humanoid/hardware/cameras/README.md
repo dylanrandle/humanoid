@@ -27,7 +27,8 @@ Hardware and simulation publish the following camera streams.
 | `CAMERA/REGISTERED_DEPTH` | `RegisteredDepth.image`, `uint16`, RGB H × W | Measured depth on the synchronized RGB pixel grid, RGB optical frame and intrinsics |
 
 Zero depth is invalid. The D435 and D405 drivers align measured depth once per
-frameset.
+frameset. The agent camera client selects this stream by default. Use the native
+depth topic or `client.observe(depth_view="native")` for the depth sensor's own view.
 Every image carries intrinsics, distortion coefficients, and its URDF optical frame ID.
 Derive transforms to the robot base from the URDF. Pixels use fast lossless LZ4 transport;
 16-bit samples use little-endian byte order on the wire.

@@ -1,13 +1,11 @@
-import { API } from "./constants.js";
+import { API, HttpKey } from "./constants.js";
 
 export async function fetchCameraPreviews(depthFar) {
-  const response = await fetch(
-    `${API.CAMERA_PREVIEWS}?depth_far=${encodeURIComponent(depthFar)}`,
-    {
-      cache: "no-store",
-      signal: AbortSignal.timeout(4000),
-    },
-  );
+  const query = new URLSearchParams({ [HttpKey.DEPTH_FAR]: depthFar });
+  const response = await fetch(`${API.CAMERA_PREVIEWS}?${query}`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(4000),
+  });
   if (!response.ok) throw new Error("Camera previews are unavailable.");
   return response.json();
 }

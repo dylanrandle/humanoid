@@ -5,7 +5,7 @@ import threading
 from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from humanoid.agent.serialization import encode_frames, encode_state
 from humanoid.agent.service import AgentControlService
@@ -15,6 +15,8 @@ from humanoid.types.agent import (
     CommandRequest,
     ControlOperation,
 )
+from humanoid.types.camera import DepthView
+from humanoid.types.http import HttpKey
 
 
 def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
@@ -48,7 +50,8 @@ def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
                 return
 
         def _dispatch(self, *, post: bool) -> None:
-            path = urlsplit(self.path).path
+            url = urlsplit(self.path)
+            path = url.path
             if not post:
                 if path == AgentRoute.STATE:
                     observation = service.observation()
@@ -61,9 +64,14 @@ def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
                         },
                     )
                 elif path == AgentRoute.CAMERA:
-                    frames = service.observation(camera=True).camera_frames
-                    assert frames is not None
-                    self._reply(HTTPStatus.OK, encode_frames(frames))
+                    query = parse_qs(
+                        url.query, keep_blank_values=True, strict_parsing=True, max_num_fields=1
+                    )
+                    if query.keys() - {HttpKey.DEPTH_VIEW}:
+                        raise ValueError(f"Expected a {HttpKey.DEPTH_VIEW} camera selector.")
+                    view = DepthView(query.get(HttpKey.DEPTH_VIEW, [DepthView.ALIGNED])[0])
+                    frames = service.camera_frames(depth_view=view)
+                    self._reply(HTTPStatus.OK, encode_frames(frames, depth_view=view))
                 elif (command_id := AgentRoute.COMMAND.match_command_id(path)) is not None:
                     self._reply(
                         HTTPStatus.OK,

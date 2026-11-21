@@ -21,6 +21,7 @@ from humanoid.types.agent import (
     CommandStatus,
     ControlOperation,
 )
+from humanoid.types.camera import CameraFrames, DepthView
 from humanoid.types.observation import Observation
 
 
@@ -32,11 +33,15 @@ class AgentControlService:
         self._lock = threading.Lock()
         self._commands: dict[str, CommandRecord] = {}
         self._observation: Observation | None = None
+        self._registered: CameraFrames | None = None
         self._closed = False
 
     def observe(self, observation: Observation) -> None:
         with self._lock:
             self._observation = observation
+            frames = observation.camera_frames
+            if frames is not None and frames.registered is not None:
+                self._registered = frames
 
     def observation(self, *, camera: bool = False) -> Observation:
         with self._lock:
@@ -54,6 +59,22 @@ class AgentControlService:
             ):
                 raise RuntimeError("No fresh paired RGB/depth observation is available.")
         return observation
+
+    def camera_frames(self, *, depth_view: DepthView) -> CameraFrames:
+        frames = self.observation(camera=True).camera_frames
+        assert frames is not None
+        with self._lock:
+            registered = self._registered
+        if (
+            depth_view is DepthView.ALIGNED
+            and registered
+            and registered.rgb.serial_number == frames.rgb.serial_number
+            and 0
+            <= time.perf_counter() - registered.rgb.timestamp
+            <= self.config.camera_timeout_seconds
+        ):
+            return registered
+        return frames
 
     def submit(self, request: CommandRequest) -> CommandStatus:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", request.command_id):

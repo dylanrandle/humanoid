@@ -12,6 +12,11 @@ from humanoid.types.depth import DepthCamera
 MAX_VERTICAL_FOV_DEGREES = 180
 
 
+class DepthView(StrEnum):
+    ALIGNED = "aligned"
+    NATIVE = "native"
+
+
 class CameraEncoding(StrEnum):
     RGB8 = "rgb8"
     DEPTH16 = "16UC1"

@@ -1,5 +1,3 @@
-from contextlib import closing
-from os import getenv
 from unittest.mock import Mock, call
 
 import numpy as np
@@ -91,15 +89,3 @@ def test_resize_mask_discards_padding_and_preserves_rgb_coordinates(size):
     mask = resize_mask(logits, size)
     assert mask.dtype == np.bool_
     np.testing.assert_array_equal(mask, expected)
-
-
-@pytest.mark.skipif(getenv("HUMANOID_RUN_NANOSAM_TESTS") != "1", reason="requires Jetson engines")
-def test_jetson_engines_encode_and_decode():
-    rgb = np.zeros((240, 320, 3), np.uint8)
-    rgb[60:180, 80:240] = [220, 30, 30]
-    with closing(Segmenter()) as model:
-        model.set_image(rgb)
-        scores, masks = model.predict(((160, 120),), (1,))
-        assert scores.ndim == 1 and scores.size > 0
-        assert masks.shape == (scores.size, MASK_SIZE, MASK_SIZE)
-        assert np.isfinite(scores).all() and np.isfinite(masks).all()

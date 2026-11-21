@@ -1,4 +1,4 @@
-import { API } from "./constants.js";
+import { API, HttpKey } from "./constants.js";
 
 export async function fetchStatus(path = API.STATUS) {
   const response = await fetch(path, { cache: "no-store" });
@@ -10,7 +10,8 @@ export async function fetchStatus(path = API.STATUS) {
 }
 
 export async function fetchApplicationLogs(after = null) {
-  const query = after === null ? "" : `?after=${encodeURIComponent(after)}`;
+  const query =
+    after === null ? "" : `?${new URLSearchParams({ [HttpKey.AFTER]: after })}`;
   const response = await fetch(`${API.APPLICATION_LOGS}${query}`, {
     cache: "no-store",
   });

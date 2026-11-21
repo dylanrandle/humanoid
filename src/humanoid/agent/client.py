@@ -8,6 +8,7 @@ import uuid
 from collections.abc import Mapping
 from typing import override
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from humanoid.agent.serialization import decode_frames, decode_state
@@ -19,7 +20,8 @@ from humanoid.types.agent import (
     ControlOperation,
     MotionResult,
 )
-from humanoid.types.camera import CameraFrames
+from humanoid.types.camera import CameraView, DepthView
+from humanoid.types.http import HttpKey
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotState
@@ -92,9 +94,17 @@ class AgentControlClient:
             mode=Mode(payload["mode"]) if payload["mode"] is not None else None,
         )
 
-    def observe(self) -> CameraFrames:
+    def observe(self, *, depth_view: DepthView | str = DepthView.ALIGNED) -> CameraView:
+        """Get RGB and measured depth in the selected camera frame."""
+        view = DepthView(depth_view)
         started = time.perf_counter()
-        return decode_frames(self._request(AgentRoute.CAMERA), started)
+        path: str = AgentRoute.CAMERA
+        if view is not DepthView.ALIGNED:
+            path += "?" + urlencode({HttpKey.DEPTH_VIEW: view.value})
+        payload = self._request(path)
+        if payload.get(HttpKey.DEPTH_VIEW) != view.value:
+            raise ValueError(f"Expected camera {HttpKey.DEPTH_VIEW}={view.value!r}.")
+        return decode_frames(payload, started)
 
     def execute(
         self, operation: ControlOperation, arguments: Mapping[str, object], *, timeout: float = 5.0

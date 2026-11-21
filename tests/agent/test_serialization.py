@@ -8,7 +8,13 @@ from humanoid.agent.serialization import (
     encode_frames,
     encode_state,
 )
-from humanoid.types.camera import CameraEncoding, CameraFrames, CameraImage, CameraIntrinsics
+from humanoid.types.camera import (
+    CameraEncoding,
+    CameraFrames,
+    CameraImage,
+    CameraIntrinsics,
+    DepthView,
+)
 
 
 def test_state_uses_client_clock_and_preserves_unavailable_efforts(service):
@@ -62,7 +68,10 @@ def test_native_rgb_depth_round_trip_preserves_pixels_and_calibration():
         ),
     )
     client_time = 100.0
-    restored = decode_frames(encode_frames(frames), received_after=client_time)
+    restored = decode_frames(
+        encode_frames(frames, depth_view=DepthView.NATIVE), received_after=client_time
+    )
+    assert restored.depth is not None
     assert restored.rgb.timestamp == restored.depth.timestamp
     for actual, expected in ((restored.rgb, frames.rgb), (restored.depth, frames.depth)):
         np.testing.assert_array_equal(actual.data, expected.data)

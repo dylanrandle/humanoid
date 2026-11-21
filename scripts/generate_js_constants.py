@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from humanoid.config.agent import DEFAULT_AGENT_MODEL
 from humanoid.orchestrator.constants import INPUT_PROCESSES
+from humanoid.types.http import HttpKey
 from humanoid.types.logging import LoggingState
 from humanoid.types.orchestrator import Mode, OrchestratorParameter
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
@@ -32,6 +33,7 @@ def render_javascript_constants() -> str:
         _enum_object("OrchestratorParameter", OrchestratorParameter),
         _enum_object("PayloadKey", PayloadKey),
         _enum_object("ApiRoute", ApiRoute),
+        _enum_object("HttpKey", HttpKey),
         _busy_keys(),
         _input_processes(),
         _api_routes(),

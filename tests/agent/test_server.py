@@ -44,6 +44,17 @@ def test_http_submit_returns_before_execution_and_cancel_works(connection):
     assert client._request(AgentRoute.CANCEL.format(command_id="move"), {})["state"] == "cancelled"
 
 
+@pytest.mark.parametrize(
+    "query",
+    ["depth_view=both", "registered=1", "depth_view=", "depth_view=native&depth_view=aligned"],
+)
+def test_camera_rejects_unsupported_depth_selectors(connection, query):
+    client, _ = connection
+    with pytest.raises(HTTPError) as error:
+        urlopen(f"{client.endpoint.url}/v1/camera?{query}", timeout=1)
+    assert error.value.code == HTTPStatus.BAD_REQUEST
+
+
 def test_client_waits_while_policy_loop_continues(connection):
     client, service = connection
     observation = service.observation()

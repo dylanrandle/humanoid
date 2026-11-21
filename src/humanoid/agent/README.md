@@ -29,7 +29,13 @@ An agent can read robot state and RGB-D images over HTTP and submit bounded moti
 
 4. Select **Idle** to end agent control. Click **Stop** in the Agent API row to shut down the listener. Stopping the main stack also stops the API.
 
-Call `client.observe()` for paired RGB and native depth arrays with calibration. An agent on another machine can reach the default loopback listener through an SSH tunnel such as `ssh -L 8767:127.0.0.1:8767 triskel`. The listener binds only to `127.0.0.1`. Any process on that host can access it while it is running. Set `HUMANOID_CONTROL_PORT` in the dashboard environment to change the listener port. For a different local port, pass `AgentControlEndpoint("http://127.0.0.1:<port>")` to the client.
+Call `client.observe()` for RGB and synchronized measured depth in the RGB pixel grid.
+Read metric depth at an RGB pixel with `view.depth.data[y, x] * view.depth.depth_scale`.
+Zero samples are holes. If a fresh synchronized aligned pair is unavailable,
+the view contains RGB and `view.depth is None`. Request `client.observe(depth_view="native")`
+for depth in the sensor's native optical frame with its own calibration.
+
+An agent on another machine can reach the default loopback listener through an SSH tunnel such as `ssh -L 8767:127.0.0.1:8767 triskel`. The listener binds only to `127.0.0.1`. Any process on that host can access it while it is running. Set `HUMANOID_CONTROL_PORT` in the dashboard environment to change the listener port. For a different local port, pass `AgentControlEndpoint("http://127.0.0.1:<port>")` to the client.
 
 ## HTTP contract
 
@@ -38,7 +44,8 @@ POST bodies use `Content-Type: application/json`.
 | Endpoint | Response |
 | --- | --- |
 | `GET /v1/state` | Current session ID, operator mode, joint feedback and feedback age in seconds |
-| `GET /v1/camera` | Paired RGB and depth PNGs in base64, intrinsics per image, frame IDs, depth scale, timestamps and age |
+| `GET /v1/camera` or `GET /v1/camera?depth_view=aligned` | RGB and aligned measured depth PNGs, frame IDs, intrinsics, depth scale, timestamps and age. Missing aligned depth is JSON `null`. |
+| `GET /v1/camera?depth_view=native` | RGB and native measured depth with their respective calibration. |
 | `POST /v1/commands` | HTTP 202 with the command ID and current status |
 | `GET /v1/commands/<id>` | Command status and, on completion, measured result |
 | `POST /v1/commands/<id>/cancel` | Updated status for that command. Send `{}` as the body. |
