@@ -16,6 +16,7 @@ class AgentConsole:
         self._context = multiprocessing.get_context("spawn")
         self._lock = threading.RLock()
         self._state = AgentPanelStatus()
+        self._final_update: AgentPanelStatus | None = None
         self._process: BaseProcess | None = None
         self._channel: Connection | None = None
 
@@ -28,10 +29,17 @@ class AgentConsole:
             assert self._channel is not None
             while self._channel.poll():
                 try:
-                    self._state = replace(self._state, **self._channel.recv())
+                    update: AgentPanelStatus = self._channel.recv()
                 except EOFError:
                     break
+                if update.phase in (AgentPhase.COMPLETED, AgentPhase.FAILED):
+                    # A terminal phase tells the dashboard it can start the next operation.
+                    self._final_update = update
+                else:
+                    self._state = update
             if exited:
+                if self._final_update is not None:
+                    self._state = self._final_update
                 self._release()
                 if self._state.phase in (AgentPhase.CONNECTING, AgentPhase.RUNNING):
                     self._state = replace(
@@ -50,17 +58,7 @@ class AgentConsole:
                 raise OrchestratorError("An agent operation is already active.")
             if task and task.model not in current.models:
                 raise OrchestratorError("Connect to ChatGPT and select an available model.")
-            incoming, outgoing = self._context.Pipe(duplex=False)
-            process = self._context.Process(target=work, args=(outgoing, task), daemon=True)
-            try:
-                process.start()
-            except BaseException:
-                incoming.close()
-                raise
-            finally:
-                outgoing.close()
-            self._process, self._channel = process, incoming
-            self._state = (
+            initial_status = (
                 AgentPanelStatus(phase=AgentPhase.CONNECTING, message="Connecting to ChatGPT…")
                 if task is None
                 else AgentPanelStatus(
@@ -71,6 +69,19 @@ class AgentConsole:
                     message="Reading the robot and camera…",
                 )
             )
+            incoming, outgoing = self._context.Pipe(duplex=False)
+            process = self._context.Process(
+                target=work, args=(outgoing, task, initial_status), daemon=True
+            )
+            try:
+                process.start()
+            except BaseException:
+                incoming.close()
+                raise
+            finally:
+                outgoing.close()
+            self._process, self._channel = process, incoming
+            self._state = initial_status
             return self._state
 
     def stop(self, *, tasks_only: bool = False) -> AgentPanelStatus:
@@ -99,3 +110,4 @@ class AgentConsole:
         self._process.close()
         self._channel.close()
         self._channel = self._process = None
+        self._final_update = None

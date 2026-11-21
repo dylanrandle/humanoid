@@ -6,8 +6,9 @@ from PIL import Image
 from pydantic import ValidationError
 
 from humanoid.agent.harness import model, worker
+from humanoid.agent.harness.service import AgentConsole
 from humanoid.config.agent import get_agent_policy_config
-from humanoid.types.agent import AgentTask
+from humanoid.types.agent import AgentPanelStatus, AgentPhase, AgentTask
 from humanoid.types.agent_decision import (
     Decision,
     DecisionContext,
@@ -43,6 +44,23 @@ def observation_status() -> ObservationStatus:
         rgb_size_xy=[8, 8],
         registered_depth_available=True,
     )
+
+
+def test_completed_connection_can_immediately_start_task(monkeypatch):
+    console = AgentConsole()
+    context = Mock()
+    monkeypatch.setattr(console, "_context", context)
+    incoming = Mock()
+    context.Pipe.return_value = incoming, Mock()
+    process = context.Process.return_value
+    console.start()
+    incoming.poll.side_effect = [True, False, False]
+    incoming.recv.return_value = AgentPanelStatus(phase=AgentPhase.COMPLETED, models=("vision",))
+    process.is_alive.side_effect = [True, False]
+    assert console.status().phase is AgentPhase.CONNECTING
+    assert console.status().phase is AgentPhase.COMPLETED
+    task = AgentTask("inspect scene", "vision", Mode.IDLE, "session")
+    assert console.start(task).phase is AgentPhase.RUNNING
 
 
 @pytest.fixture

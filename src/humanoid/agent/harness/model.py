@@ -54,17 +54,11 @@ def image_models(codex: Codex) -> tuple[str, ...]:
     )
 
 
-def connect(codex: Codex, update: Callable[[dict], None]) -> tuple[str, ...]:
+def connect(codex: Codex, on_device_code: Callable[[str, str], None]) -> tuple[str, ...]:
     account = codex.account().account
     if account is None or account.root.type != "chatgpt":
         login = codex.login_chatgpt_device_code()
-        update(
-            {
-                "login_url": login.verification_url,
-                "login_code": login.user_code,
-                "message": "Enter the device code to finish signing in.",
-            }
-        )
+        on_device_code(login.verification_url, login.user_code)
         outcome = login.wait()
         if not outcome.success:
             raise RuntimeError(outcome.error or "ChatGPT sign-in failed.")
