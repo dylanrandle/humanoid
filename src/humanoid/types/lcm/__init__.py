@@ -11,6 +11,7 @@ from .logging_status_t import logging_status_t as logging_status_t
 from .node_rate_sample_t import node_rate_sample_t as node_rate_sample_t
 from .orchestrator_event_t import orchestrator_event_t as orchestrator_event_t
 from .orchestrator_mode_t import orchestrator_mode_t as orchestrator_mode_t
+from .registered_depth_t import registered_depth_t as registered_depth_t
 from .robot_base_command_t import robot_base_command_t as robot_base_command_t
 from .robot_joint_command_t import robot_joint_command_t as robot_joint_command_t
 from .robot_state_t import robot_state_t as robot_state_t

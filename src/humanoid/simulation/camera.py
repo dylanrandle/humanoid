@@ -1,6 +1,7 @@
 """Render native RGB and metric optical-axis depth from the URDF camera frames."""
 
 import math
+from dataclasses import replace
 
 import mujoco
 import numpy as np
@@ -10,8 +11,10 @@ from humanoid.types.camera import (
     CameraFrames,
     CameraImage,
     CameraIntrinsics,
+    RegisteredDepth,
     SimulatedCameraConfig,
 )
+from humanoid.types.depth import DepthCamera
 
 
 class MujocoCamera:
@@ -39,12 +42,35 @@ class MujocoCamera:
         rgb = renderer.render().copy()
         renderer.enable_depth_rendering()
         try:
+            registered_pixels = self._depth_units(renderer.render())
             renderer.update_scene(
                 data, camera=self.config.depth_frame, scene_option=self._scene_option
             )
-            meters = renderer.render()
+            depth = self._depth_units(renderer.render())
         finally:
             renderer.disable_depth_rendering()
+        self._frame_number += 1
+        # Keep the target cadence on the simulation clock, without accumulating
+        # rounding error when FPS does not divide the physics rate.
+        self._next_frame_at = (math.floor(data.time * self.config.fps + 1e-9) + 1) / self.config.fps
+        color = self._image(rgb, CameraEncoding.RGB8, timestamp, data.time)
+        native = self._image(depth, CameraEncoding.DEPTH16, timestamp, data.time)
+        return CameraFrames(
+            rgb=color,
+            depth=native,
+            registered=RegisteredDepth(
+                camera_model=DepthCamera.D435,
+                rgb_frame_number=color.frame_number,
+                image=replace(
+                    native,
+                    frame_id=color.frame_id,
+                    intrinsics=color.intrinsics,
+                    data=registered_pixels,
+                ),
+            ),
+        )
+
+    def _depth_units(self, meters: np.ndarray) -> np.ndarray:
         far = self.model.vis.map.zfar * self.model.stat.extent
         units = np.rint(meters / self.config.depth_scale)
         valid = (
@@ -53,15 +79,7 @@ class MujocoCamera:
             & (units <= np.iinfo(np.uint16).max)
             & (meters < far * (1 - 1e-5))
         )
-        depth = np.where(valid, units, 0).astype(np.uint16)
-        self._frame_number += 1
-        # Keep the target cadence on the simulation clock, without accumulating
-        # rounding error when FPS does not divide the physics rate.
-        self._next_frame_at = (math.floor(data.time * self.config.fps + 1e-9) + 1) / self.config.fps
-        return CameraFrames(
-            rgb=self._image(rgb, CameraEncoding.RGB8, timestamp, data.time),
-            depth=self._image(depth, CameraEncoding.DEPTH16, timestamp, data.time),
-        )
+        return np.where(valid, units, 0).astype(np.uint16)
 
     def _image(
         self, pixels: np.ndarray, encoding: CameraEncoding, timestamp: float, simulation_time: float

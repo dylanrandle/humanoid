@@ -2,7 +2,7 @@ import os
 from enum import Enum
 
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraImage
+from humanoid.types.camera import CameraImage, RegisteredDepth
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -27,6 +27,7 @@ DEFAULT_HUMANOID_ROBOT = RobotName.TRISKEL
 class Topic(Enum):
     # Native images, shared by the physical camera and simulated optical sensors.
     CAMERA_RGB = "CAMERA/RGB"
+    CAMERA_REGISTERED_DEPTH = "CAMERA/REGISTERED_DEPTH"
     CAMERA_DEPTH = "CAMERA/DEPTH"
 
     # Per-node loop-rate telemetry consumed by the operator console.
@@ -72,6 +73,7 @@ class Topic(Enum):
 TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.CAMERA_RGB: CameraImage,
     Topic.CAMERA_DEPTH: CameraImage,
+    Topic.CAMERA_REGISTERED_DEPTH: RegisteredDepth,
     Topic.NODE_RATE: NodeRateSample,
     Topic.ACTUATOR_HEALTH: ActuatorHealthReport,
     Topic.ROBOT_STATE: RobotState,

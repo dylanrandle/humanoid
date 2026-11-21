@@ -77,6 +77,8 @@ class SimulationNode(Node):
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
         frames = self.engine.read_camera_frames(timestamp=robot_state.timestamp)
         if frames is not None:
+            if frames.registered is not None:
+                self.publisher.publish(frames.registered, topic=Topic.CAMERA_REGISTERED_DEPTH)
             self.publisher.publish(frames.rgb, topic=Topic.CAMERA_RGB)
             self.publisher.publish(frames.depth, topic=Topic.CAMERA_DEPTH)
 

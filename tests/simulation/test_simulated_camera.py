@@ -52,7 +52,8 @@ def test_native_rendering_depth_conversion_cadence_and_cleanup(monkeypatch):
     monkeypatch.setattr("humanoid.simulation.camera.mujoco.Renderer", factory)
     rgb = np.full((2, 4, 3), 12, dtype=np.uint8)
     meters = np.array([[1.0, 2.5, 0, np.nan], [np.inf, 1000, -1, 0.001]], dtype=np.float32)
-    renderer.render.side_effect = [rgb, meters, rgb, meters, rgb, meters]
+    registered_meters = np.flip(meters, axis=1).copy()
+    renderer.render.side_effect = [rgb, registered_meters, meters] * EXPECTED_RENDERED_PAIRS
     camera = MujocoCamera(model, config)
     factory.assert_not_called()
     frames = camera.read(data, timestamp=5.0)
@@ -60,6 +61,9 @@ def test_native_rendering_depth_conversion_cadence_and_cleanup(monkeypatch):
     assert frames.rgb.encoding is CameraEncoding.RGB8
     assert frames.depth.encoding is CameraEncoding.DEPTH16
     np.testing.assert_array_equal(frames.depth.data, [[1000, 2500, 0, 0], [0, 0, 0, 1]])
+    assert frames.registered is not None
+    np.testing.assert_array_equal(frames.registered.image.data, np.flip(frames.depth.data, axis=1))
+    assert frames.registered.image.intrinsics == frames.rgb.intrinsics
     np.testing.assert_array_equal(frames.rgb.data, rgb)
     assert frames.rgb.frame_id == config.rgb_frame
     assert frames.depth.frame_id == config.depth_frame

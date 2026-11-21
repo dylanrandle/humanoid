@@ -27,6 +27,8 @@ class CameraDriverNode(Node):
         frames = self.camera.read()
         if frames is None:
             return
+        if frames.registered is not None:
+            self.publisher.publish(frames.registered, topic=Topic.CAMERA_REGISTERED_DEPTH)
         self.publisher.publish(frames.rgb, topic=Topic.CAMERA_RGB)
         self.publisher.publish(frames.depth, topic=Topic.CAMERA_DEPTH)
 

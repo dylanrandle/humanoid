@@ -3,8 +3,9 @@ import lcm
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraEncoding, CameraImage
+from humanoid.types.camera import CameraEncoding, CameraImage, RegisteredDepth
 from humanoid.types.homing import HomingTarget
+from humanoid.types.lcm import registered_depth_t
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.middleware import AcceptedTypes
@@ -35,6 +36,11 @@ class Publisher:
             if data.encoding is not encoding:
                 raise ValueError(f"Topic {topic} requires {encoding} images.")
             lcm_data = LCMConverter.camera_image_to_lcm(data)
+        elif isinstance(data, RegisteredDepth):
+            lcm_data = registered_depth_t()
+            lcm_data.camera_model = data.camera_model.value
+            lcm_data.rgb_frame_number = data.rgb_frame_number
+            lcm_data.image = LCMConverter.camera_image_to_lcm(data.image)
         elif isinstance(data, ActuatorHealthReport):
             lcm_data = LCMConverter.actuator_health_report_to_lcm(data)
         elif isinstance(data, NodeRateSample):

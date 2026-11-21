@@ -18,14 +18,16 @@ because the pinned SDK has no matching ARM64 wheel.
 
 ## Image contract
 
-Both hardware and simulation publish `CameraImage`:
+Hardware and simulation publish the following camera streams.
 
 | Topic | Pixels | Units / frame |
 | --- | --- | --- |
 | `CAMERA/RGB` | RGB-order `uint8`, H × W × 3 | RGB optical frame |
 | `CAMERA/DEPTH` | `uint16`, H × W | `data * depth_scale` meters, depth optical frame |
+| `CAMERA/REGISTERED_DEPTH` | `RegisteredDepth.image`, `uint16`, RGB H × W | Measured depth on the synchronized RGB pixel grid, RGB optical frame and intrinsics |
 
-Zero depth is invalid. Depth is native: it is not aligned to RGB or post-processed.
+Zero depth is invalid. The D435 and D405 drivers align measured depth once per
+frameset.
 Every image carries intrinsics, distortion coefficients, and its URDF optical frame ID.
 Derive transforms to the robot base from the URDF. Pixels use fast lossless LZ4 transport;
 16-bit samples use little-endian byte order on the wire.

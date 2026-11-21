@@ -125,3 +125,27 @@ def test_real_camera_fails_clearly_on_macos_without_importing_sdk(monkeypatch):
     with pytest.raises(RuntimeError, match="not supported on macOS"):
         camera.start()
     importer.assert_not_called()
+
+
+@pytest.mark.parametrize("model", ["D405", "D435"])
+def test_known_model_aligns_the_same_sdk_frameset(model):
+    camera, sdk, _ = make_camera()
+    profile = sdk.pipeline.return_value.start.return_value
+    profile.get_device.return_value.get_info.side_effect = lambda key: (
+        f"Intel RealSense {model}" if key == sdk.camera_info.name else "test-camera"
+    )
+    units = 1500
+    aligned = np.full((2, 4), units, dtype=np.uint16)
+    registered = sdk.align.return_value.process.return_value.get_depth_frame.return_value
+    registered.get_data.return_value = aligned
+    camera.start()
+    frames = camera.read()
+    sdk.align.assert_called_once_with(sdk.stream.color)
+    sdk.align.return_value.process.assert_called_once_with(
+        sdk.pipeline.return_value.poll_for_frames.return_value
+    )
+    assert frames.registered.camera_model == model.lower()
+    aligned[:] = 0
+    assert np.all(frames.registered.image.data == units)
+    assert not np.array_equal(frames.depth.data, frames.registered.image.data)
+    camera.stop()

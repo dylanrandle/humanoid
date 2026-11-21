@@ -1,5 +1,5 @@
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraImage
+from humanoid.types.camera import CameraImage, RegisteredDepth
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -13,6 +13,7 @@ from humanoid.types.robot import (
 
 AcceptedTypes = (
     ActuatorHealthReport
+    | RegisteredDepth
     | CameraImage
     | NodeRateSample
     | RobotJointCommand

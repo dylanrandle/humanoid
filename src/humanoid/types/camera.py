@@ -7,6 +7,8 @@ from typing import Protocol
 
 import numpy as np
 
+from humanoid.types.depth import DepthCamera
+
 MAX_VERTICAL_FOV_DEGREES = 180
 
 
@@ -126,8 +128,47 @@ class CameraImage:
 
 
 @dataclass(frozen=True, kw_only=True)
-class CameraFrames:
+class RegisteredDepth:
+    camera_model: DepthCamera
+    rgb_frame_number: int
+    image: CameraImage
+
+    def matches(self, rgb: CameraImage, depth: CameraImage) -> bool:
+        return (
+            self.image.encoding is CameraEncoding.DEPTH16
+            and rgb.encoding is CameraEncoding.RGB8
+            and depth.encoding is CameraEncoding.DEPTH16
+            and self.image.timestamp == rgb.timestamp == depth.timestamp
+            and self.image.serial_number == rgb.serial_number == depth.serial_number
+            and self.image.frame_id == rgb.frame_id
+            and self.rgb_frame_number == rgb.frame_number
+            and self.image.frame_number == depth.frame_number
+            and self.image.device_timestamp == depth.device_timestamp
+            and self.image.timestamp_domain == depth.timestamp_domain
+            and self.image.intrinsics == rgb.intrinsics
+            and self.image.depth_scale == depth.depth_scale
+        )
+
+
+@dataclass(frozen=True, kw_only=True)
+class CameraView:
+    """Selected camera view. Missing aligned measurements leave RGB available."""
+
     rgb: CameraImage
+    depth: CameraImage | None
+    registered: RegisteredDepth | None = None
+
+    def __post_init__(self) -> None:
+        if self.registered is not None and (
+            self.depth is None or not self.registered.matches(self.rgb, self.depth)
+        ):
+            raise ValueError("Registered depth does not belong to this RGB-D capture.")
+
+
+@dataclass(frozen=True, kw_only=True)
+class CameraFrames(CameraView):
+    """Driver frameset containing native depth and optional depth registered to RGB."""
+
     depth: CameraImage
 
 

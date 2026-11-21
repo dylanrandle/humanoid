@@ -77,6 +77,7 @@ class TestInit:
                 Topic.ORCHESTRATOR_MODE,
                 Topic.CAMERA_RGB,
                 Topic.CAMERA_DEPTH,
+                Topic.CAMERA_REGISTERED_DEPTH,
             ]
         )
 

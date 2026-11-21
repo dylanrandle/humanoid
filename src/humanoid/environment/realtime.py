@@ -9,7 +9,7 @@ from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.action import Action
-from humanoid.types.camera import CameraFrames, CameraImage
+from humanoid.types.camera import CameraFrames, CameraImage, RegisteredDepth
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import (
@@ -85,6 +85,7 @@ class RealtimeEnvironment(Environment):
                 Topic.ORCHESTRATOR_MODE,
                 Topic.CAMERA_RGB,
                 Topic.CAMERA_DEPTH,
+                Topic.CAMERA_REGISTERED_DEPTH,
             ],
         )
 
@@ -105,6 +106,7 @@ class RealtimeEnvironment(Environment):
         self._last_mode: Mode | None = None
         self._rgb: CameraImage | None = None
         self._depth: CameraImage | None = None
+        self._registered_depth: RegisteredDepth | None = None
         self._camera_frames: CameraFrames | None = None
 
         logger.info("Initialized environment")
@@ -284,7 +286,17 @@ class RealtimeEnvironment(Environment):
             and self._rgb.timestamp == self._depth.timestamp
             and self._rgb.serial_number == self._depth.serial_number
         ):
-            self._camera_frames = CameraFrames(rgb=self._rgb, depth=self._depth)
+            incoming = self.subscriber.receive(Topic.CAMERA_REGISTERED_DEPTH)
+            if incoming is not None:
+                self._registered_depth = incoming
+            registered = self._registered_depth
+            self._camera_frames = CameraFrames(
+                rgb=self._rgb,
+                depth=self._depth,
+                registered=registered
+                if registered and registered.matches(self._rgb, self._depth)
+                else None,
+            )
         return self._camera_frames
 
     @staticmethod

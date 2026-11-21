@@ -10,7 +10,8 @@ import lcm
 from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraImage
+from humanoid.types.camera import CameraImage, RegisteredDepth
+from humanoid.types.depth import DepthCamera
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     actuator_health_report_t,
@@ -20,6 +21,7 @@ from humanoid.types.lcm import (
     node_rate_sample_t,
     orchestrator_event_t,
     orchestrator_mode_t,
+    registered_depth_t,
     robot_base_command_t,
     robot_joint_command_t,
     robot_state_t,
@@ -90,6 +92,13 @@ class Subscriber:
 
             if expected_type is CameraImage:
                 decoded_data = LCMConverter.camera_image_from_lcm(camera_image_t.decode(data))
+            elif expected_type is RegisteredDepth:
+                registered = registered_depth_t.decode(data)
+                decoded_data = RegisteredDepth(
+                    camera_model=DepthCamera(registered.camera_model),
+                    rgb_frame_number=registered.rgb_frame_number,
+                    image=LCMConverter.camera_image_from_lcm(registered.image),
+                )
             elif expected_type is ActuatorHealthReport:
                 lcm_msg = actuator_health_report_t.decode(data)
                 decoded_data = LCMConverter.actuator_health_report_from_lcm(lcm_msg)
@@ -130,6 +139,11 @@ class Subscriber:
             q.put_nowait((decoded_data, received_at_s))
         except Exception as e:
             logger.error(f"Error decoding message on channel {channel}: {e}")
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.CAMERA_REGISTERED_DEPTH], timeout: int | None = None
+    ) -> RegisteredDepth | None: ...
 
     @overload
     def receive(

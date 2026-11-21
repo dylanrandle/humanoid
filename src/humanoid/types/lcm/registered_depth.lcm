@@ -1,0 +1,8 @@
+package humanoid.types.lcm;
+
+// A native depth capture reprojected into the simultaneous RGB image.
+struct registered_depth_t {
+    string camera_model;
+    int64_t rgb_frame_number;
+    camera_image_t image;
+}

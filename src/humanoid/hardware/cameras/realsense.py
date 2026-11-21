@@ -1,9 +1,10 @@
-"""Acquire native RGB and depth without alignment or depth post-processing."""
+"""Acquire native RGB-D frames and synchronized depth registered to color."""
 
 import importlib
 import sys
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any, cast
 
 import numpy as np
@@ -14,7 +15,9 @@ from humanoid.types.camera import (
     CameraImage,
     CameraIntrinsics,
     RealSenseCameraConfig,
+    RegisteredDepth,
 )
+from humanoid.types.depth import DepthCamera
 
 
 class RealSenseCamera:
@@ -33,6 +36,8 @@ class RealSenseCamera:
         self._depth_scale = 0.0
         self._serial_number = ""
         self._last_frame_at = 0.0
+        self._align: Any = None
+        self._model: DepthCamera | None = None
 
     def start(self) -> None:
         if self._pipeline is not None:
@@ -74,6 +79,9 @@ class RealSenseCamera:
             if not np.isfinite(self._depth_scale) or self._depth_scale <= 0:
                 raise RuntimeError("RealSense reported an invalid depth scale.")
             self._serial_number = str(device.get_info(sdk.camera_info.serial_number))
+            name = str(device.get_info(sdk.camera_info.name)).lower().split()
+            self._model = next((model for model in DepthCamera if model.value in name), None)
+            self._align = sdk.align(sdk.stream.color) if self._model else None
             self._intrinsics = {
                 encoding: self._read_intrinsics(profile.get_stream(stream))
                 for encoding, stream in (
@@ -110,10 +118,23 @@ class RealSenseCamera:
             rgb = frames.get_color_frame()
             depth = frames.get_depth_frame()
             if rgb and depth:
-                result = CameraFrames(
-                    rgb=self._image(rgb, CameraEncoding.RGB8, now),
-                    depth=self._image(depth, CameraEncoding.DEPTH16, now),
-                )
+                color = self._image(rgb, CameraEncoding.RGB8, now)
+                native = self._image(depth, CameraEncoding.DEPTH16, now)
+                registered = None
+                if self._model is not None and self._align is not None:
+                    aligned = self._align.process(frames).get_depth_frame()
+                    if aligned:
+                        registered = RegisteredDepth(
+                            camera_model=self._model,
+                            rgb_frame_number=color.frame_number,
+                            image=replace(
+                                native,
+                                frame_id=color.frame_id,
+                                intrinsics=color.intrinsics,
+                                data=np.array(aligned.get_data(), copy=True, order="C"),
+                            ),
+                        )
+                result = CameraFrames(rgb=color, depth=native, registered=registered)
                 self._last_frame_at = now
                 return result
         if now - self._last_frame_at >= self.config.frame_timeout_seconds:
