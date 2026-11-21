@@ -188,6 +188,11 @@ fi
     --reinstall-package humanoid \
     --requirements "$STAGING_DIR/requirements.txt" \
     "$STAGING_DIR/$WHEEL_NAME"
+# Use the TensorRT bindings supplied with the Jetson's native runtime.
+JETPACK_PACKAGES="/usr/lib/python$PYTHON_VERSION/dist-packages"
+if [[ -d "$JETPACK_PACKAGES/tensorrt" ]]; then
+    printf '%s\n' "$JETPACK_PACKAGES" > "$INSTALL_DIR/.venv/lib/python$PYTHON_VERSION/site-packages/jetpack.pth"
+fi
 ln -sfn .venv/bin/start "$INSTALL_DIR/start"
 
 cp "$STAGING_DIR/humanoid.service.template" "$STAGING_DIR/humanoid.service"
