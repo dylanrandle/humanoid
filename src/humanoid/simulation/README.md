@@ -120,3 +120,18 @@ Deploy the same viewer version and robot assets on both machines. The host can
 be an SSH alias or `user@hostname`. The command subscribes to `SIMULATION/STATE`
 on the Jetson and streams it over SSH. Closing the viewer closes the connection.
 For a custom deployment directory, set `HUMANOID_ROBOT_DIR` on the Mac.
+
+## Floor pickup test
+
+Panda and Triskel use each toy’s simulated pose to pick up a cube, cylinder,
+ball, and car. Both fingers must support the toy at least 60 mm above its
+starting height for 10 seconds, with less than 2 mm of height variation.
+For Triskel’s cube grasp, finger penetration and upward motion before lift
+must each stay below 1 mm.
+
+```bash
+uv run pytest -q tests/simulation/test_privileged_grasp.py
+```
+
+To save an MP4 and a synchronized 25 Hz CSV for each trial, prefix the command
+with `HUMANOID_GRASP_OUTPUT=logs/privileged-grasp/run-1`.

@@ -21,6 +21,7 @@ from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConf
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     CartesianVelocityLimits,
+    MeshContactConfig,
     RobotBaseConfig,
     RobotConfig,
     RobotGripperConfig,
@@ -171,6 +172,14 @@ STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
 )
 TOOL_CONFIG = RobotToolConfig(frame="gripper_base_link")
 GRIPPER_CONFIG = RobotGripperConfig(joint_names=(GRIPPER_ID,))
+# A simplified hull keeps the near-coplanar fin facets stable against flat toys.
+# The short contact response limits penetration under the rack-driven jaws.
+FIN_CONTACT = MeshContactConfig(
+    max_hull_vertices=16,
+    priority=1,
+    solref=(0.01, 1),
+    solimp=(0.95, 0.99, 0.001, 0.5, 2),
+)
 BASE_CONFIG = RobotBaseConfig(
     frame="root_joint",
     velocity_limits=CartesianVelocityLimits(
@@ -207,6 +216,7 @@ TRISKEL_CONFIG = RobotConfig(
     hardware=HARDWARE_CONFIG,
     state_estimation=STATE_ESTIMATION_CONFIG,
     gripper=GRIPPER_CONFIG,
+    mesh_contacts={"finger_1_fin_contact": FIN_CONTACT, "finger_2_fin_contact": FIN_CONTACT},
     operational_space_config=OPERATIONAL_SPACE_CONFIG,
     omniwheel_base_config=OMNIWHEEL_BASE_CONFIG,
 )

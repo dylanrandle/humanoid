@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from pathlib import Path
 
 import mujoco
@@ -12,6 +13,7 @@ import numpy as np
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.robots.base import Robot
 from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.robot import MeshContactConfig
 from humanoid.types.simulation import MujocoSimulationConfig, SimulationScene
 
 ROOT_X_JOINT = "simulation_root_x"
@@ -56,20 +58,16 @@ def build_mujoco_spec(
     spec.option.timestep = config.physics_timestep
     spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
 
+    # Resolve residual sliding at static friction contacts (notably a held toy).
+    spec.option.noslip_iterations = 4
+
     # Some generated OBJ/STL meshes are open shells. MuJoCo can still compute a
     # physically useful inertia from their surface instead of rejecting them as
     # zero-volume solids.
     for mesh in spec.meshes:
         mesh.inertia = mujoco.mjtMeshInertia.mjMESH_INERTIA_SHELL
 
-    # Keep robot links from colliding with each other until the SRDF collision
-    # pairs are translated. They can still collide with future scene objects
-    # configured with the reciprocal external contact bits.
-    for geom in spec.geoms:
-        if geom.contype or geom.conaffinity:
-            geom.contype = _ROBOT_CONTACT_TYPE
-            geom.conaffinity = _EXTERNAL_CONTACT_TYPE
-            geom.group = 3  # Hide collision proxies from camera images.
+    _configure_robot_contacts(spec, robot.config.mesh_contacts)
 
     camera = config.camera
     if camera is not None:
@@ -99,6 +97,27 @@ def build_mujoco_spec(
         scene = mujoco.MjSpec.from_file(str(scene_file))
         spec.attach(scene, prefix="", frame=spec.worldbody.add_frame())
     return spec
+
+
+def _configure_robot_contacts(
+    spec: mujoco.MjSpec, mesh_contacts: Mapping[str, MeshContactConfig]
+) -> None:
+    # Keep robot links from colliding with each other until the SRDF collision
+    # pairs are translated. They can still collide with future scene objects
+    # configured with the reciprocal external contact bits.
+    for geom in spec.geoms:
+        if geom.contype or geom.conaffinity:
+            geom.contype = _ROBOT_CONTACT_TYPE
+            geom.conaffinity = _EXTERNAL_CONTACT_TYPE
+            geom.group = 3  # Hide collision proxies from camera images.
+
+    for name, contact in mesh_contacts.items():
+        geom = spec.geom(name)
+        if geom is not None:
+            spec.mesh(geom.meshname).maxhullvert = contact.max_hull_vertices
+            geom.priority = contact.priority
+            geom.solref = contact.solref
+            geom.solimp = contact.solimp
 
 
 def _resolve_package_uris(urdf_xml: str, urdf_path: Path) -> str:
@@ -231,7 +250,7 @@ def _add_mimic_constraints(spec: mujoco.MjSpec, urdf_xml: str) -> None:
         source_joint = mimic.attrib["joint"]
         multiplier = float(mimic.attrib.get("multiplier", "1"))
         offset = float(mimic.attrib.get("offset", "0"))
-        spec.add_equality(
+        equality = spec.add_equality(
             name=f"{joint_name}_mimics_{source_joint}",
             type=mujoco.mjtEq.mjEQ_JOINT,
             name1=joint_name,
@@ -239,3 +258,9 @@ def _add_mimic_constraints(spec: mujoco.MjSpec, urdf_xml: str) -> None:
             data=[offset, multiplier, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             active=True,
         )
+        # A geared rack must track its driver even under opposing contact loads.
+        if joint.attrib["type"] == "prismatic" and (
+            spec.joint(source_joint).type == mujoco.mjtJoint.mjJNT_HINGE
+        ):
+            equality.solref = [0.01, 1]
+            equality.solimp = [0.99, 0.999, 0.001, 0.5, 2]

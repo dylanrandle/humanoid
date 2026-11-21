@@ -165,6 +165,16 @@ class RobotBaseCommand:
     pose: pin.SE3
 
 
+@dataclass(frozen=True, kw_only=True)
+class MeshContactConfig:
+    """Collision hull and contact solver settings for a named mesh geom."""
+
+    max_hull_vertices: int
+    priority: int
+    solref: tuple[float, float]
+    solimp: tuple[float, float, float, float, float]
+
+
 @dataclass
 class RobotConfig:
     name: RobotName
@@ -178,6 +188,7 @@ class RobotConfig:
     state_estimation: RobotStateEstimationConfig | None = None
     operational_space_config: OperationalSpaceConfig | None = None
     omniwheel_base_config: OmniwheelBaseConfig | None = None
+    mesh_contacts: dict[str, MeshContactConfig] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Own invariants spanning logical controls and physical bindings."""
