@@ -74,7 +74,8 @@ LCM network.
 
 In simulation mode, select a scene before starting
 the stack. Run `uv run sim-viewer` in a second terminal to inspect the robot
-and all movable objects in the running world.
+and all movable objects in the running world. To view a simulation running on the
+Jetson, run `uv run sim-viewer --host triskel` on your Mac.
 
 ### Agent control API
 

@@ -109,3 +109,14 @@ uv run sim-viewer
 The viewer waits for the stack and follows the selected robot and scene over
 the same LCM URL. Drag to orbit and scroll to zoom. It shows a local copy of the
 live MuJoCo physics state. Closing the window leaves the stack running.
+
+For a simulation running on the Jetson, run this from your Mac checkout:
+
+```bash
+uv run sim-viewer --host triskel
+```
+
+Deploy the same viewer version and robot assets on both machines. The host can
+be an SSH alias or `user@hostname`. The command subscribes to `SIMULATION/STATE`
+on the Jetson and streams it over SSH. Closing the viewer closes the connection.
+For a custom deployment directory, set `HUMANOID_ROBOT_DIR` on the Mac.
