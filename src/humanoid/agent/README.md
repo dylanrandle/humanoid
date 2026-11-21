@@ -84,11 +84,12 @@ device code and sign-in link. Select an image-capable model from the account
 catalog. The panel selects Astra 6.2 when available.
 
 Enter an instruction and select **Run task**. In **Idle**, the agent answers
-using current measured state and a live RGB image. In **Autonomy**, it can
+using current measured state, RGB, and a colorized preview of the matching measured depth when available. In **Autonomy**, it can
 also issue bounded tool, base, gripper and hold commands. For a simulation
 test, ask it to move the base 2 cm forward and report the measured result.
-Each step observes the scene again and receives the preceding command result.
-A task can issue up to eight commands. The panel displays progress, the final
+Each motion refreshes the observation. Perception tools can work on the same
+capture across turns. A task can issue up to eight motions and sixteen
+perception calls. The panel displays progress, the final
 answer, and any errors.
 
 **Stop** interrupts the worker and cancels its in-flight command. Stopping a
@@ -96,3 +97,57 @@ running motion task requests Idle. Changing control modes in the console or
 stopping the Agent API or stack also stops the task. Refreshing the browser
 reconnects to the current task. Device sign-in, model calls, and task execution
 run on the dashboard host, including on the Jetson.
+
+### Instance segmentation
+
+On Triskel the agent can segment the observed D435 or D405 RGB image in Idle
+or Autonomy. The first segmentation call encodes RGB with NanoSAM, and later
+prompts reuse the encoding. [NanoSAM installation](../../../models/nanosam/README.md)
+
+| Tool | Agent inputs | Result |
+| --- | --- | --- |
+| `segment_everything` | `observation_id`, optional `region_xyxy` | Numbered proposals from a grid of prompts. A region restricts seed locations and masks can extend outside it. |
+| `segment_at_point` | `observation_id`, `point_xy`, `return_alternatives` | An object at the pixel, or distinct ranked interpretations of that point. |
+| `segment_in_box` | `observation_id`, `box_xyxy`, `return_alternatives` | An object outlined using its approximate bounding box. |
+| `refine_mask` | `mask_id`, `include_points`, `exclude_points` | A new mask on the same observation, using the previous logits and prompt history. Supply at least one correction. |
+
+Coordinates are integer pixels in the original RGB image, measured from the
+top left. Boxes use inclusive left, top, right and bottom coordinates. Each segmentation call
+returns an RGB overlay and a numbered list with mask IDs, bounding boxes, pixel
+counts and the decoder's predicted IoU score. Higher scores rank first.
+RGB segmentation also works on an RGB-only view.
+
+### Depth completion
+
+Call `complete_depth(observation_id)` when a task needs a dense metric depth map.
+It uses synchronized RGB and aligned measured depth from the pinned observation.
+It works on its own or before or after mask selection. The first call loads the depth
+model and returns a color preview, its range in metres, and the valid pixel count.
+Repeated calls for the same observation reuse the saved map. The preview uses amber
+for near, blue for far and black for invalid pixels. [Depth model installation](../../../models/cdm/README.md)
+
+### Using a saved observation
+
+Motion or `observe_again` pins a new view. Completion and refinement require the current
+view. Downstream readers can resolve a saved selection after a view change or
+worker restart.
+
+Pass the opaque `mask_id` to a downstream tool running against the same
+artifact store (by default `$HUMANOID_DATA_DIR/logs/segmentation`). Each
+saved observation stores its original RGB, camera serial, frame numbers, capture
+timestamps and RGB intrinsics. Before completion, `completed_depth_m` is `None`.
+After completion, resolving any mask from that observation also loads its full
+float32 axial depth map in metres. For a depth-only workflow, use
+`MaskStore().resolve_depth(observation_id)` without creating a mask.
+
+```python
+import numpy as np
+from humanoid.perception.masks import MaskStore
+
+target = MaskStore().resolve(mask_id)
+if target.completed_depth_m is None:
+    raise ValueError(f"Request complete_depth for observation {target.observation_id}.")
+valid = target.mask & np.isfinite(target.completed_depth_m) & (target.completed_depth_m > 0)
+v, u = np.nonzero(valid)
+depth_m = target.completed_depth_m[v, u]  # Use (u, v) and target.intrinsics for deprojection.
+```

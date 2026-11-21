@@ -1,24 +1,66 @@
+import json
 from unittest.mock import Mock
 
 import pytest
+from PIL import Image
+from pydantic import ValidationError
 
 from humanoid.agent.harness import model, worker
+from humanoid.config.agent import get_agent_policy_config
 from humanoid.types.agent import AgentTask
+from humanoid.types.agent_decision import (
+    Decision,
+    DecisionContext,
+    MotionCall,
+    ObservationStatus,
+    PerceptionCall,
+    PoseRecord,
+)
+from humanoid.types.camera import ObservationId
 from humanoid.types.orchestrator import Mode
+from humanoid.types.segmentation import MaskId, MaskProposal, SegmentationResult
+from humanoid.types.tools import CompleteDepth, DepthCompletionResult, SegmentAtPoint
+
+
+def decision_reply(message, operation=None, arguments=None):
+    command = {"operation": operation, "arguments": arguments} if operation else None
+    return Decision[MotionCall | PerceptionCall].model_validate_json(
+        json.dumps({"message": message, "command": command})
+    )
+
+
+def observation_status() -> ObservationStatus:
+    pose: PoseRecord = {"position_m": [0.0, 0.0, 0.0], "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0]}
+    return ObservationStatus(
+        mode=Mode.IDLE,
+        base_pose_world=pose,
+        tool_frame="tool",
+        tool_pose_base=pose,
+        gripper_positions_rad=[],
+        gripper_limits_rad=[],
+        rgb_frame=1,
+        observation_id=ObservationId("view"),
+        rgb_size_xy=[8, 8],
+        registered_depth_available=True,
+    )
 
 
 @pytest.fixture
 def setup_worker(monkeypatch):
     monkeypatch.setattr(worker, "start_thread", Mock())
     tools = Mock()
-    tools.observe.return_value = ({"rgb_frame": 1}, "data:image/jpeg;base64,test")
+    tools.observe.return_value = (
+        observation_status(),
+        "data:image/jpeg;base64,test",
+        "data:image/jpeg;base64,measured",
+    )
     monkeypatch.setattr(worker, "TriskelTools", lambda _: tools)
     client = Mock(session_id="session")
     client.observation.return_value.mode = Mode.AUTONOMY
     client.execute.return_value = {"reached": True, "position_error_m": 0.001}
     decision = Mock()
     monkeypatch.setattr(worker, "decide", decision)
-    return client, decision
+    return client, decision, tools
 
 
 def test_model_account_and_catalog():
@@ -40,21 +82,39 @@ def test_model_account_and_catalog():
     codex.login_chatgpt_device_code.assert_not_called()
 
 
+@pytest.mark.parametrize("depth", ["measured-image", None])
+def test_model_receives_the_measured_depth_view_when_available(depth):
+    thread = Mock()
+    thread.run.return_value.status.value = "completed"
+    thread.run.return_value.final_response = '{"message":"Observed","command":null}'
+    context = DecisionContext(
+        instruction="Observe",
+        observation=observation_status(),
+        last_result=None,
+        commands_remaining=0,
+        perception_remaining=1,
+        limits=get_agent_policy_config(),
+    )
+    model.decide(thread, context, "rgb-image", allow_motion=False, measured_depth_image=depth)
+    images = [i.url for i in thread.run.call_args.args[0] if isinstance(i, model.ImageInput)]
+    assert images == (["rgb-image", depth] if depth else ["rgb-image"])
+
+
 @pytest.mark.parametrize("mode,live_mode", [(Mode.IDLE, Mode.AUTONOMY), (Mode.AUTONOMY, Mode.IDLE)])
 def test_motion_needs_both_submitted_and_current_autonomy(setup_worker, mode, live_mode):
-    client, decision = setup_worker
+    client, decision, _ = setup_worker
     client.observation.return_value.mode = live_mode
-    decision.return_value = {"message": "moving", "command": {"operation": "hold", "arguments": {}}}
+    decision.return_value = decision_reply("moving", "hold", {"duration": 1})
     with pytest.raises(RuntimeError, match="Autonomy"):
         worker.run_task(Mock(), client, AgentTask("task", "vision", mode, "session"), Mock())
     client.execute.assert_not_called()
 
 
 def test_motion_result_reaches_next_model_turn(setup_worker):
-    client, decision = setup_worker
+    client, decision, _ = setup_worker
     decision.side_effect = [
-        {"message": "Holding", "command": {"operation": "hold", "arguments": {"duration": 1}}},
-        {"message": "Held", "command": None},
+        decision_reply("Holding", "hold", {"duration": 1}),
+        decision_reply("Held"),
     ]
     assert (
         worker.run_task(
@@ -63,11 +123,108 @@ def test_motion_result_reaches_next_model_turn(setup_worker):
         == "Held"
     )
     client.execute.assert_called_once_with("hold", {"duration": 1})
-    assert decision.call_args.args[1]["last_result"] == client.execute.return_value
+    assert decision.call_args.args[1].last_result == client.execute.return_value
 
 
 def test_worker_refuses_new_robot_session(setup_worker):
-    client, decision = setup_worker
+    client, decision, _ = setup_worker
     with pytest.raises(RuntimeError, match="restarted"):
         worker.run_task(Mock(), client, AgentTask("task", "vision", Mode.AUTONOMY, "old"), Mock())
     decision.assert_not_called()
+
+
+def test_idle_segmentation_passes_numbered_mask_to_next_turn(setup_worker):
+    client, decision, tools = setup_worker
+    client.observation.return_value.mode = Mode.IDLE
+    masks = SegmentationResult(
+        observation_id=ObservationId("view"),
+        masks=(
+            MaskProposal(
+                number=1,
+                mask_id=MaskId("choice"),
+                box_xyxy=(2, 3, 5, 6),
+                pixels=12,
+                predicted_iou=0.95,
+            ),
+        ),
+    )
+    tools.segmentation.segment.return_value = masks, Image.new("RGB", (8, 8))
+    args = {"observation_id": "view", "point_xy": [3, 4], "return_alternatives": True}
+    decision.side_effect = [
+        decision_reply("Select the cube", "segment_at_point", args),
+        decision_reply("Selected choice"),
+    ]
+    assert (
+        worker.run_task(Mock(), client, AgentTask("select", "vision", Mode.IDLE, "session"), Mock())
+        == "Selected choice"
+    )
+    tools.segmentation.segment.assert_called_once_with(
+        SegmentAtPoint(
+            observation_id=ObservationId("view"), point_xy=(3, 4), return_alternatives=True
+        )
+    )
+    tools.observe.assert_called_once()
+    assert decision.call_args.args[1].last_result == masks
+    assert decision.call_args.args[2].startswith("data:image/jpeg;")
+    assert not decision.call_args.kwargs["allow_motion"]
+    client.execute.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", [Mode.IDLE, Mode.AUTONOMY])
+def test_complete_depth_is_an_explicit_perception_command(setup_worker, mode):
+    client, decision, tools = setup_worker
+    client.observation.return_value.mode = mode
+    result = DepthCompletionResult(
+        observation_id=ObservationId("view"), valid_pixels=128, preview_range_m=(0.2, 3.0)
+    )
+    tools.depth.complete_depth.return_value = result, Image.new("RGB", (16, 8))
+    decision.side_effect = [
+        decision_reply("Check depth", "complete_depth", {"observation_id": "view"}),
+        decision_reply("Depth ready"),
+    ]
+    assert (
+        worker.run_task(Mock(), client, AgentTask("depth", "vision", mode, "session"), Mock())
+        == "Depth ready"
+    )
+    tools.depth.complete_depth.assert_called_once_with(
+        CompleteDepth(observation_id=ObservationId("view"))
+    )
+    tools.segmentation.segment.assert_not_called()
+    assert decision.call_args.args[1].last_result == result
+    assert decision.call_args.args[2].startswith("data:image/jpeg;")
+    client.execute.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "operation,arguments",
+    [
+        (
+            "segment_at_point",
+            {"observation_id": "view", "point_xy": [True, 3], "return_alternatives": False},
+        ),
+        (
+            "segment_in_box",
+            {"observation_id": "view", "point_xy": [3, 4], "return_alternatives": False},
+        ),
+        ("complete_depth", {"mask_id": "mask"}),
+        ("observe_again", {"unexpected": True}),
+        ("hold", {"duration": 1}),
+    ],
+)
+def test_model_contract_rejects_invalid_or_unavailable_commands(operation, arguments):
+    contract, _ = model._decision_contract(allow_motion=False, allow_perception=True)
+    with pytest.raises(ValidationError):
+        contract.model_validate_json(
+            json.dumps(
+                {"message": "act", "command": {"operation": operation, "arguments": arguments}}
+            )
+        )
+
+
+def test_perception_budget_restricts_schema_and_parser():
+    contract, schema = model._decision_contract(allow_motion=True, allow_perception=False)
+    assert "complete_depth" not in json.dumps(schema)
+    with pytest.raises(ValidationError):
+        contract.model_validate_json(
+            '{"message":"act","command":{"operation":"observe_again","arguments":{}}}'
+        )

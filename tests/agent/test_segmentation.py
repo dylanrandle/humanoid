@@ -10,6 +10,7 @@ from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness import depth as depth_tools
 from humanoid.agent.harness import segmentation
 from humanoid.agent.harness.observation import PinnedObservation
+from humanoid.agent.harness.robot import TriskelTools
 from humanoid.agent.serialization import decode_frames, encode_frames
 from humanoid.agent.server import AgentControlServer
 from humanoid.config.camera import REALSENSE_CAMERA_CONFIG
@@ -130,6 +131,32 @@ def test_http_pins_complete_capture_when_newer_native_pair_arrives(service, fram
     finally:
         client.close()
         server.close()
+
+
+@pytest.mark.parametrize("aligned", [True, False])
+def test_agent_observes_measured_depth_if_available(service, frames, aligned):
+    client = MagicMock()
+    client.observation.return_value = service.observation()
+    source = frames if aligned else replace(frames, registered=None)
+    payload = encode_frames(source)
+    if aligned:
+        assert "image" not in payload["registered"]
+    else:
+        assert payload["depth"] is None and "registered" not in payload
+    client.observe.return_value = decode_frames(payload, received_after=100)
+    tools = TriskelTools(client)
+    try:
+        status, rgb, depth = tools.observe(service.observation().mode)
+        client.observe.assert_called_once_with()
+        assert status["registered_depth_available"] is aligned
+        assert rgb.startswith("data:image/jpeg;")
+        if aligned:
+            assert depth and depth.startswith("data:image/jpeg;") and rgb != depth
+        else:
+            assert depth is None
+        assert not tools.depth.depth_models
+    finally:
+        tools.close()
 
 
 @pytest.mark.parametrize("payload", [{}, {"depth_view": "native"}])
