@@ -2,14 +2,24 @@
 
 import math
 from dataclasses import dataclass
+from enum import StrEnum
+
+import numpy as np
 
 from humanoid.types.camera import SimulatedCameraConfig
+from humanoid.types.robot import RobotName
+
+
+class SimulationScene(StrEnum):
+    EMPTY = "empty"
+    TOY_CLEANUP = "toy_cleanup"
 
 
 @dataclass(frozen=True, kw_only=True)
 class MujocoSimulationConfig:
     """Physics and actuator defaults shared by every generated robot model."""
 
+    scene: SimulationScene = SimulationScene.EMPTY
     physics_timestep: float = 0.005
     publish_rate_hz: float = 200.0
     position_kp: float = 1000.0
@@ -40,3 +50,16 @@ class MujocoSimulationConfig:
         for value in positive_values:
             if not math.isfinite(value) or value <= 0.0:
                 raise ValueError(f"MuJoCo {value=} must be positive and finite.")
+
+
+@dataclass(frozen=True)
+class SimulationState:
+    """A native MuJoCo integration state and the model needed to interpret it."""
+
+    robot: RobotName
+    scene: SimulationScene
+    state: np.ndarray
+
+    def __post_init__(self) -> None:
+        if self.state.ndim != 1 or not self.state.size or not np.isfinite(self.state).all():
+            raise ValueError("Expected a finite, nonempty simulation state vector.")

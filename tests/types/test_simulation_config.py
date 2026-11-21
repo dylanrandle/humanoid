@@ -7,7 +7,7 @@ import pytest
 from humanoid.types.simulation import MujocoSimulationConfig
 
 POSITIVE_SIMULATION_FIELDS = tuple(
-    field.name for field in fields(MujocoSimulationConfig) if field.name != "camera"
+    field.name for field in fields(MujocoSimulationConfig) if field.type is float
 )
 
 

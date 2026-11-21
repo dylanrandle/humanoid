@@ -50,6 +50,7 @@ export const OrchestratorParameter = Object.freeze({
 
 export const PayloadKey = Object.freeze({
   RUNTIME: "runtime",
+  SCENE: "scene",
   ROBOT: "robot",
   MODE: "mode",
   PARAMETERS: "parameters",
@@ -65,6 +66,7 @@ export const ApiRoute = Object.freeze({
   APPLICATION_LOGS: "/api/application-logs",
   CAMERA_PREVIEWS: "/api/camera-previews",
   RUNTIME: "/api/runtime",
+  SCENE: "/api/scene",
   ROBOT: "/api/robot",
   PROCESSES: "/api/processes/<name>/<action>",
   LOGGING: "/api/logging/<action>",
@@ -102,6 +104,7 @@ export const HttpKey = Object.freeze({
 export const BusyKey = Object.freeze({
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   LOGGING: ApiRoute.LOGGING,
   REPLAY: ApiRoute.REPLAY,
   ORCHESTRATOR: ApiRoute.ORCHESTRATOR,
@@ -119,6 +122,7 @@ export const API = Object.freeze({
   CAMERA_PREVIEWS: ApiRoute.CAMERA_PREVIEWS,
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   logging(action) {
     return resolveRoute(ApiRoute.LOGGING, { action });
   },

@@ -21,6 +21,7 @@ import {
   processRequest,
   replayRequest,
   robotRequest,
+  safetyPayload,
   runtimeRequest,
 } from "./requests.js";
 import { showToast } from "./toast.js";
@@ -106,6 +107,16 @@ els.robotSelect.addEventListener("change", () => {
   const request = robotRequest(state.snapshot, robot);
   if (!request) return;
   perform(BusyKey.ROBOT, () => post(request.path, request.payload));
+});
+
+els.sceneSelect.addEventListener("change", () => {
+  const scene = els.sceneSelect.value;
+  perform(BusyKey.SCENE, () =>
+    post(API.SCENE, {
+      [PayloadKey.SCENE]: scene,
+      ...safetyPayload(state.snapshot),
+    }),
+  );
 });
 
 els.stackAction.addEventListener("click", () => {

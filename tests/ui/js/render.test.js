@@ -51,6 +51,8 @@ function elements() {
     systemStateLabel: element(),
     robotName: element(),
     robotSelect: element(),
+    sceneSelect: element(),
+    sceneSelector: element(),
     runtimeButtons: [element({ runtime: "sim" }), element({ runtime: "real" })],
     configurationLockNote: element(),
     runtimeFootnote: element(),
@@ -163,6 +165,8 @@ function snapshot() {
     runtime: "sim",
     robot: "panda",
     robots: ["panda"],
+    scenes: ["empty", "toy_cleanup"],
+    scene: "empty",
     processes: {
       stack: processStatus(),
       replay: processStatus(),
@@ -466,4 +470,20 @@ test("operator-stopped replay is distinct from natural completion", () => {
   current.replay.exit_code = 0;
   render(current, new Set(), ui);
   assert.equal(ui.replayStatus.textContent, "Complete");
+});
+
+test("scene selection is available only in an idle simulation", () => {
+  const current = snapshot();
+  const ui = elements();
+  current.processes.stack.running = false;
+  render(current, new Set(), ui);
+  assert.equal(ui.sceneSelector.hidden, false);
+  assert.equal(ui.sceneSelect.disabled, false);
+  assert.deepEqual(ui.sceneSelect.options.map((o) => o.value), current.scenes);
+  current.processes.stack.running = true;
+  render(current, new Set(), ui);
+  assert.equal(ui.sceneSelect.disabled, true);
+  current.runtime = "real";
+  render(current, new Set(), ui);
+  assert.equal(ui.sceneSelector.hidden, true);
 });

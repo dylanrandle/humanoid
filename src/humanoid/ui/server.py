@@ -41,6 +41,7 @@ from humanoid.ui.validation import (
     parse_robot_name,
     parse_runtime,
     parse_safety_context,
+    parse_scene,
 )
 
 logger = get_logger(__name__)
@@ -156,6 +157,12 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
         runtime = parse_runtime(str(payload.get(PayloadKey.RUNTIME, "")))
         safety = _safety_context(payload)
         return _success(orchestrator_service.set_runtime(runtime, safety))
+
+    @app.post(ApiRoute.SCENE)
+    def set_scene():
+        payload = _json_payload()
+        scene = parse_scene(str(payload.get(PayloadKey.SCENE, "")))
+        return _success(orchestrator_service.set_scene(scene, _safety_context(payload)))
 
     @app.post(ApiRoute.ROBOT)
     def set_robot():

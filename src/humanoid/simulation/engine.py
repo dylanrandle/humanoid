@@ -26,7 +26,7 @@ from humanoid.types.robot import (
     RobotJointCommand,
     RobotState,
 )
-from humanoid.types.simulation import MujocoSimulationConfig
+from humanoid.types.simulation import MujocoSimulationConfig, SimulationState
 
 SIMULATED_ACTUATOR_TEMPERATURE = 25.0
 
@@ -87,6 +87,12 @@ class NativeMujocoEngine:
         mujoco.mj_forward(self.model, self.data)
         if self.camera is not None:
             self.camera.reset()
+
+    def simulation_state(self) -> SimulationState:
+        signature = mujoco.mjtState.mjSTATE_INTEGRATION
+        state = np.empty(mujoco.mj_stateSize(self.model, signature))
+        mujoco.mj_getState(self.model, self.data, state, signature)
+        return SimulationState(self.robot.config.name, self.config.scene, state)
 
     def read_camera_frames(self, timestamp: float) -> CameraFrames | None:
         return self.camera.read(self.data, timestamp) if self.camera is not None else None

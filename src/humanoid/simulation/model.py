@@ -12,7 +12,7 @@ import numpy as np
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.robots.base import Robot
 from humanoid.types.actuator import ActuatorControlMode
-from humanoid.types.simulation import MujocoSimulationConfig
+from humanoid.types.simulation import MujocoSimulationConfig, SimulationScene
 
 ROOT_X_JOINT = "simulation_root_x"
 ROOT_Y_JOINT = "simulation_root_y"
@@ -94,6 +94,10 @@ def build_mujoco_spec(
         _add_ideal_planar_root(spec, root_link_name, robot, config)
     _add_robot_actuators(spec, robot, config)
     _add_mimic_constraints(spec, urdf_xml)
+    if config.scene is SimulationScene.TOY_CLEANUP:
+        scene_file = Path(__file__).with_name("scenes") / "toy_cleanup.xml"
+        scene = mujoco.MjSpec.from_file(str(scene_file))
+        spec.attach(scene, prefix="", frame=spec.worldbody.add_frame())
     return spec
 
 

@@ -1,0 +1,65 @@
+<mujoco model="toy cleanup">
+  <default>
+    <default class="cleanup">
+      <geom contype="2" conaffinity="3" friction="0.6 0.005 0.0001"/>
+      <default class="wall">
+        <geom type="box" rgba="0.6 0.65 0.7 1"/>
+      </default>
+      <default class="bin">
+        <geom type="box" rgba="0.15 0.35 0.65 1"/>
+      </default>
+      <default class="wheel">
+        <joint axis="0 1 0" damping="0.00001"/>
+        <geom type="cylinder" size="0.0066 0.0015" euler="90 0 0"
+              mass="0.001" rgba="0.08 0.08 0.08 1" friction="0.8 0.001 0.0001"/>
+      </default>
+    </default>
+  </default>
+  <worldbody>
+    <!-- Elevations in this frame are relative to the room floor. -->
+    <frame pos="0 0 -0.032" childclass="cleanup">
+      <geom name="task_floor" type="plane" size="2 2 0.01" rgba="0.45 0.45 0.45 1"/>
+      <light pos="0 0.7 2" dir="0 0 -1" ambient="0.3 0.3 0.3"/>
+      <geom class="wall" pos="-0.8 0.6 0.2" size="0.015 1 0.2"/>
+      <geom class="wall" pos="0.8 0.6 0.2" size="0.015 1 0.2"/>
+      <geom class="wall" pos="0 -0.4 0.2" size="0.8 0.015 0.2"/>
+      <geom class="wall" pos="0 1.6 0.2" size="0.8 0.015 0.2"/>
+      <frame pos="-0.48 0.4 0" childclass="bin">
+        <geom name="bin_floor" pos="0 0 0.003" size="0.126 0.096 0.003"/>
+        <geom pos="-0.123 0 0.0635" size="0.003 0.096 0.0635"/>
+        <geom pos="0.123 0 0.0635" size="0.003 0.096 0.0635"/>
+        <geom pos="0 -0.093 0.0635" size="0.126 0.003 0.0635"/>
+        <geom pos="0 0.093 0.0635" size="0.126 0.003 0.0635"/>
+      </frame>
+      <replicate count="3" offset="0.35 0.23 0" sep="_">
+        <body name="car" pos="-0.32 0.65 0.011">
+          <freejoint name="car_free"/>
+          <geom name="chassis" type="box" size="0.025 0.01 0.0044" mass="0.026" rgba="0.8 0.25 0.1 1"/>
+          <geom name="cabin" type="box" pos="0 0 0.0066" size="0.012 0.009 0.0044" mass="0.01" rgba="0.8 0.25 0.1 1"/>
+          <replicate count="2" offset="0.03 0 0">
+            <replicate count="2" offset="0 0.022 0">
+              <body name="wheel" pos="-0.015 -0.011 -0.0044" childclass="wheel">
+                <joint name="axle"/>
+                <geom/>
+              </body>
+            </replicate>
+          </replicate>
+        </body>
+      </replicate>
+      <replicate count="3" offset="0.27 0.13 0" sep="_">
+        <body name="cube" pos="-0.23 0.41 0.018">
+          <freejoint/>
+          <geom type="box" size="0.018 0.018 0.018" mass="0.035" rgba="0.95 0.68 0.12 1"/>
+        </body>
+        <body name="cylinder" pos="-0.6 0.84 0.025">
+          <freejoint/>
+          <geom type="cylinder" size="0.017 0.025" mass="0.035" rgba="0.13 0.67 0.48 1"/>
+        </body>
+        <body name="ball" pos="-0.38 1.23 0.021">
+          <freejoint/>
+          <geom type="sphere" size="0.021" mass="0.025" rgba="0.42 0.33 0.83 1"/>
+        </body>
+      </replicate>
+    </frame>
+  </worldbody>
+</mujoco>

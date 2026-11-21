@@ -22,6 +22,7 @@ from humanoid.types.lcm import (
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
+    simulation_state_t,
 )
 from humanoid.types.logging import LoggingState, LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -35,13 +36,30 @@ from humanoid.types.robot import (
     CartesianVelocity,
     RobotBaseCommand,
     RobotJointCommand,
+    RobotName,
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.simulation import SimulationScene, SimulationState
 
 
 class LCMConverter:
     """Handles conversion between LCM types and Python dataclasses."""
+
+    @staticmethod
+    def simulation_state_to_lcm(frame: SimulationState) -> simulation_state_t:
+        message = simulation_state_t()
+        message.robot = frame.robot.value
+        message.scene = frame.scene.value
+        message.state_size = frame.state.size
+        message.state = frame.state
+        return message
+
+    @staticmethod
+    def simulation_state_from_lcm(message: simulation_state_t) -> SimulationState:
+        return SimulationState(
+            RobotName(message.robot), SimulationScene(message.scene), np.asarray(message.state)
+        )
 
     @staticmethod
     def camera_image_to_lcm(image: CameraImage) -> camera_image_t:

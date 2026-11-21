@@ -17,6 +17,7 @@ from humanoid.types.robot import (
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.simulation import SimulationState
 
 logger = get_logger(__name__)
 
@@ -36,6 +37,8 @@ class Publisher:
             if data.encoding is not encoding:
                 raise ValueError(f"Topic {topic} requires {encoding} images.")
             lcm_data = LCMConverter.camera_image_to_lcm(data)
+        elif isinstance(data, SimulationState):
+            lcm_data = LCMConverter.simulation_state_to_lcm(data)
         elif isinstance(data, RegisteredDepth):
             lcm_data = registered_depth_t()
             lcm_data.camera_model = data.camera_model.value

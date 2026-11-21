@@ -265,6 +265,10 @@ h3 {
   background: var(--white);
 }
 
+.robot-selector[hidden] {
+  display: none;
+}
+
 .robot-selector strong,
 .robot-selector small {
   display: block;

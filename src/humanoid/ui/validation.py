@@ -7,6 +7,7 @@ from humanoid.orchestrator.constants import CONTROLLED_PROCESS_NAMES
 from humanoid.types.orchestrator import Mode, OrchestratorRequest, SafetyContext
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import SimulationScene
 from humanoid.ui.errors import ApiError
 
 
@@ -42,6 +43,10 @@ def parse_runtime(value: str) -> Runtime:
         "Runtime must be either 'sim' or 'real'.",
         HTTPStatus.BAD_REQUEST,
     )
+
+
+def parse_scene(value: str) -> SimulationScene:
+    return _parse_enum(value, SimulationScene, "Unknown simulation scene.", HTTPStatus.BAD_REQUEST)
 
 
 def parse_robot_name(value: str) -> RobotName:

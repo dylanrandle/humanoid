@@ -35,6 +35,7 @@ from humanoid.types.orchestrator import (
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingBundle, RecordingSummary, ReplayOutcome, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import SimulationScene
 
 
 def _process_status(running: bool = False) -> ProcessStatus:
@@ -75,6 +76,7 @@ def _make_service(
     manager = MagicMock(spec=NodeManager)
     manager.runtime = Runtime.SIM
     manager.robot = RobotName.TRISKEL
+    manager.scene = SimulationScene.EMPTY
     manager.status.return_value = _all_processes(
         stack=stack,
         keyboard=keyboard,

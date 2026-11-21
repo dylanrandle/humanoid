@@ -21,6 +21,7 @@ class ApiRoute(StrEnum):
     APPLICATION_LOGS = f"{ROOT}/application-logs"
     CAMERA_PREVIEWS = f"{ROOT}/camera-previews"
     RUNTIME = f"{ROOT}/runtime"
+    SCENE = f"{ROOT}/scene"
     ROBOT = f"{ROOT}/robot"
     PROCESSES = f"{ROOT}/processes/<name>/<action>"
     LOGGING = f"{ROOT}/logging/<action>"
@@ -34,6 +35,7 @@ class ApiRoute(StrEnum):
 
 class PayloadKey(StrEnum):
     RUNTIME = "runtime"
+    SCENE = "scene"
     ROBOT = "robot"
     MODE = "mode"
     PARAMETERS = "parameters"

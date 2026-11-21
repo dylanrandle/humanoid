@@ -53,6 +53,7 @@ from humanoid.types.orchestrator import (
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import ReplayOutcome, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import SimulationScene
 
 logger = get_logger(__name__)
 
@@ -166,6 +167,8 @@ class OrchestratorService:
                 runtime=self.node_manager.runtime,
                 robot=self.node_manager.robot,
                 robots=list(RobotName),
+                scene=self.node_manager.scene,
+                scenes=list(SimulationScene),
                 processes=processes,
                 node_rates=self.node_rate_monitor.snapshot(self.node_manager.active_nodes()),
                 host_resources=self.host_resource_monitor.snapshot(),
@@ -192,6 +195,9 @@ class OrchestratorService:
 
     def set_runtime(self, runtime: Runtime, safety: SafetyContext) -> OrchestratorStatus:
         return self._set_configuration(lambda: self.node_manager.set_runtime(runtime), safety)
+
+    def set_scene(self, scene: SimulationScene, safety: SafetyContext) -> OrchestratorStatus:
+        return self._set_configuration(lambda: self.node_manager.set_scene(scene), safety)
 
     def set_robot(self, robot: RobotName, safety: SafetyContext) -> OrchestratorStatus:
         return self._set_configuration(lambda: self.node_manager.set_robot(robot), safety)

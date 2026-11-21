@@ -13,9 +13,11 @@ from multiprocessing.queues import Queue
 from typing import cast
 
 from humanoid.config.process import PROCESS_START_METHOD
+from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.constants import (
     ROBOT_ENVIRONMENT_VARIABLE,
     RUNTIME_ENVIRONMENT_VARIABLE,
+    SCENE_ENVIRONMENT_VARIABLE,
     Topic,
 )
 from humanoid.logger import get_logger, setup_queue_logging
@@ -29,6 +31,7 @@ from humanoid.nodes.groups import (
 from humanoid.types.node import ManagedNodeGroup, NodeGroup, ProcessContext
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import SimulationScene
 
 logger = get_logger(__name__)
 
@@ -56,6 +59,7 @@ class NodeManager:
     ):
         self.runtime = runtime if runtime is not None else Runtime.from_environment()
         self.robot = robot if robot is not None else RobotName.from_environment()
+        self.scene = DEFAULT_MUJOCO_SIMULATION_CONFIG.scene
         self.state_timeout_seconds = state_timeout_seconds
         self.state_poll_interval_seconds = state_poll_interval_seconds
         self._process_context = cast(ProcessContext, get_context(PROCESS_START_METHOD))
@@ -72,6 +76,13 @@ class NodeManager:
         with self._lock:
             self._require_configuration_change_allowed_locked()
             self.robot = robot
+
+    def set_scene(self, scene: SimulationScene) -> None:
+        with self._lock:
+            self._require_configuration_change_allowed_locked()
+            if self.runtime is not Runtime.SIM:
+                raise NodeManagerError("Scene selection requires simulation mode.")
+            self.scene = scene
 
     def start(self, name: ProcessName) -> ProcessStatus:
         definition = NODE_GROUPS[name]
@@ -177,7 +188,7 @@ class NodeManager:
                 name=node.__name__,
                 args=(node, self._log_queue),
             )
-            with _node_environment(group.runtime, group.robot):
+            with _node_environment(group.runtime, group.robot, self.scene):
                 process.start()
             group.processes.append(process)
 
@@ -353,10 +364,11 @@ def _run_node(
 
 
 @contextlib.contextmanager
-def _node_environment(runtime: Runtime, robot: RobotName):
+def _node_environment(runtime: Runtime, robot: RobotName, scene: SimulationScene):
     values = {
         RUNTIME_ENVIRONMENT_VARIABLE: runtime,
         ROBOT_ENVIRONMENT_VARIABLE: robot,
+        SCENE_ENVIRONMENT_VARIABLE: scene,
     }
     previous_values = {name: os.environ.get(name) for name in values}
     os.environ.update(values)

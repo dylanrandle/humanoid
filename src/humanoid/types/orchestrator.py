@@ -11,6 +11,7 @@ from humanoid.types.node import NodeRateStatus
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import SimulationScene
 
 
 class OrchestratorError(Exception):
@@ -104,6 +105,8 @@ class OrchestratorStatus:
     runtime: Runtime
     robot: RobotName
     robots: list[RobotName]
+    scene: SimulationScene
+    scenes: list[SimulationScene]
     processes: dict[ProcessName, ProcessStatus]
     node_rates: list[NodeRateStatus]
     host_resources: HostResourceStatus | None

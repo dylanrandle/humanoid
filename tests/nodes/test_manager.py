@@ -34,6 +34,7 @@ from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import ProcessContext
 from humanoid.types.process import ProcessName, Runtime
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import SimulationScene
 
 
 @pytest.fixture(autouse=True)
@@ -301,8 +302,20 @@ def test_rejects_configuration_change_and_duplicate_start_while_group_is_running
         manager.set_runtime(Runtime.REAL)
     with pytest.raises(NodeManagerError, match="Stop the stack and input"):
         manager.set_robot(RobotName.PANDA)
+    with pytest.raises(NodeManagerError, match="Stop the stack and input"):
+        manager.set_scene(SimulationScene.TOY_CLEANUP)
     with pytest.raises(NodeManagerError, match="already running"):
         manager.start(ProcessName.KEYBOARD)
+
+
+def test_scene_selection_requires_simulation(monkeypatch):
+    _use_process_context(monkeypatch)
+    manager = NodeManager(runtime=Runtime.REAL)
+    with pytest.raises(NodeManagerError, match="simulation mode"):
+        manager.set_scene(SimulationScene.TOY_CLEANUP)
+    manager.set_runtime(Runtime.SIM)
+    manager.set_scene(SimulationScene.TOY_CLEANUP)
+    assert manager.scene is SimulationScene.TOY_CLEANUP
 
 
 def test_changes_robot_while_stopped(monkeypatch):

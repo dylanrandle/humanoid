@@ -1,6 +1,12 @@
 """Native MuJoCo simulation configuration defaults."""
 
-from humanoid.config.camera import SIMULATED_CAMERA_CONFIG
-from humanoid.types.simulation import MujocoSimulationConfig
+import os
 
-DEFAULT_MUJOCO_SIMULATION_CONFIG = MujocoSimulationConfig(camera=SIMULATED_CAMERA_CONFIG)
+from humanoid.config.camera import SIMULATED_CAMERA_CONFIG
+from humanoid.constants import SCENE_ENVIRONMENT_VARIABLE
+from humanoid.types.simulation import MujocoSimulationConfig, SimulationScene
+
+DEFAULT_MUJOCO_SIMULATION_CONFIG = MujocoSimulationConfig(
+    camera=SIMULATED_CAMERA_CONFIG,
+    scene=SimulationScene(os.environ.get(SCENE_ENVIRONMENT_VARIABLE, SimulationScene.EMPTY)),
+)

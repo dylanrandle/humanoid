@@ -1,0 +1,8 @@
+package humanoid.types.lcm;
+
+struct simulation_state_t {
+    string robot;
+    string scene;
+    int32_t state_size;
+    double state[state_size];
+}

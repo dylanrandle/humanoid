@@ -72,6 +72,10 @@ same LCM interface to the rest of the stack. Hardware actions require explicit o
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
 
+In simulation mode, select a scene before starting
+the stack. Run `uv run sim-viewer` in a second terminal to inspect the robot
+and all movable objects in the running world.
+
 ### Agent control API
 
 Start **Agent API** under **Control inputs** in the operator console, then select

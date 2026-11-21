@@ -26,6 +26,7 @@ from humanoid.types.lcm import (
     robot_joint_command_t,
     robot_state_t,
     robot_tool_command_t,
+    simulation_state_t,
 )
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.logging import LoggingStatus
@@ -38,6 +39,7 @@ from humanoid.types.robot import (
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.simulation import SimulationState
 
 logger = get_logger(__name__)
 
@@ -92,6 +94,10 @@ class Subscriber:
 
             if expected_type is CameraImage:
                 decoded_data = LCMConverter.camera_image_from_lcm(camera_image_t.decode(data))
+            elif expected_type is SimulationState:
+                decoded_data = LCMConverter.simulation_state_from_lcm(
+                    simulation_state_t.decode(data)
+                )
             elif expected_type is RegisteredDepth:
                 registered = registered_depth_t.decode(data)
                 decoded_data = RegisteredDepth(
@@ -220,6 +226,11 @@ class Subscriber:
     def receive(
         self, topic: Literal[Topic.LOGGING_STATUS], timeout: int | None = None
     ) -> LoggingStatus | None: ...
+
+    @overload
+    def receive(
+        self, topic: Literal[Topic.SIMULATION_STATE], timeout: int | None = None
+    ) -> SimulationState | None: ...
 
     @overload
     def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None: ...

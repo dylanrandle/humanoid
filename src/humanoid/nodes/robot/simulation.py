@@ -1,5 +1,6 @@
 """LCM-backed native MuJoCo digital-twin node."""
 
+import math
 import time
 from collections.abc import Callable
 
@@ -45,6 +46,8 @@ class SimulationNode(Node):
                 "MuJoCo publish period must be an integer multiple of the physics timestep."
             )
         self.substeps = rounded_substeps
+        self._viewer_interval = max(1, math.ceil(self.rate_hz / 30))
+        self._viewer_ticks = 0
         self._clock = clock
         self._command_watchdog = VelocityCommandWatchdog(
             self._stop_velocity_actuators,
@@ -75,6 +78,10 @@ class SimulationNode(Node):
         self.engine.step(self.substeps)
         robot_state = self.engine.read_robot_state(timestamp=self._clock())
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
+        self._viewer_ticks += 1
+        if self._viewer_ticks >= self._viewer_interval:
+            self.publisher.publish(self.engine.simulation_state(), topic=Topic.SIMULATION_STATE)
+            self._viewer_ticks = 0
         frames = self.engine.read_camera_frames(timestamp=robot_state.timestamp)
         if frames is not None:
             if frames.registered is not None:

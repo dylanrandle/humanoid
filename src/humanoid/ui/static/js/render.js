@@ -24,7 +24,9 @@ export function render(snapshot, busy, elements) {
     (process) => process.running,
   );
   const configurationBusy =
-    busy.has(BusyKey.RUNTIME) || busy.has(BusyKey.ROBOT);
+    busy.has(BusyKey.RUNTIME) ||
+    busy.has(BusyKey.ROBOT) ||
+    busy.has(BusyKey.SCENE);
 
   elements.robotName.textContent = formatRobotName(snapshot.robot);
   elements.systemState.classList.toggle(
@@ -43,7 +45,11 @@ export function render(snapshot, busy, elements) {
     button.setAttribute("aria-pressed", String(selected));
     button.disabled = anyRunning || configurationBusy;
   }
-  renderRobotSelector(elements.robotSelect, snapshot.robots, snapshot.robot);
+  renderSelector(elements.robotSelect, snapshot.robots, snapshot.robot);
+  elements.sceneSelector.hidden = snapshot.runtime !== Runtime.SIM;
+  renderSelector(elements.sceneSelect, snapshot.scenes, snapshot.scene);
+  elements.sceneSelect.disabled =
+    elements.sceneSelector.hidden || anyRunning || configurationBusy;
   elements.robotSelect.disabled = anyRunning || configurationBusy;
   elements.configurationLockNote.textContent = anyRunning
     ? "Locked while active"
@@ -548,6 +554,7 @@ export function renderDisconnected(
     button.disabled = true;
   });
   elements.robotSelect.disabled = true;
+  elements.sceneSelect.disabled = true;
   Object.values(elements.processes).forEach(({ action }) => {
     action.disabled = true;
   });
@@ -593,21 +600,21 @@ function renderRecordingSelector(select, recordings) {
     : "";
 }
 
-function renderRobotSelector(select, robots, selectedRobot) {
-  const currentRobots = [...select.options].map((option) => option.value);
+function renderSelector(select, values, selected) {
+  const currentValues = [...select.options].map((option) => option.value);
   if (
-    currentRobots.length !== robots.length ||
-    currentRobots.some((robot, index) => robot !== robots[index])
+    currentValues.length !== values.length ||
+    currentValues.some((value, index) => value !== values[index])
   ) {
-    const options = robots.map((robot) => {
+    const options = values.map((value) => {
       const option = select.ownerDocument.createElement("option");
-      option.value = robot;
-      option.textContent = formatRobotName(robot);
+      option.value = value;
+      option.textContent = formatRobotName(value);
       return option;
     });
     select.replaceChildren(...options);
   }
-  select.value = selectedRobot;
+  select.value = selected;
 }
 
 function formatRobotName(name) {

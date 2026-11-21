@@ -10,9 +10,11 @@ from humanoid.types.robot import (
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.simulation import SimulationState
 
 AcceptedTypes = (
-    ActuatorHealthReport
+    SimulationState
+    | ActuatorHealthReport
     | RegisteredDepth
     | CameraImage
     | NodeRateSample

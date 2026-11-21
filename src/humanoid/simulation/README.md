@@ -92,3 +92,20 @@ headless systemd service with no `DISPLAY`.
 Rendering and image compression run synchronously with physics, so camera load can
 reduce wall-clock simulation speed. Reduce resolution/FPS when needed. Device
 timestamps use the simulation clock, independently of host receipt timestamps.
+
+## Cleanup scene and live viewer
+
+Run `uv run start`, choose **Simulation**, and select **Toy cleanup** under
+**Robot model** before starting the stack. The room contains an open bin, three
+wheeled cars, three cubes, three cylinders, and three balls. Restarting restores
+their starting positions. **Empty** is the default scene.
+
+For the native viewer on a graphical desktop, run the following in a second terminal:
+
+```bash
+uv run sim-viewer
+```
+
+The viewer waits for the stack and follows the selected robot and scene over
+the same LCM URL. Drag to orbit and scroll to zoom. It shows a local copy of the
+live MuJoCo physics state. Closing the window leaves the stack running.

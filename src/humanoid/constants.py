@@ -15,9 +15,11 @@ from humanoid.types.robot import (
     RobotState,
     RobotToolCommand,
 )
+from humanoid.types.simulation import SimulationState
 
 DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", "udpm://239.255.76.67:7667?ttl=1")
 RUNTIME_ENVIRONMENT_VARIABLE = "HUMANOID_RUNTIME"
+SCENE_ENVIRONMENT_VARIABLE = "HUMANOID_SCENE"
 ROBOT_ENVIRONMENT_VARIABLE = "HUMANOID_ROBOT"
 OCULUS_IP_ENVIRONMENT_VARIABLE = "HUMANOID_OCULUS_IP"
 DEFAULT_HUMANOID_RUNTIME = Runtime.SIM
@@ -37,6 +39,7 @@ class Topic(Enum):
     ACTUATOR_HEALTH = "ACTUATOR/HEALTH"
 
     # Robot state (single publisher: robot driver)
+    SIMULATION_STATE = "SIMULATION/STATE"
     ROBOT_STATE = "ROBOT/STATE"
 
     # Final command topics — consumed by robot driver / controller. Orchestrator routes
@@ -77,6 +80,7 @@ TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.NODE_RATE: NodeRateSample,
     Topic.ACTUATOR_HEALTH: ActuatorHealthReport,
     Topic.ROBOT_STATE: RobotState,
+    Topic.SIMULATION_STATE: SimulationState,
     Topic.ROBOT_JOINT_COMMAND: RobotJointCommand,
     Topic.ROBOT_TOOL_COMMAND: RobotToolCommand,
     Topic.ROBOT_BASE_COMMAND: RobotBaseCommand,

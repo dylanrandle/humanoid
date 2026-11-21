@@ -50,6 +50,7 @@ def _busy_keys() -> str:
     return """export const BusyKey = Object.freeze({
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   LOGGING: ApiRoute.LOGGING,
   REPLAY: ApiRoute.REPLAY,
   ORCHESTRATOR: ApiRoute.ORCHESTRATOR,
@@ -69,6 +70,7 @@ def _api_routes() -> str:
   CAMERA_PREVIEWS: ApiRoute.CAMERA_PREVIEWS,
   RUNTIME: ApiRoute.RUNTIME,
   ROBOT: ApiRoute.ROBOT,
+  SCENE: ApiRoute.SCENE,
   logging(action) {
     return resolveRoute(ApiRoute.LOGGING, { action });
   },

@@ -28,6 +28,7 @@ from humanoid.types.orchestrator import (
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
+from humanoid.types.simulation import SimulationScene
 from humanoid.ui.constants import ApiRoute, PayloadKey
 from humanoid.ui.server import create_app
 
@@ -167,6 +168,8 @@ def test_serializes_orchestrator_status_dataclass(server_client):
         runtime=Runtime.SIM,
         robot=RobotName.PANDA,
         robots=[RobotName.PANDA],
+        scene=SimulationScene.EMPTY,
+        scenes=list(SimulationScene),
         processes={
             ProcessName.STACK: ProcessStatus(
                 running=True,
@@ -253,6 +256,8 @@ def test_serializes_orchestrator_status_dataclass(server_client):
         },
         "robot": "panda",
         "robots": ["panda"],
+        "scene": "empty",
+        "scenes": ["empty", "toy_cleanup"],
         "processes": {
             "stack": {
                 "running": True,
@@ -337,6 +342,13 @@ def test_serializes_orchestrator_status_dataclass(server_client):
             method_name="set_runtime",
             arguments=(Runtime.REAL, _safety_context(acknowledged=True)),
             result={"runtime": "real"},
+        ),
+        RouteCase(
+            path=ApiRoute.SCENE,
+            payload={PayloadKey.SCENE: "toy_cleanup", **_safety_payload()},
+            method_name="set_scene",
+            arguments=(SimulationScene.TOY_CLEANUP, _safety_context()),
+            result={"scene": "toy_cleanup"},
         ),
         RouteCase(
             path=ApiRoute.ROBOT,
