@@ -5,7 +5,10 @@ import threading
 import time
 from collections.abc import Callable
 
+from humanoid.agent.client import AgentControlClient
+from humanoid.agent.harness.service import AgentConsole
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.agent import get_agent_endpoint
 from humanoid.config.application_logging import get_application_log_path
 from humanoid.logger import get_logger
 from humanoid.nodes.groups import process_display_name
@@ -34,6 +37,7 @@ from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
+from humanoid.types.agent import AgentPanelStatus, AgentPhase, AgentTask
 from humanoid.types.camera import CameraPreviewSnapshot
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import ApplicationLogSnapshot
@@ -102,6 +106,38 @@ class OrchestratorService:
         self._parameterized_mode_seen = False
         self._handled_stack_failure: ProcessStatus | None = None
         self._camera_monitor: CameraPreviewMonitor | None = None
+        self.agent = AgentConsole()
+
+    def run_agent(
+        self, instruction: str, model: str, mode: Mode, safety: SafetyContext
+    ) -> AgentPanelStatus:
+        with self._lock:
+            self._require_expected_configuration(safety)
+            current = self.status()
+            self._require_ready_stack(current)
+            if (
+                current.robot is not RobotName.TRISKEL
+                or not current.processes[ProcessName.AUTONOMY].running
+            ):
+                raise OrchestratorError("Select Triskel and start the Agent API.")
+            if mode not in (Mode.IDLE, Mode.AUTONOMY) or mode is not current.orchestrator.mode:
+                raise OrchestratorError("Select Idle for observation or Autonomy for motion.")
+            try:
+                with contextlib.closing(AgentControlClient(get_agent_endpoint())) as client:
+                    if client.observation().mode is not mode:
+                        raise OrchestratorError("Agent API mode changed. Refresh and retry.")
+                    task = AgentTask(instruction, model, mode, client.session_id)
+            except RuntimeError as error:
+                raise OrchestratorError(str(error)) from error
+            return self.agent.start(task)
+
+    def stop_agent(self) -> AgentPanelStatus:
+        with self._lock:
+            running = self.agent.status().phase is AgentPhase.RUNNING
+            result = self.agent.stop()
+            if running and self._orchestrator_state().mode is Mode.AUTONOMY:
+                self.orchestrator_client.request_idle()
+            return result
 
     def status(self) -> OrchestratorStatus:
         with self._lock:
@@ -213,6 +249,8 @@ class OrchestratorService:
             if process_name not in CONTROLLED_PROCESS_NAMES:
                 raise OrchestratorError(REPLAY_DEDICATED_CONTROL_ERROR)
             current = self.status()
+            if process_name is ProcessName.AUTONOMY:
+                self.agent.stop(tasks_only=True)
             if process_name is ProcessName.STACK:
                 self._stop_stack()
             else:
@@ -227,6 +265,8 @@ class OrchestratorService:
         with self._lock:
             current = self.status()
             self._require_ready_stack(current)
+            if current.orchestrator.mode is not request.mode:
+                self.agent.stop(tasks_only=True)
 
             if request.mode is Mode.HOMING:
                 preset = request.parameters[OrchestratorParameter.PRESET]
@@ -327,6 +367,7 @@ class OrchestratorService:
 
     def close(self) -> None:
         try:
+            self.agent.stop()
             self._stop_stack()
         except Exception:
             logger.exception("Failed to stop the main stack cleanly")
@@ -342,6 +383,7 @@ class OrchestratorService:
             self.application_log_monitor.close()
 
     def _stop_stack(self) -> None:
+        self.agent.stop(tasks_only=True)
         self.replay_manager.stop()
         processes = self.node_manager.status()
         if not any(process.running for process in processes.values()):

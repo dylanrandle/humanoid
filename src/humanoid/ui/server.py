@@ -18,7 +18,7 @@ from humanoid.config.teleop import get_oculus_teleop_policy_config
 from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE
 from humanoid.logger import get_logger, setup_logging
 from humanoid.orchestrator.service import OrchestratorService
-from humanoid.types.orchestrator import OrchestratorError
+from humanoid.types.orchestrator import Mode, OrchestratorError
 from humanoid.types.process import ProcessAction
 from humanoid.ui.constants import (
     ALLOWED_HOSTS,
@@ -104,6 +104,38 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
     def application_logs():
         cursor = parse_application_log_cursor(request.args.get("after"))
         return jsonify(orchestrator_service.application_logs(cursor))
+
+    @app.get(ApiRoute.AGENT)
+    def agent_status():
+        return jsonify(orchestrator_service.agent.status())
+
+    @app.post(ApiRoute.AGENT_CONNECT)
+    def agent_connect():
+        _json_payload()
+        return _success(orchestrator_service.agent.start())
+
+    @app.post(ApiRoute.AGENT_STOP)
+    def agent_stop():
+        _json_payload()
+        return _success(orchestrator_service.stop_agent())
+
+    @app.post(ApiRoute.AGENT_RUN)
+    def agent_run():
+        payload = _json_payload()
+        instruction, model = payload.get("instruction"), payload.get("model")
+        if not isinstance(instruction, str) or not instruction.strip():
+            raise ApiError("Enter a task for the agent.", HTTPStatus.BAD_REQUEST)
+        if not isinstance(model, str) or not model.strip():
+            raise ApiError("Select a model.", HTTPStatus.BAD_REQUEST)
+        try:
+            mode = Mode(payload.get("mode"))
+        except ValueError as error:
+            raise ApiError("Invalid task mode.", HTTPStatus.BAD_REQUEST) from error
+        return _success(
+            orchestrator_service.run_agent(
+                instruction.strip(), model, mode, _safety_context(payload)
+            )
+        )
 
     @app.get(ApiRoute.CAMERA_PREVIEWS)
     def camera_previews():

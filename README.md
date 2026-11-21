@@ -79,6 +79,10 @@ Start **Agent API** under **Control inputs** in the operator console, then selec
 mobile base, set the gripper, and cancel motion. The Python client is
 `AgentControlClient`. See the [MuJoCo quickstart and HTTP contract](src/humanoid/agent/README.md).
 
+The **Triskel agent** panel uses your ChatGPT account to answer questions about
+the live camera and robot state in Idle and run bounded motion tasks in Autonomy.
+See the [operator workflow](src/humanoid/agent/README.md#triskel-agent-harness).
+
 ### RGB and depth cameras
 
 The camera driver starts automatically with real hardware. Triskel simulation renders

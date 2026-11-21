@@ -4,6 +4,7 @@ import argparse
 import json
 from enum import StrEnum
 
+from humanoid.config.agent import DEFAULT_AGENT_MODEL
 from humanoid.orchestrator.constants import INPUT_PROCESSES
 from humanoid.types.logging import LoggingState
 from humanoid.types.orchestrator import Mode, OrchestratorParameter
@@ -21,6 +22,7 @@ def render_javascript_constants() -> str:
     """Render the JavaScript module consumed by the browser and Node tests."""
     sections = [
         GENERATED_HEADER,
+        f"export const DEFAULT_AGENT_MODEL = {json.dumps(DEFAULT_AGENT_MODEL)};\n",
         _enum_object("Runtime", Runtime),
         _enum_object("ProcessName", ProcessName),
         _enum_object("ProcessAction", ProcessAction),

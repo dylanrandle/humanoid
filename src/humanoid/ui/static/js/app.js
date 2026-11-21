@@ -1,4 +1,5 @@
 import { fetchApplicationLogs, fetchStatus, post } from "./api.js";
+import { setupAgentPanel } from "./agent.js";
 import { startCameraPreviews } from "./cameras.js";
 import {
   API,
@@ -33,12 +34,14 @@ const state = {
   applicationLogsConnected: null,
   refreshPromise: null,
 };
+const agent = setupAgentPanel(() => (state.connected ? state.snapshot : null));
 
 function refresh() {
   if (state.refreshPromise) return state.refreshPromise;
   state.refreshPromise = Promise.all([
     loadStatus(),
     loadApplicationLogs(),
+    agent.refresh(),
   ]).finally(() => {
     state.refreshPromise = null;
   });
@@ -56,6 +59,7 @@ async function loadStatus() {
     if (state.connected !== false) showToast(message);
     state.connected = false;
   }
+  agent.render();
 }
 
 async function loadApplicationLogs() {

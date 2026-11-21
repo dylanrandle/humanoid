@@ -1,7 +1,7 @@
 import { API } from "./constants.js";
 
-export async function fetchStatus() {
-  const response = await fetch(API.STATUS, { cache: "no-store" });
+export async function fetchStatus(path = API.STATUS) {
+  const response = await fetch(path, { cache: "no-store" });
   const result = await readJson(response);
   if (!response.ok || result === null) {
     throw new Error(result?.error || "Operator console is unavailable.");

@@ -15,6 +15,7 @@ dependencies = [
     "mujoco~=3.10.0",
     "numpy>=2.0.0",
     "oculus-reader",
+    "openai-codex==0.169.0",
     "pin>=3.2.0",
     "pin-pink>=4.0.0",
     "pillow>=11.0",

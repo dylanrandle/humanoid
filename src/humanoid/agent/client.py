@@ -20,6 +20,8 @@ from humanoid.types.agent import (
     MotionResult,
 )
 from humanoid.types.camera import CameraFrames
+from humanoid.types.observation import Observation
+from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotState
 
 
@@ -67,13 +69,28 @@ class AgentControlClient:
         raise RuntimeError("Agent control client was stopped.")
 
     def state(self) -> RobotState:
+        return self.observation().robot_state
+
+    @property
+    def session_id(self) -> str:
+        """The control service identity pinned by the first state read."""
+        if self._session_id is None:
+            self.state()
+        assert self._session_id is not None
+        return self._session_id
+
+    def observation(self) -> Observation:
+        """Read the measured state and operator mode from one API response."""
         started = time.perf_counter()
         payload = self._request(AgentRoute.STATE)
         if self._session_id is None:
             self._session_id = payload["session_id"]
         elif self._session_id != payload["session_id"]:
             raise RuntimeError("Robot control service restarted; create a new client.")
-        return decode_state(payload["state"], started)
+        return Observation(
+            robot_state=decode_state(payload["state"], started),
+            mode=Mode(payload["mode"]) if payload["mode"] is not None else None,
+        )
 
     def observe(self) -> CameraFrames:
         started = time.perf_counter()

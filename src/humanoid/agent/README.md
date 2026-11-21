@@ -67,3 +67,25 @@ All operations accept `duration` in seconds, default 1 and maximum 2. One comman
 Poll the command ID until its state leaves `queued` or `running`. Terminal states are `completed`, `rejected`, `cancelled`, `expired` and `failed`. A completed command reports `reached` and the measured position, orientation and gripper errors. The duration can elapse before the robot reaches its target. Leaving Autonomy interrupts outstanding commands.
 
 If a submission response is lost, resend the **same JSON body**, including the session ID, command ID and deadline. The service returns the existing status and measured result for that ID. A retry neither repeats the movement nor extends its start deadline. Reusing the ID for different arguments fails. After a service restart, read the new state and reconcile the robot's position before deciding on another movement. Each call to the Python client's `execute()` creates a new command ID. Use the HTTP contract directly when the caller needs to retain its own IDs.
+
+## Triskel agent harness
+
+Open the operator console, select **Triskel**, and start the main stack and
+**Agent API**. In the **Triskel agent** panel, select **Connect ChatGPT**. The
+console uses the dashboard host's existing Codex ChatGPT login or shows a
+device code and sign-in link. Select an image-capable model from the account
+catalog. The panel selects Astra 6.2 when available.
+
+Enter an instruction and select **Run task**. In **Idle**, the agent answers
+using current measured state and a live RGB image. In **Autonomy**, it can
+also issue bounded tool, base, gripper and hold commands. For a simulation
+test, ask it to move the base 2 cm forward and report the measured result.
+Each step observes the scene again and receives the preceding command result.
+A task can issue up to eight commands. The panel displays progress, the final
+answer, and any errors.
+
+**Stop** interrupts the worker and cancels its in-flight command. Stopping a
+running motion task requests Idle. Changing control modes in the console or
+stopping the Agent API or stack also stops the task. Refreshing the browser
+reconnects to the current task. Device sign-in, model calls, and task execution
+run on the dashboard host, including on the Jetson.

@@ -570,3 +570,24 @@ def test_rejects_invalid_preview_range(server_client, value):
     response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far={value}")
     assert response.status_code == HTTPStatus.BAD_REQUEST
     service.camera_previews.assert_not_called()
+
+
+def test_run_agent_uses_operator_configuration_and_mode(server_client):
+    service, client = server_client
+    service.run_agent.return_value = {"phase": "running"}
+    payload = {
+        **_safety_payload(),
+        "instruction": "read the mode",
+        "model": "vision",
+        "mode": "idle",
+    }
+    response = client.post(ApiRoute.AGENT_RUN, json=payload)
+    assert response.json == {"ok": True, "status": {"phase": "running"}}
+    service.run_agent.assert_called_once_with(
+        "read the mode", "vision", Mode.IDLE, _safety_context()
+    )
+    assert (
+        client.post(ApiRoute.AGENT_RUN, json={**payload, "instruction": " "}).status_code
+        == HTTPStatus.BAD_REQUEST
+    )
+    service.run_agent.assert_called_once()

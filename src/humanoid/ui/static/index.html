@@ -349,6 +349,58 @@
           </section>
         </div>
 
+        <section class="panel agent-panel" aria-labelledby="agent-heading">
+          <div class="section-heading">
+            <h2 id="agent-heading">Triskel agent</h2>
+            <button
+              class="secondary-action"
+              id="agent-connect"
+              type="button"
+              disabled
+            >
+              Connect ChatGPT
+            </button>
+          </div>
+          <form id="agent-form">
+            <label for="agent-model">Model</label>
+            <select id="agent-model" disabled>
+              <option>Connect to load models</option>
+            </select>
+            <label for="agent-task">Task</label>
+            <textarea
+              id="agent-task"
+              rows="2"
+              placeholder="Describe what you want Triskel to do"
+            ></textarea>
+            <div class="agent-actions">
+              <button
+                class="primary-action"
+                id="agent-run"
+                type="submit"
+                disabled
+              >
+                Run task
+              </button>
+              <button
+                class="secondary-action"
+                id="agent-stop"
+                type="button"
+                hidden
+              >
+                Stop
+              </button>
+              <span id="agent-mode"></span>
+            </div>
+          </form>
+          <p id="agent-login" hidden>
+            <a target="_blank" rel="noopener noreferrer"
+              >Open ChatGPT sign-in</a
+            >
+            · Device code <strong></strong>
+          </p>
+          <div id="agent-result" aria-live="polite" hidden></div>
+        </section>
+
         <section
           class="panel camera-panel"
           id="camera-panel"

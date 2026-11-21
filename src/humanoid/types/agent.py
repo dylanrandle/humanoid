@@ -1,4 +1,4 @@
-"""Shared types for the agent policy and control API."""
+"""Shared types for the agent policy, control API, and operator console."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 from numpy.typing import NDArray
+
+from humanoid.types.orchestrator import Mode
 
 if TYPE_CHECKING:
     import pinocchio as pin
@@ -180,3 +182,31 @@ class CommandRequest:
     operation: ControlOperation
     arguments: Mapping[str, object]
     expires_in_seconds: float
+
+
+class AgentPhase(StrEnum):
+    IDLE = "idle"
+    CONNECTING = "connecting"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class AgentTask:
+    instruction: str
+    model: str
+    mode: Mode
+    session_id: str
+
+
+@dataclass(frozen=True)
+class AgentPanelStatus:
+    phase: AgentPhase = AgentPhase.IDLE
+    models: tuple[str, ...] = ()
+    message: str = ""
+    instruction: str = ""
+    model: str = ""
+    login_url: str = ""
+    login_code: str = ""

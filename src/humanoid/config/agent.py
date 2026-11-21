@@ -5,6 +5,8 @@ import os
 from humanoid.types.agent import AgentControlEndpoint, AgentControlServerConfig, AgentPolicyConfig
 
 AGENT_HOST = "127.0.0.1"
+DEFAULT_AGENT_MODEL = "gpt-6.2-astra"
+MAX_AGENT_COMMANDS = 8
 DEFAULT_AGENT_PORT = 8767
 MAX_TCP_PORT = 65535
 DEFAULT_AGENT_ENDPOINT = AgentControlEndpoint(f"http://{AGENT_HOST}:{DEFAULT_AGENT_PORT}")
@@ -12,6 +14,10 @@ DEFAULT_AGENT_ENDPOINT = AgentControlEndpoint(f"http://{AGENT_HOST}:{DEFAULT_AGE
 
 def get_agent_policy_config() -> AgentPolicyConfig:
     return AgentPolicyConfig()
+
+
+def get_agent_endpoint() -> AgentControlEndpoint:
+    return AgentControlEndpoint(f"http://{AGENT_HOST}:{get_agent_control_server_config().port}")
 
 
 def get_agent_control_server_config() -> AgentControlServerConfig:
