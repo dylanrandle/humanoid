@@ -1,8 +1,14 @@
 # Cameras
 
-The real-hardware stack and real-hardware replay start `CameraDriverNode` automatically.
-Set the serial number, dimensions, and FPS in `config/camera.py`; no standalone camera
-command is needed. Camera failure follows the stack's normal process failure handling.
+The real-hardware stack and replay start `CameraDriverNode` when the selected robot has a configured hardware camera.
+Triskel binds its bottom-plate D435 and wrist D405 by serial number in
+`config/robot/triskel.py`. The `base` stream uses `CAMERA/BASE/*` and the `wrist` stream uses
+`CAMERA/WRIST/*` with the same message types. The wrist driver retries when disconnected.
+Adding a named entry in the robot’s `cameras` mapping adds its uppercase topic family. A Triskel trial requires fresh registered depth from both cameras.
+
+To support another physical RGB-D driver, define its settings as a subclass of
+`HardwareCameraConfig` and add a branch in `hardware/cameras/factory.py` that
+returns its `CameraSource`. The node uses the same publishing loop for each driver.
 
 ## SDK installation
 
@@ -22,9 +28,9 @@ Hardware and simulation publish the following camera streams.
 
 | Topic | Pixels | Units / frame |
 | --- | --- | --- |
-| `CAMERA/RGB` | RGB-order `uint8`, H × W × 3 | RGB optical frame |
-| `CAMERA/DEPTH` | `uint16`, H × W | `data * depth_scale` meters, depth optical frame |
-| `CAMERA/REGISTERED_DEPTH` | `RegisteredDepth.image`, `uint16`, RGB H × W | Measured depth on the synchronized RGB pixel grid, RGB optical frame and intrinsics |
+| `CAMERA/<NAME>/RGB` | RGB-order `uint8`, H × W × 3 | RGB optical frame |
+| `CAMERA/<NAME>/DEPTH` | `uint16`, H × W | `data * depth_scale` meters, depth optical frame |
+| `CAMERA/<NAME>/REGISTERED_DEPTH` | `RegisteredDepth.image`, `uint16`, RGB H × W | Measured depth on the synchronized RGB pixel grid, RGB optical frame and intrinsics |
 
 Zero depth is invalid. The D435 and D405 drivers align measured depth once per
 frameset. The agent camera client selects this stream by default. Use the native
@@ -54,13 +60,14 @@ Subscribers keep the latest image per topic. Match host timestamps if a consumer
 pairs, since independent receives may retrieve different framesets.
 
 ```python
-from humanoid.constants import Topic
+from humanoid.types.camera import camera_topics
 from humanoid.middleware.subscriber import Subscriber
 
-subscriber = Subscriber([Topic.CAMERA_RGB, Topic.CAMERA_DEPTH])
+topics = camera_topics("base")
+subscriber = Subscriber([topics.rgb, topics.depth])
 try:
-    rgb = subscriber.receive(Topic.CAMERA_RGB, timeout=1000)
-    depth = subscriber.receive(Topic.CAMERA_DEPTH, timeout=1000)
+    rgb = subscriber.receive(topics.rgb, timeout=1000)
+    depth = subscriber.receive(topics.depth, timeout=1000)
     if depth is not None:
         depth_meters = depth.data.astype(float) * depth.depth_scale
 finally:

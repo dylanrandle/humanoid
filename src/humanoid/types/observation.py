@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from humanoid.types.camera import CameraFrames
+from humanoid.types.camera import CameraFrames, CameraView
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotBaseCommand, RobotJointCommand, RobotState, RobotToolCommand
 
@@ -12,4 +12,7 @@ class Observation:
     robot_tool_command: RobotToolCommand | None = None
     robot_base_command: RobotBaseCommand | None = None
     mode: Mode | None = None
-    camera_frames: CameraFrames | None = None
+    camera_frames: dict[str, CameraFrames] = field(default_factory=dict)
+
+
+type CameraCaptures = dict[str, tuple[Observation, CameraView]]

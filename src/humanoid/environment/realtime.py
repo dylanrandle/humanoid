@@ -1,15 +1,22 @@
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from typing import Any
 
+from humanoid.config.selection import ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.environment.base import Environment
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.action import Action
-from humanoid.types.camera import CameraFrames, CameraImage, RegisteredDepth
+from humanoid.types.camera import (
+    CameraFrames,
+    CameraImage,
+    CameraTopics,
+    RegisteredDepth,
+    camera_topics,
+)
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import (
@@ -43,6 +50,41 @@ class ActionTopics:
     base: Topic | None = None
 
 
+@dataclass
+class _CameraStream:
+    topics: CameraTopics
+    rgb: CameraImage | None = None
+    depth: CameraImage | None = None
+    registered_depth: RegisteredDepth | None = None
+    camera_frames: CameraFrames | None = None
+
+    def read(self, subscriber: Subscriber) -> CameraFrames | None:
+        rgb = subscriber.receive(self.topics.rgb)
+        depth = subscriber.receive(self.topics.depth)
+        if rgb is not None:
+            self.rgb = rgb
+        if depth is not None:
+            self.depth = depth
+        if (
+            self.rgb is not None
+            and self.depth is not None
+            and self.rgb.timestamp == self.depth.timestamp
+            and self.rgb.serial_number == self.depth.serial_number
+        ):
+            incoming = subscriber.receive(self.topics.registered_depth)
+            if incoming is not None:
+                self.registered_depth = incoming
+            registered = self.registered_depth
+            self.camera_frames = CameraFrames(
+                rgb=self.rgb,
+                depth=self.depth,
+                registered=registered
+                if registered and registered.matches(self.rgb, self.depth)
+                else None,
+            )
+        return self.camera_frames
+
+
 class RealtimeEnvironment(Environment):
     """Environment that talks to a running robot (or simulator) over LCM.
 
@@ -54,13 +96,15 @@ class RealtimeEnvironment(Environment):
       currently feeds each final ROBOT_* topic.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - transport and reward functions are independent
         self,
         action_topics: ActionTopics,
         timeout_ms: int = 100,
         reward_fn: RewardFunction | None = None,
         done_fn: DoneFunction | None = None,
         truncated_fn: TruncatedFunction | None = None,
+        *,
+        camera_names: Collection[str] = ROBOT_CONFIG.cameras.keys(),
     ):
         """Initialize the environment.
 
@@ -75,6 +119,7 @@ class RealtimeEnvironment(Environment):
         self.timeout_ms = timeout_ms
 
         # Initialize LCM communication
+        self._cameras = {name: _CameraStream(camera_topics(name)) for name in camera_names}
         self.publisher = Publisher()
         self.subscriber = Subscriber(
             topics=[
@@ -83,9 +128,15 @@ class RealtimeEnvironment(Environment):
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
                 Topic.ORCHESTRATOR_MODE,
-                Topic.CAMERA_RGB,
-                Topic.CAMERA_DEPTH,
-                Topic.CAMERA_REGISTERED_DEPTH,
+                *(
+                    topic
+                    for stream in self._cameras.values()
+                    for topic in (
+                        stream.topics.rgb,
+                        stream.topics.depth,
+                        stream.topics.registered_depth,
+                    )
+                ),
             ],
         )
 
@@ -104,10 +155,6 @@ class RealtimeEnvironment(Environment):
         self._last_tool_command: RobotToolCommand | None = None
         self._last_base_command: RobotBaseCommand | None = None
         self._last_mode: Mode | None = None
-        self._rgb: CameraImage | None = None
-        self._depth: CameraImage | None = None
-        self._registered_depth: RegisteredDepth | None = None
-        self._camera_frames: CameraFrames | None = None
 
         logger.info("Initialized environment")
 
@@ -270,34 +317,12 @@ class RealtimeEnvironment(Environment):
             robot_tool_command=self._last_tool_command,
             robot_base_command=self._last_base_command,
             mode=self._last_mode,
-            camera_frames=self._read_camera_frames(),
+            camera_frames={
+                name: frames
+                for name, stream in self._cameras.items()
+                if (frames := stream.read(self.subscriber)) is not None
+            },
         )
-
-    def _read_camera_frames(self) -> CameraFrames | None:
-        rgb = self.subscriber.receive(Topic.CAMERA_RGB)
-        depth = self.subscriber.receive(Topic.CAMERA_DEPTH)
-        if rgb is not None:
-            self._rgb = rgb
-        if depth is not None:
-            self._depth = depth
-        if (
-            self._rgb is not None
-            and self._depth is not None
-            and self._rgb.timestamp == self._depth.timestamp
-            and self._rgb.serial_number == self._depth.serial_number
-        ):
-            incoming = self.subscriber.receive(Topic.CAMERA_REGISTERED_DEPTH)
-            if incoming is not None:
-                self._registered_depth = incoming
-            registered = self._registered_depth
-            self._camera_frames = CameraFrames(
-                rgb=self._rgb,
-                depth=self._depth,
-                registered=registered
-                if registered and registered.matches(self._rgb, self._depth)
-                else None,
-            )
-        return self._camera_frames
 
     @staticmethod
     def _default_reward(

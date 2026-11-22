@@ -78,7 +78,9 @@ class TestConstruction:
     def test_multi_gripper_config_rejected(self, panda_config):
         multi = replace(
             panda_config,
-            gripper=RobotGripperConfig(joint_names=("panda_finger_joint1", "panda_joint7")),
+            gripper=RobotGripperConfig(
+                joint_names=("panda_finger_joint1", "panda_joint7"), units=("m", "rad")
+            ),
         )
         with pytest.raises(AssertionError, match="only supports 1 gripper joint"):
             _DummyTeleopPolicy(robot_config=multi, verbose=False)

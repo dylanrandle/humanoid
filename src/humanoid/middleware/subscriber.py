@@ -2,15 +2,15 @@ import contextlib
 import queue
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Literal, overload
 
 import lcm
 
-from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
+from humanoid.constants import DEFAULT_LCM_URL, Channel, Topic, message_type
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraImage, RegisteredDepth
+from humanoid.types.camera import CameraImage, CameraTopic, RegisteredDepth
 from humanoid.types.depth import DepthCamera
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
@@ -50,7 +50,7 @@ _SPIN_TIMEOUT_MS = 100
 class Subscriber:
     def __init__(
         self,
-        topics: list[Topic],
+        topics: Sequence[Channel],
         url: str = DEFAULT_LCM_URL,
         queue_size: int | None = 1,
         clock: Callable[[], float] = time.perf_counter,
@@ -58,12 +58,13 @@ class Subscriber:
         self.lc = lcm.LCM(url)
         self.url = url
         self.topics = topics
+        self._channels = {topic.value: topic for topic in topics}
         self.queue_size = queue_size
         self._clock = clock
         self._subscriptions: list[lcm.LCMSubscription] = []
 
         maxsize = queue_size if queue_size is not None else 0
-        self._message_queues: dict[Topic, queue.Queue[tuple[AcceptedTypes, float]]] = {
+        self._message_queues: dict[Channel, queue.Queue[tuple[AcceptedTypes, float]]] = {
             topic: queue.Queue(maxsize=maxsize) for topic in topics
         }
 
@@ -89,8 +90,8 @@ class Subscriber:
     ) -> None:
         received_at_s = self._clock()
         try:
-            topic = Topic(channel)
-            expected_type = TOPIC_TO_TYPE.get(topic)
+            topic = self._channels[channel]
+            expected_type = message_type(topic)
 
             if expected_type is CameraImage:
                 decoded_data = LCMConverter.camera_image_from_lcm(camera_image_t.decode(data))
@@ -147,14 +148,9 @@ class Subscriber:
             logger.error(f"Error decoding message on channel {channel}: {e}")
 
     @overload
-    def receive(
-        self, topic: Literal[Topic.CAMERA_REGISTERED_DEPTH], timeout: int | None = None
-    ) -> RegisteredDepth | None: ...
-
-    @overload
-    def receive(
-        self, topic: Literal[Topic.CAMERA_RGB, Topic.CAMERA_DEPTH], timeout: int | None = None
-    ) -> CameraImage | None: ...
+    def receive[T: (CameraImage, RegisteredDepth)](
+        self, topic: CameraTopic[T], timeout: int | None = None
+    ) -> T | None: ...
 
     @overload
     def receive(
@@ -233,9 +229,9 @@ class Subscriber:
     ) -> SimulationState | None: ...
 
     @overload
-    def receive(self, topic: Topic, timeout: int | None = None) -> AcceptedTypes | None: ...
+    def receive(self, topic: Channel, timeout: int | None = None) -> AcceptedTypes | None: ...
 
-    def receive(self, topic: Topic, timeout: int | None = 0) -> AcceptedTypes | None:
+    def receive(self, topic: Channel, timeout: int | None = 0) -> AcceptedTypes | None:
         """Retrieve a message from the per-topic queue.
 
         Args:
@@ -247,7 +243,7 @@ class Subscriber:
 
     def receive_with_timestamp(
         self,
-        topic: Topic,
+        topic: Channel,
         timeout: int | None = 0,
     ) -> tuple[AcceptedTypes, float] | None:
         """Retrieve a message and its local monotonic receipt timestamp."""

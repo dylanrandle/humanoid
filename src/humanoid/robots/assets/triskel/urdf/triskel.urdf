@@ -49,8 +49,13 @@
          The 40 mm hole pair aligns with base-frame (x, y) = (+/-20, 80) mm.
          Camera rear mounting face is at y = 68 mm, facing forward (+Y).
          Camera screw centers are at (x, y, z) = (+/-22.5, 68, 32) mm.
-         Mount mass is unmeasured; the bracket is represented visually only. -->
+         Mount inertia is estimated from its solid STL at 1200 kg/m^3. -->
     <link name="ego_camera_mount_link">
+        <inertial>
+            <origin xyz="0 -0.01444524 -0.00193615"/>
+            <mass value="0.00671547"/>
+            <inertia ixx="8.8490e-7" ixy="0" ixz="0" iyy="1.29128e-6" iyz="-2.07122e-7" izz="1.83317e-6"/>
+        </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0" />
             <geometry>
@@ -59,6 +64,11 @@
             </geometry>
             <material name="silver" />
         </visual>
+        <collision name="d435_mount_collision">
+            <geometry>
+                <mesh filename="package://triskel/meshes/ego_camera_mount.stl" scale="0.001 0.001 0.001"/>
+            </geometry>
+        </collision>
     </link>
     <joint name="ego_camera_mount_joint" type="fixed">
         <origin xyz="0 0.068 0.032" rpy="1.5707963267948966 0 0" />
@@ -69,10 +79,14 @@
          camera_link uses forward/left/up axes at the nominal depth origin.
          Optical frames use right/down/forward; derive base transforms from this tree.
          Official mesh converted to OBJ; provenance/license: meshes/d435_notice.txt.
-         Visual/frame model only: camera mass and collisions are not modeled.
-         The camera is protected by the existing collision body.
+         Inertia approximates the 75 g housing as a uniform 25 x 90 x 25 mm box.
          Color baseline is nominal. -->
     <link name="ego_camera_link">
+        <inertial>
+            <origin xyz="-0.0082 -0.0175 0"/>
+            <mass value="0.075"/>
+            <inertia ixx="5.453125e-5" ixy="0" ixz="0" iyy="7.8125e-6" iyz="0" izz="5.453125e-5"/>
+        </inertial>
         <visual>
             <origin xyz="0.0043 -0.0175 0" rpy="1.5707963267948966 0 1.5707963267948966" />
             <geometry>
@@ -80,6 +94,12 @@
             </geometry>
             <material name="silver" />
         </visual>
+        <collision name="d435_housing_collision">
+            <origin xyz="0.0043 -0.0175 0" rpy="1.5707963267948966 0 1.5707963267948966"/>
+            <geometry>
+                <mesh filename="package://triskel/meshes/d435.obj" scale="1 1 1"/>
+            </geometry>
+        </collision>
     </link>
     <joint name="ego_camera_joint" type="fixed">
         <origin xyz="-0.0175 0 -0.02075" rpy="0 1.5707963267948966 1.5707963267948966" />
@@ -987,5 +1007,67 @@
         <axis xyz="-0.999697 0.0173 0.017525" />
         <limit upper="0.0255" lower="0.0" effort="2.94" velocity="4.71" />
         <mimic joint="gripper_1" multiplier="0.0115" offset="0" />
+    </joint>
+    <!-- The bracket CAD is expressed in gripper_base_link coordinates, in millimetres. -->
+    <link name="wrist_d405_bracket_link">
+        <!-- Solid polymer estimate at 1200 kg/m^3, excluding fasteners. -->
+        <inertial>
+            <origin xyz="0.00051390 0.02992423 0.04583484"/>
+            <mass value="0.003425"/>
+            <inertia ixx="1.195503e-6" ixy="5.92124e-9" ixz="1.26434e-8"
+                iyy="1.130239e-6" iyz="-3.13495e-7" izz="2.22234e-7"/>
+        </inertial>
+        <visual name="wrist_d405_bracket_visual">
+            <geometry>
+                <mesh filename="package://triskel/meshes/d405_wrist_bracket.stl"
+                    scale="0.001 0.001 0.001"/>
+            </geometry>
+            <material name="silver"/>
+        </visual>
+        <collision name="wrist_d405_bracket_collision">
+            <geometry>
+                <mesh filename="package://triskel/meshes/d405_wrist_bracket.stl"
+                    scale="0.001 0.001 0.001"/>
+            </geometry>
+        </collision>
+    </link>
+    <joint name="wrist_d405_bracket_joint" type="fixed">
+        <parent link="gripper_base_link"/><child link="wrist_d405_bracket_link"/>
+    </joint>
+    <!-- Nominal D405 mounting screw in the bracket frame. -->
+    <link name="wrist_d405_mount"/>
+    <joint name="wrist_d405_mount_joint" type="fixed">
+        <parent link="wrist_d405_bracket_link"/><child link="wrist_d405_mount"/>
+        <origin xyz="0 0.036 0.041" rpy="0 0.55 1.570796327"/>
+    </joint>
+    <link name="wrist_d405_link">
+        <!-- D405 mass from RealSense. Approximate inertia as a uniform 23 x 42 x 42 mm housing. -->
+        <inertial>
+            <origin xyz="-0.0077 -0.009 0"/>
+            <mass value="0.060"/>
+            <inertia ixx="0.000017640" ixy="0" ixz="0" iyy="0.000011465" iyz="0" izz="0.000011465"/>
+        </inertial>
+        <visual>
+            <origin xyz="0.0038 -0.009 0" rpy="1.570796327 0 1.570796327"/>
+            <geometry><mesh filename="package://triskel/meshes/d405.stl" scale="0.001 0.001 0.001"/></geometry>
+            <material name="silver"/>
+        </visual>
+        <collision>
+            <origin xyz="0.0038 -0.009 0" rpy="1.570796327 0 1.570796327"/>
+            <geometry><mesh filename="package://triskel/meshes/d405.stl" scale="0.001 0.001 0.001"/></geometry>
+        </collision>
+    </link>
+    <joint name="wrist_d405_link_joint" type="fixed">
+        <parent link="wrist_d405_mount"/><child link="wrist_d405_link"/>
+        <origin xyz="0.01085 0.009 0.021"/>
+    </joint>
+    <link name="wrist_camera_depth_optical_frame"/>
+    <joint name="wrist_camera_depth_optical_joint" type="fixed">
+        <parent link="wrist_d405_link"/><child link="wrist_camera_depth_optical_frame"/>
+        <origin rpy="-1.570796327 0 -1.570796327" xyz="0 0 0"/>
+    </joint>
+    <link name="wrist_camera_color_optical_frame"/>
+    <joint name="wrist_camera_color_optical_joint" type="fixed">
+        <parent link="wrist_camera_depth_optical_frame"/><child link="wrist_camera_color_optical_frame"/>
     </joint>
 </robot>

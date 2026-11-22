@@ -19,13 +19,17 @@ EXPECTED_RENDERED_PAIRS = 3
 
 def test_camera_poses_follow_urdf_at_nonzero_mobile_pose():
     engine = NativeMujocoEngine(TRISKEL_CONFIG)
-    assert engine.camera is not None
+    assert set(engine.cameras) == {"base", "wrist"}
     root = engine.binding.root
     assert root is not None
     engine.data.qpos[list(root.qpos_addresses)] = [0.4, -0.2, 0.7]
     mujoco.mj_forward(engine.model, engine.data)
     q = engine.read_robot_state(1.0).joint_positions
-    for frame in (SIMULATED_CAMERA_CONFIG.rgb_frame, SIMULATED_CAMERA_CONFIG.depth_frame):
+    for frame in (
+        frame
+        for camera in engine.cameras.values()
+        for frame in (camera.config.rgb_frame, camera.config.depth_frame)
+    ):
         expected = engine.robot.get_frame_pose(frame, q).copy()
         camera_id = engine.model.camera(frame).id
         np.testing.assert_allclose(engine.data.cam_xpos[camera_id], expected.translation, atol=1e-8)

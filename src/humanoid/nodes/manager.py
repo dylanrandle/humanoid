@@ -13,6 +13,7 @@ from multiprocessing.queues import Queue
 from typing import cast
 
 from humanoid.config.process import PROCESS_START_METHOD
+from humanoid.config.robot import ROBOT_CONFIGS
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.constants import (
     ROBOT_ENVIRONMENT_VARIABLE,
@@ -28,6 +29,7 @@ from humanoid.nodes.groups import (
     PROCESS_ORDER,
     PROCESS_STOP_ORDER,
 )
+from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.types.node import ManagedNodeGroup, NodeGroup, ProcessContext
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.robot import RobotName
@@ -183,6 +185,10 @@ class NodeManager:
         nodes: Sequence[type[Node]],
     ) -> None:
         for node in nodes:
+            if node is CameraDriverNode and not any(
+                mount.hardware for mount in ROBOT_CONFIGS[group.robot].cameras.values()
+            ):
+                continue
             process = self._process_context.Process(
                 target=_run_node,
                 name=node.__name__,

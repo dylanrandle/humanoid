@@ -3,11 +3,9 @@
 from contextlib import ExitStack
 
 import numpy as np
-from PIL import Image
 
 from humanoid.agent.harness.observation import PinnedObservation
-from humanoid.config.camera import CAMERA_PREVIEW_CONFIG
-from humanoid.perception.depth import DepthCompleter, colorize_depth
+from humanoid.perception.depth import DepthCompleter
 from humanoid.types.depth import DepthCamera
 from humanoid.types.tools import CompleteDepth, DepthCompletionResult
 
@@ -21,8 +19,9 @@ class DepthTools:
     def close(self):
         self.resources.close()
 
-    def complete_depth(self, request: CompleteDepth) -> tuple[DepthCompletionResult, Image.Image]:
+    def complete_depth(self, request: CompleteDepth) -> DepthCompletionResult:
         observation_id = request.observation_id
+        self.observation.select(observation_id)
         frames = self.observation.frames
         if frames is None or observation_id != self.observation.id:
             raise ValueError("Unknown observation ID for this view.")
@@ -31,6 +30,9 @@ class DepthTools:
             raise ValueError(
                 "This observation has no synchronized RGB-aligned depth. Request a new observation."
             )
+        height, width = reg.image.data.shape
+        if any(not (0 <= x < width and 0 <= y < height) for x, y in request.points_xy):
+            raise ValueError(f"Depth coordinates must be inside the {width} by {height} RGB image.")
         self.observation.save()
         depth = self.observation.store.resolve_depth(observation_id)
         if depth is None:
@@ -42,10 +44,9 @@ class DepthTools:
                 frames.rgb.data, reg.image.data, metres_per_unit=reg.image.depth_scale
             )
             self.observation.store.save_depth(observation_id, depth)
-        near = CAMERA_PREVIEW_CONFIG.depth_near_meters
-        far = CAMERA_PREVIEW_CONFIG.default_depth_far_meters
+        samples = [float(depth[y, x]) for x, y in request.points_xy]
         return DepthCompletionResult(
             observation_id=observation_id,
             valid_pixels=int(np.count_nonzero(np.isfinite(depth) & (depth > 0))),
-            preview_range_m=(near, far),
-        ), Image.fromarray(colorize_depth(depth, near, far))
+            depths_m=tuple(v if np.isfinite(v) and v > 0 else None for v in samples),
+        )

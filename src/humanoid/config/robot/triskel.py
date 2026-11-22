@@ -1,10 +1,17 @@
 """Triskel robot configuration."""
 
+from dataclasses import replace
+
 import numpy as np
 
 from humanoid.config.actuator import (
     STS3215_12V_CURRENT_CALIBRATION,
     STS3215_12V_EFFORT_LIMITS,
+)
+from humanoid.config.camera import (
+    REALSENSE_CAMERA_CONFIG,
+    SIMULATED_CAMERA_CONFIG,
+    WRIST_D405_CONFIG,
 )
 from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorConfig,
@@ -17,7 +24,9 @@ from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
 from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
+from humanoid.types.camera import RobotCameraConfig
 from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
+from humanoid.types.depth import DepthCamera
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     CartesianVelocityLimits,
@@ -171,7 +180,7 @@ STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
     root=WheelDeadReckoningRootStateEstimatorConfig(),
 )
 TOOL_CONFIG = RobotToolConfig(frame="gripper_base_link")
-GRIPPER_CONFIG = RobotGripperConfig(joint_names=(GRIPPER_ID,))
+GRIPPER_CONFIG = RobotGripperConfig(joint_names=(GRIPPER_ID,), units=("rad",))
 # A simplified hull keeps the near-coplanar fin facets stable against flat toys.
 # The short contact response limits penetration under the rack-driven jaws.
 FIN_CONTACT = MeshContactConfig(
@@ -207,6 +216,26 @@ OPERATIONAL_SPACE_CONFIG = OperationalSpaceConfig(
 )
 OMNIWHEEL_BASE_CONFIG = OmniwheelBaseConfig(dt=CONTROLLER_DT)
 TRISKEL_CONFIG = RobotConfig(
+    cameras={
+        "base": RobotCameraConfig(
+            simulation=SIMULATED_CAMERA_CONFIG,
+            hardware=replace(
+                REALSENSE_CAMERA_CONFIG,
+                serial_number="227423023282",
+                expected_model=DepthCamera.D435,
+            ),
+        ),
+        "wrist": RobotCameraConfig(
+            simulation=WRIST_D405_CONFIG,
+            hardware=replace(
+                REALSENSE_CAMERA_CONFIG,
+                serial_number="130322270287",
+                expected_model=DepthCamera.D405,
+                rgb_frame=WRIST_D405_CONFIG.rgb_frame,
+                depth_frame=WRIST_D405_CONFIG.depth_frame,
+            ),
+        ),
+    },
     name=RobotName.TRISKEL,
     tool=TOOL_CONFIG,
     base=BASE_CONFIG,

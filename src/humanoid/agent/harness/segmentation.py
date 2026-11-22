@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from humanoid.agent.harness.observation import PinnedObservation
 from humanoid.perception.segmentation import MASK_SIZE, MAX_TOKENS, Segmenter, resize_mask
-from humanoid.types.camera import CameraView
+from humanoid.types.camera import CameraView, ObservationId
 from humanoid.types.segmentation import Box, MaskCandidate, MaskProposal, Pixel, SegmentationResult
 from humanoid.types.tools import (
     RefineMask,
@@ -127,11 +127,14 @@ class SegmentationTools:
         return points, labels, prior
 
     def segment(self, request: SegmentRequest) -> tuple[SegmentationResult, Image.Image]:
+        observation_id = (
+            ObservationId(request.mask_id.partition(".")[0])
+            if isinstance(request, RefineMask)
+            else request.observation_id
+        )
+        self.observation.select(observation_id)
         frames = self.observation.frames
-        if frames is None or (
-            not isinstance(request, RefineMask) and request.observation_id != self.observation.id
-        ):
-            raise ValueError("Unknown observation ID for this view.")
+        assert frames is not None
         h, w = frames.rgb.data.shape[:2]
         size = (w, h)
         if isinstance(request, SegmentEverything):

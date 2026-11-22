@@ -1,9 +1,15 @@
 import lcm
 
-from humanoid.constants import DEFAULT_LCM_URL, TOPIC_TO_TYPE, Topic
+from humanoid.constants import DEFAULT_LCM_URL, Channel, message_type
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraEncoding, CameraImage, RegisteredDepth
+from humanoid.types.camera import (
+    CameraFrames,
+    CameraImage,
+    CameraTopic,
+    CameraTopics,
+    RegisteredDepth,
+)
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import registered_depth_t
 from humanoid.types.lcm.converter import LCMConverter
@@ -27,15 +33,20 @@ class Publisher:
         self.lc = lcm.LCM(url)
         self.url = url
 
-    def publish(self, data: AcceptedTypes, topic: Topic) -> None:  # noqa: PLR0912 - typed dispatch
-        expected_type = TOPIC_TO_TYPE.get(topic)
+    def publish_camera(self, frames: CameraFrames, topics: CameraTopics) -> None:
+        if frames.registered is not None:
+            self.publish(frames.registered, topics.registered_depth)
+        self.publish(frames.rgb, topics.rgb)
+        self.publish(frames.depth, topics.depth)
+
+    def publish(self, data: AcceptedTypes, topic: Channel) -> None:  # noqa: PLR0912 - typed dispatch
+        expected_type = message_type(topic)
         if expected_type is not type(data):
             raise TypeError(f"Topic {topic} expects {expected_type}, but got {type(data).__name__}")
 
         if isinstance(data, CameraImage):
-            encoding = CameraEncoding.RGB8 if topic is Topic.CAMERA_RGB else CameraEncoding.DEPTH16
-            if data.encoding is not encoding:
-                raise ValueError(f"Topic {topic} requires {encoding} images.")
+            if not isinstance(topic, CameraTopic) or data.encoding is not topic.encoding:
+                raise ValueError(f"Topic {topic.value} requires its configured image encoding.")
             lcm_data = LCMConverter.camera_image_to_lcm(data)
         elif isinstance(data, SimulationState):
             lcm_data = LCMConverter.simulation_state_to_lcm(data)

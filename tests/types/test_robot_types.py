@@ -120,7 +120,13 @@ def test_robot_tool_config_rejects_empty_frame():
 )
 def test_robot_gripper_config_requires_unique_nonempty_joint_names(joint_names):
     with pytest.raises(ValueError, match=r"gripper joint|at least one joint"):
-        RobotGripperConfig(joint_names=joint_names)
+        RobotGripperConfig(joint_names=joint_names, units=("rad",) * len(joint_names))
+
+
+@pytest.mark.parametrize("units", [(), ("m", "rad"), ("mm",)])
+def test_gripper_requires_one_supported_position_unit_per_joint(units):
+    with pytest.raises(ValueError, match="position unit"):
+        RobotGripperConfig(joint_names=("finger",), units=units)
 
 
 def test_robot_config_requires_position_controlled_gripper_actuators():
@@ -128,7 +134,7 @@ def test_robot_config_requires_position_controlled_gripper_actuators():
         HomingPreset.HOME: np.zeros(1),
         HomingPreset.REST: np.zeros(1),
     }
-    gripper = RobotGripperConfig(joint_names=("gripper",))
+    gripper = RobotGripperConfig(joint_names=("gripper",), units=("rad",))
 
     with pytest.raises(ValueError, match="configured actuators"):
         RobotConfig(

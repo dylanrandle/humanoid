@@ -49,28 +49,21 @@ tests.
 
 ## Cameras
 
-For robots with both configured optical frames (currently Triskel), the model builder
-adds separate fixed RGB and depth cameras directly to those URDF links. Optical axes
-are +X right, +Y down, +Z forward; the builder converts these to MuJoCo's camera axes.
-The URDF remains the source of camera extrinsics, including the offset between sensors.
-Visual meshes and their colors are retained, while collision proxies are hidden from
-both camera views. The D435 visual uses OBJ to preserve its complete geometry without
-exceeding MuJoCo's STL face limit.
+The model builder attaches each configured RGB and depth sensor to its URDF optical
+frames (+X right, +Y down, +Z forward). Triskel carries a bottom-plate D435 and a
+wrist D405. The D405 uses the RealSense STL and a nominal mount transform on
+`gripper_base_link`. Measure the physical mount to calibrate that transform.
+Panda and SO101 run without onboard cameras.
 
-The simulation node publishes the same `CAMERA/RGB` and `CAMERA/DEPTH` messages as the
-physical camera driver. Defaults are 640 × 480 at 30 frames per simulated second,
-with nominal vertical fields of view of 42° (RGB) and 58° (depth). Depth measures optical
-Z in millimeters, with zero for background or values outside the representable range.
-Images have separate pinhole intrinsics and viewpoints; depth is not aligned to RGB.
-This is ideal geometry rendering, without RealSense stereo noise, missing measurements,
-lens distortion, or device-specific factory calibration.
+The simulation node publishes native RGB, native depth and depth registered to RGB.
+Triskel's bottom-plate topics use `CAMERA/BASE/` and its wrist topics use `CAMERA/WRIST/`.
+Each image carries its own intrinsics, frame ID and scale. Multiply depth samples by
+`depth_scale` to get axial metres. Zero represents missing depth. Simulated pinholes
+use nominal optics. Hardware publishes device calibration.
 
-`NativeMujocoEngine.read_camera_frames(timestamp)` lazily creates an offscreen renderer
-and returns a new pair when due, otherwise `None`. Physics-only engine use does not
-create a graphics context. Reset restarts the camera cadence and frame counter; call
-`engine.close()` to release graphics resources. Robots without either optical frame
-continue to run without cameras. Set `MujocoSimulationConfig.camera=None` to disable
-cameras, or supply a `SimulatedCameraConfig` to customize dimensions, FPS, and optics.
+Rendering starts on the first requested frame. Reset restarts each sensor's cadence
+and frame counter. `engine.close()` releases the graphics resources. Configure optics in each named entry of the robot’s `cameras` mapping.
+Set `MujocoSimulationConfig.enable_cameras=False` to disable rendering for all sensors.
 
 Rendering needs an OpenGL context. Desktop macOS uses CGL; headless Linux can use
 `MUJOCO_GL=egl` with suitable GPU drivers or `MUJOCO_GL=osmesa` with Mesa installed.

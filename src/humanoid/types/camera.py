@@ -1,8 +1,10 @@
 """Camera configuration, native images, and the acquisition interface."""
 
 import math
+import re
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import cache
 from typing import Literal, NewType, Protocol
 
 import numpy as np
@@ -42,20 +44,29 @@ class CameraConfig:
 
 
 @dataclass(frozen=True, kw_only=True)
-class RealSenseCameraConfig(CameraConfig):
-    frame_timeout_seconds: float
+class HardwareCameraConfig(CameraConfig):
     serial_number: str | None = None
+    expected_model: DepthCamera | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        if not math.isfinite(self.frame_timeout_seconds) or self.frame_timeout_seconds <= 0:
-            raise ValueError("Camera frame timeout must be positive and finite.")
         if self.serial_number is not None and not self.serial_number.strip():
             raise ValueError("Camera serial number must not be empty.")
 
 
 @dataclass(frozen=True, kw_only=True)
+class RealSenseCameraConfig(HardwareCameraConfig):
+    frame_timeout_seconds: float
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not math.isfinite(self.frame_timeout_seconds) or self.frame_timeout_seconds <= 0:
+            raise ValueError("Camera frame timeout must be positive and finite.")
+
+
+@dataclass(frozen=True, kw_only=True)
 class SimulatedCameraConfig(CameraConfig):
+    model: DepthCamera
     rgb_vertical_fov: float
     depth_vertical_fov: float
     depth_scale: float
@@ -233,3 +244,38 @@ class CameraPreviewSnapshot:
     depth: CameraPreview
     depth_near_meters: float
     depth_far_meters: float
+
+
+@dataclass(frozen=True, kw_only=True)
+class RobotCameraConfig:
+    simulation: SimulatedCameraConfig | None = None
+    hardware: HardwareCameraConfig | None = None
+
+
+@dataclass(frozen=True)
+class CameraTopic[T]:
+    value: str
+    message_type: type[T]
+    encoding: CameraEncoding | None = None
+
+
+@dataclass(frozen=True)
+class CameraTopics:
+    rgb: CameraTopic[CameraImage]
+    depth: CameraTopic[CameraImage]
+    registered_depth: CameraTopic[RegisteredDepth]
+
+
+@cache
+def camera_topics(name: str) -> CameraTopics:
+    """Map a configured camera name to its uppercase LCM channel family."""
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name):
+        raise ValueError(
+            f"Invalid camera name {name!r}. Use a name matching [A-Za-z][A-Za-z0-9_]*."
+        )
+    prefix = f"CAMERA/{name.upper()}"
+    return CameraTopics(
+        CameraTopic(f"{prefix}/RGB", CameraImage, CameraEncoding.RGB8),
+        CameraTopic(f"{prefix}/DEPTH", CameraImage, CameraEncoding.DEPTH16),
+        CameraTopic(f"{prefix}/REGISTERED_DEPTH", RegisteredDepth),
+    )

@@ -12,7 +12,7 @@ from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.robot.simulation import SimulationNode
 from humanoid.simulation.engine import NativeMujocoEngine
-from humanoid.types.camera import CameraFrames
+from humanoid.types.camera import CameraFrames, camera_topics
 from humanoid.types.robot import NormalizedRobotJointCommand, RobotJointCommand, RobotState
 from humanoid.types.simulation import MujocoSimulationConfig
 
@@ -47,7 +47,7 @@ def _make_node(monkeypatch, *, clock=None, timeout: float = 0.25):
     engine = MagicMock(spec=NativeMujocoEngine)
     engine.physics_timestep = MujocoSimulationConfig().physics_timestep
     engine.read_robot_state.return_value = _state()
-    engine.read_camera_frames.return_value = None
+    engine.read_camera_frames.return_value = {}
     engine.apply_joint_command.return_value = NormalizedRobotJointCommand(
         joint_positions=np.zeros(6),
         joint_velocities=np.zeros(6),
@@ -99,14 +99,12 @@ def test_publishes_camera_pairs_on_shared_topics(monkeypatch):
     frames = MagicMock(spec=CameraFrames)
     frames.rgb = MagicMock()
     frames.depth = MagicMock()
-    engine.read_camera_frames.return_value = frames
+    engine.read_camera_frames.return_value = {"arm": frames}
 
     node.step()
 
     engine.read_camera_frames.assert_called_once_with(timestamp=1.0)
-    publisher.publish.assert_has_calls(
-        [call(frames.rgb, topic=Topic.CAMERA_RGB), call(frames.depth, topic=Topic.CAMERA_DEPTH)]
-    )
+    publisher.publish_camera.assert_called_once_with(frames, camera_topics("arm"))
 
 
 def test_watchdog_stops_velocity_actuators_once(monkeypatch):

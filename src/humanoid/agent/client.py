@@ -22,7 +22,7 @@ from humanoid.types.agent import (
 )
 from humanoid.types.camera import CameraView, DepthView
 from humanoid.types.http import HttpKey
-from humanoid.types.observation import Observation
+from humanoid.types.observation import CameraCaptures, Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotState
 
@@ -85,6 +85,9 @@ class AgentControlClient:
         """Read the measured state and operator mode from one API response."""
         started = time.perf_counter()
         payload = self._request(AgentRoute.STATE)
+        return self._decode_observation(payload, started)
+
+    def _decode_observation(self, payload: dict, started: float) -> Observation:
         if self._session_id is None:
             self._session_id = payload["session_id"]
         elif self._session_id != payload["session_id"]:
@@ -93,6 +96,17 @@ class AgentControlClient:
             robot_state=decode_state(payload["state"], started),
             mode=Mode(payload["mode"]) if payload["mode"] is not None else None,
         )
+
+    def capture(self) -> CameraCaptures:
+        started = time.perf_counter()
+        payload = self._request(AgentRoute.CAPTURE)
+        return {
+            name: (
+                self._decode_observation({**record, "session_id": payload["session_id"]}, started),
+                decode_frames(record["camera"], started),
+            )
+            for name, record in payload["views"].items()
+        }
 
     def observe(self, *, depth_view: DepthView | str = DepthView.ALIGNED) -> CameraView:
         """Get RGB and measured depth in the selected camera frame."""

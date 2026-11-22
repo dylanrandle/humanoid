@@ -2,7 +2,7 @@ import os
 from enum import Enum
 
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraImage, RegisteredDepth
+from humanoid.types.camera import CameraImage, CameraTopic, RegisteredDepth
 from humanoid.types.homing import HomingTarget
 from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateSample
@@ -27,11 +27,6 @@ DEFAULT_HUMANOID_ROBOT = RobotName.TRISKEL
 
 
 class Topic(Enum):
-    # Native images, shared by the physical camera and simulated optical sensors.
-    CAMERA_RGB = "CAMERA/RGB"
-    CAMERA_REGISTERED_DEPTH = "CAMERA/REGISTERED_DEPTH"
-    CAMERA_DEPTH = "CAMERA/DEPTH"
-
     # Per-node loop-rate telemetry consumed by the operator console.
     NODE_RATE = "NODE/RATE"
 
@@ -74,9 +69,6 @@ class Topic(Enum):
 
 
 TOPIC_TO_TYPE: dict[Topic, type] = {
-    Topic.CAMERA_RGB: CameraImage,
-    Topic.CAMERA_DEPTH: CameraImage,
-    Topic.CAMERA_REGISTERED_DEPTH: RegisteredDepth,
     Topic.NODE_RATE: NodeRateSample,
     Topic.ACTUATOR_HEALTH: ActuatorHealthReport,
     Topic.ROBOT_STATE: RobotState,
@@ -98,3 +90,10 @@ TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.LOGGING_STATUS: LoggingStatus,
     Topic.HOMING_TARGET: HomingTarget,
 }
+
+
+type Channel = Topic | CameraTopic[CameraImage] | CameraTopic[RegisteredDepth]
+
+
+def message_type(channel: Channel) -> type:
+    return channel.message_type if isinstance(channel, CameraTopic) else TOPIC_TO_TYPE[channel]

@@ -204,7 +204,8 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
     _join_stack_startup(manager)
 
     expected_nodes = (
-        *NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.REAL),
+        RobotDriverNode,
+        *NODE_GROUPS[ProcessName.STACK].nodes,
         HomingNode,
     )
     assert all(entry.kwargs["target"] is _run_node for entry in context.Process.call_args_list)

@@ -11,7 +11,6 @@ import numpy as np
 from PIL import Image
 
 from humanoid.config.camera import CAMERA_PREVIEW_CONFIG
-from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.perception.depth import colorize_depth
 from humanoid.types.camera import (
@@ -20,6 +19,8 @@ from humanoid.types.camera import (
     CameraPreview,
     CameraPreviewConfig,
     CameraPreviewSnapshot,
+    CameraTopic,
+    camera_topics,
 )
 
 
@@ -29,13 +30,16 @@ class CameraPreviewMonitor:
         subscriber: Subscriber | None = None,
         config: CameraPreviewConfig = CAMERA_PREVIEW_CONFIG,
         clock: Callable[[], float] = time.perf_counter,
+        *,
+        camera_name: str,
     ) -> None:
-        self._subscriber = subscriber or Subscriber(topics=[Topic.CAMERA_RGB, Topic.CAMERA_DEPTH])
+        self.topics = camera_topics(camera_name)
+        self._subscriber = subscriber or Subscriber(topics=[self.topics.rgb, self.topics.depth])
         self._config = config
         self._clock = clock
         self._lock = threading.Lock()
-        self._frames: dict[Topic, tuple[CameraImage, float]] = {}
-        self._previews: dict[Topic, CameraPreview] = {}
+        self._frames: dict[CameraTopic[CameraImage], tuple[CameraImage, float]] = {}
+        self._previews: dict[CameraTopic[CameraImage], CameraPreview] = {}
         self._depth_far = config.default_depth_far_meters
 
     def snapshot(self, depth_far: float) -> CameraPreviewSnapshot:
@@ -43,12 +47,12 @@ class CameraPreviewMonitor:
             raise ValueError("Unsupported depth preview range.")
         with self._lock:
             if depth_far != self._depth_far:
-                self._previews.pop(Topic.CAMERA_DEPTH, None)
+                self._previews.pop(self.topics.depth, None)
                 self._depth_far = depth_far
             previews = {}
             for topic, encoding in (
-                (Topic.CAMERA_RGB, CameraEncoding.RGB8),
-                (Topic.CAMERA_DEPTH, CameraEncoding.DEPTH16),
+                (self.topics.rgb, CameraEncoding.RGB8),
+                (self.topics.depth, CameraEncoding.DEPTH16),
             ):
                 received = self._subscriber.receive_with_timestamp(topic)
                 if received is not None:
@@ -58,13 +62,13 @@ class CameraPreviewMonitor:
                         self._previews.pop(topic, None)
                 previews[topic] = self._preview(topic)
             return CameraPreviewSnapshot(
-                rgb=previews[Topic.CAMERA_RGB],
-                depth=previews[Topic.CAMERA_DEPTH],
+                rgb=previews[self.topics.rgb],
+                depth=previews[self.topics.depth],
                 depth_near_meters=self._config.depth_near_meters,
                 depth_far_meters=depth_far,
             )
 
-    def _preview(self, topic: Topic) -> CameraPreview:
+    def _preview(self, topic: CameraTopic[CameraImage]) -> CameraPreview:
         received = self._frames.get(topic)
         if received is None:
             return CameraPreview(connected=False)
@@ -99,7 +103,7 @@ class CameraPreviewMonitor:
         with self._lock:
             self._frames.clear()
             self._previews.clear()
-            for topic in (Topic.CAMERA_RGB, Topic.CAMERA_DEPTH):
+            for topic in (self.topics.rgb, self.topics.depth):
                 self._subscriber.receive_with_timestamp(topic)
 
     def close(self) -> None:

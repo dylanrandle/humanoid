@@ -10,11 +10,13 @@ from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness import depth as depth_tools
 from humanoid.agent.harness import segmentation
 from humanoid.agent.harness.observation import PinnedObservation
-from humanoid.agent.harness.robot import TriskelTools
+from humanoid.agent.harness.robot import RobotTools
 from humanoid.agent.serialization import decode_frames, encode_frames
 from humanoid.agent.server import AgentControlServer
 from humanoid.config.camera import REALSENSE_CAMERA_CONFIG
+from humanoid.config.robot.panda import PANDA_CONFIG
 from humanoid.perception.masks import MaskStore
+from humanoid.robots.base import Robot
 from humanoid.types.agent import AgentControlEndpoint
 from humanoid.types.camera import (
     CameraEncoding,
@@ -22,8 +24,11 @@ from humanoid.types.camera import (
     CameraImage,
     CameraIntrinsics,
     RegisteredDepth,
+    RobotCameraConfig,
 )
 from humanoid.types.depth import DepthCamera
+from humanoid.types.homing import HomingPreset
+from humanoid.types.orchestrator import Mode
 from humanoid.types.tools import (
     CompleteDepth,
     RefineMask,
@@ -108,9 +113,9 @@ def test_http_pins_complete_capture_when_newer_native_pair_arrives(service, fram
         ),
     )
     observation = service.observation()
-    service.observe(replace(observation, camera_frames=old))
+    service.observe(replace(observation, camera_frames={"base": old}))
     new = replace(old, registered=None, rgb=replace(old.rgb, frame_number=old.rgb.frame_number + 1))
-    service.observe(replace(observation, camera_frames=new))
+    service.observe(replace(observation, camera_frames={"base": new}))
     server = AgentControlServer(service)
     server.start()
     host, port = server.server.server_address[:2]
@@ -134,7 +139,7 @@ def test_http_pins_complete_capture_when_newer_native_pair_arrives(service, fram
 
 
 @pytest.mark.parametrize("aligned", [True, False])
-def test_agent_observes_measured_depth_if_available(service, frames, aligned):
+def test_agent_attaches_rgb_and_reports_depth_availability(service, frames, aligned, robot):
     client = MagicMock()
     client.observation.return_value = service.observation()
     source = frames if aligned else replace(frames, registered=None)
@@ -143,18 +148,58 @@ def test_agent_observes_measured_depth_if_available(service, frames, aligned):
         assert "image" not in payload["registered"]
     else:
         assert payload["depth"] is None and "registered" not in payload
-    client.observe.return_value = decode_frames(payload, received_after=100)
-    tools = TriskelTools(client)
+    client.capture.return_value = {
+        "base": (service.observation(), decode_frames(payload, received_after=100))
+    }
+    tools = RobotTools(client, robot)
     try:
-        status, rgb, depth = tools.observe(service.observation().mode)
-        client.observe.assert_called_once_with()
+        status, images = tools.observe(service.observation().mode)
+        client.capture.assert_called_once_with()
+        assert status["base_pose_world"] is not None
+        assert status["tool_pose_reference_frame"] == robot.config.base.frame
+        assert status["gripper_units"] == ["rad"]
         assert status["registered_depth_available"] is aligned
-        assert rgb.startswith("data:image/jpeg;")
-        if aligned:
-            assert depth and depth.startswith("data:image/jpeg;") and rgb != depth
-        else:
-            assert depth is None
+        assert set(images) == {"base RGB"}
+        assert images["base RGB"].startswith("data:image/jpeg;")
+        assert status["cameras"]["base"]["registered_depth_available"] is aligned
         assert not tools.depth.depth_models
+    finally:
+        tools.close()
+
+
+def test_fixed_base_robot_uses_world_tool_frame_and_linear_gripper(frames):
+    rgb_frame = PANDA_CONFIG.tool.frame
+    mount = RobotCameraConfig(hardware=replace(REALSENSE_CAMERA_CONFIG, rgb_frame=rgb_frame))
+    robot = Robot(replace(PANDA_CONFIG, cameras={"wrist": mount}))
+    q = PANDA_CONFIG.homing_presets[HomingPreset.HOME]
+    client = MagicMock()
+    client.observation.return_value.mode = Mode.AUTONOMY
+    client.observation.return_value.robot_state.joint_positions = q
+    view = decode_frames(encode_frames(replace(frames, registered=None)), received_after=100)
+    tools = RobotTools(client, robot)
+    try:
+        client.capture.return_value = {
+            "wrist": (
+                client.observation.return_value,
+                replace(view, rgb=replace(view.rgb, frame_id="unexpected_frame")),
+            )
+        }
+        with pytest.raises(ValueError, match=rgb_frame):
+            tools.capture(Mode.AUTONOMY)
+        client.capture.return_value = {
+            "wrist": (
+                client.observation.return_value,
+                replace(view, rgb=replace(view.rgb, frame_id=rgb_frame)),
+            )
+        }
+        status, _ = tools.capture(Mode.AUTONOMY)
+        assert status["base_pose_world"] is None
+        assert status["tool_pose_reference_frame"] == "world"
+        np.testing.assert_allclose(
+            status["tool_pose"]["position_m"], robot.get_tool_pose(q).translation
+        )
+        assert status["gripper_units"] == ["m"]
+        assert status["gripper_limits"] == robot.get_gripper_limits()
     finally:
         tools.close()
 
@@ -189,6 +234,24 @@ def inference(monkeypatch):
     return backend, cdm, completed, logits, factory
 
 
+def test_complete_depth_samples_native_rgb_pixels(tmp_path, inference, frames):
+    _, cdm, completed, _, factory = inference
+    completed[10, 5] = 1.25
+    capture = PinnedObservation(MaskStore(tmp_path))
+    completion = depth_tools.DepthTools(capture)
+    obs = capture.pin(frames)
+    with pytest.raises(ValueError, match="coordinates"):
+        completion.complete_depth(CompleteDepth(observation_id=obs, points_xy=((-1, 0),)))
+    factory.assert_not_called()
+    request = CompleteDepth(observation_id=obs, points_xy=((5, 10), (0, 0)))
+    info = completion.complete_depth(request)
+    assert info.observation_id == obs
+    assert info.depths_m == (float(completed[10, 5]), None)
+    assert completion.complete_depth(request) == info
+    cdm.infer.assert_called_once()
+    completion.close()
+
+
 def test_all_prompts_share_capture_and_persist_after_refresh(tmp_path, inference, frames):
     backend, cdm, completed, logits, factory = inference
     capture = PinnedObservation(MaskStore(tmp_path))
@@ -221,10 +284,10 @@ def test_all_prompts_share_capture_and_persist_after_refresh(tmp_path, inference
     assert points == ((5, 10), (6, 10), (25, 2)) and labels == (1, 1, 0)
     np.testing.assert_array_equal(prior, logits[1])
     factory.assert_not_called()
-    info, preview = completion.complete_depth(CompleteDepth(observation_id=obs))
-    assert info.observation_id == obs and preview.size == overlay.size
+    info = completion.complete_depth(CompleteDepth(observation_id=obs))
+    assert info.observation_id == obs
     assert info.valid_pixels == int(np.isfinite(completed).sum())
-    assert completion.complete_depth(CompleteDepth(observation_id=obs))[0] == info
+    assert completion.complete_depth(CompleteDepth(observation_id=obs)) == info
     cdm.infer.assert_called_once_with(
         frames.rgb.data, frames.registered.image.data, metres_per_unit=0.001
     )
@@ -265,7 +328,8 @@ def test_standalone_completion_failure_retry_and_new_capture(tmp_path, inference
     with pytest.raises(RuntimeError, match="inference failed"):
         completion.complete_depth(CompleteDepth(observation_id=obs))
     assert store.resolve_depth(obs) is None
-    info, _ = completion.complete_depth(CompleteDepth(observation_id=obs))
+    info = completion.complete_depth(CompleteDepth(observation_id=obs))
+    assert info.depths_m == ()
     backend.set_image.assert_not_called()
     assert info.observation_id == obs
     np.testing.assert_array_equal(store.resolve_depth(obs), depth)

@@ -1,0 +1,6 @@
+RealSense D405 mesh, unmodified binary STL in millimeters
+Copyright RealSense, Inc. Licensed under Apache License 2.0 (see d435_license.txt).
+https://github.com/realsenseai/realsense-ros/blob/9a11121700cb4780e273e34141f6402fe184321d/realsense2_description/meshes/d405.stl
+SHA-256: a248f41149d12b28311829feecbe7a80cf1481fd05e0f5df2c4c7ecd556edd48
+Mesh orientation and nominal optical offsets follow _d405.urdf.xacro at that revision.
+The mounting pose follows the Triskel wrist bracket CAD.

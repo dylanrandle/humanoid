@@ -8,11 +8,11 @@ import numpy as np
 import pytest
 
 from humanoid.config.camera import REALSENSE_CAMERA_CONFIG
-from humanoid.constants import Topic
+from humanoid.config.robot import TRISKEL_CONFIG
 from humanoid.hardware.cameras.realsense import RealSenseCamera
 from humanoid.middleware.publisher import Publisher
 from humanoid.nodes.robot.camera import CameraDriverNode
-from humanoid.types.camera import CameraEncoding
+from humanoid.types.camera import CameraEncoding, RobotCameraConfig, camera_topics
 
 
 def make_camera():
@@ -102,17 +102,19 @@ def test_missing_frames_timeout_and_startup_cleanup():
 def test_driver_publishes_complete_pairs_and_closes():
     camera, sdk, _ = make_camera()
     publisher = MagicMock(spec=Publisher)
-    node = CameraDriverNode(camera.config, camera=camera, publisher=publisher)
+    node = CameraDriverNode(
+        replace(TRISKEL_CONFIG, cameras={"inspection": RobotCameraConfig(hardware=camera.config)}),
+        camera=camera,
+        publisher=publisher,
+    )
     node.setup()
     node.step()
-    assert [c.kwargs["topic"] for c in publisher.publish.call_args_list] == [
-        Topic.CAMERA_RGB,
-        Topic.CAMERA_DEPTH,
-    ]
+    publisher.publish_camera.assert_called_once()
+    assert publisher.publish_camera.call_args.args[1] == camera_topics("inspection")
     publisher.reset_mock()
     sdk.pipeline.return_value.poll_for_frames.return_value = None
     node.step()
-    publisher.publish.assert_not_called()
+    publisher.publish_camera.assert_not_called()
     node.on_close()
     sdk.pipeline.return_value.stop.assert_called_once()
 

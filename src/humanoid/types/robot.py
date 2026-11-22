@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Literal
 
 import numpy as np
 import pinocchio as pin
@@ -8,6 +9,7 @@ import pinocchio as pin
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.state_estimation.config import RobotStateEstimationConfig
 from humanoid.types.actuator import ActuatorControlMode, ActuatorEffortSource
+from humanoid.types.camera import RobotCameraConfig, camera_topics
 from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
 
@@ -113,6 +115,7 @@ class RobotGripperConfig:
     """Independently commanded gripper joints identified by URDF name."""
 
     joint_names: tuple[str, ...]
+    units: tuple[Literal["m", "rad"], ...]
 
     def __post_init__(self) -> None:
         if not self.joint_names:
@@ -121,6 +124,10 @@ class RobotGripperConfig:
             raise ValueError("Robot gripper joint names must not be empty.")
         if len(set(self.joint_names)) != len(self.joint_names):
             raise ValueError("Robot gripper joint names must be unique.")
+        if len(self.units) != len(self.joint_names) or any(
+            u not in ("m", "rad") for u in self.units
+        ):
+            raise ValueError("Each gripper joint requires a position unit of 'm' or 'rad'.")
 
 
 @dataclass
@@ -188,10 +195,13 @@ class RobotConfig:
     state_estimation: RobotStateEstimationConfig | None = None
     operational_space_config: OperationalSpaceConfig | None = None
     omniwheel_base_config: OmniwheelBaseConfig | None = None
+    cameras: dict[str, RobotCameraConfig] = field(default_factory=dict)
     mesh_contacts: dict[str, MeshContactConfig] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Own invariants spanning logical controls and physical bindings."""
+        if len({camera_topics(name) for name in self.cameras}) != len(self.cameras):
+            raise ValueError("Camera names must have distinct uppercase LCM topics.")
         if self.homing_presets.keys() != set(HomingPreset):
             raise ValueError("Robot homing presets must define every HomingPreset.")
         preset_positions = list(self.homing_presets.values())

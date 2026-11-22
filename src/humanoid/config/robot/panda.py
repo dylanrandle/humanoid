@@ -20,7 +20,7 @@ JOINT_IDS = [
 HOME_POSITION = np.array([0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785, 0.04])
 REST_POSITION = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.785, 0.0])
 TOOL_CONFIG = RobotToolConfig(frame="panda_hand_tcp")
-GRIPPER_CONFIG = RobotGripperConfig(joint_names=("panda_finger_joint1",))
+GRIPPER_CONFIG = RobotGripperConfig(joint_names=("panda_finger_joint1",), units=("m",))
 HOMING_PRESETS = {
     HomingPreset.HOME: HOME_POSITION,
     HomingPreset.REST: REST_POSITION,

@@ -9,7 +9,7 @@ import pytest
 from humanoid.constants import Topic
 from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.types.action import Action
-from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics
+from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics, camera_topics
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
@@ -75,10 +75,13 @@ class TestInit:
                 Topic.ROBOT_TOOL_COMMAND,
                 Topic.ROBOT_BASE_COMMAND,
                 Topic.ORCHESTRATOR_MODE,
-                Topic.CAMERA_RGB,
-                Topic.CAMERA_DEPTH,
-                Topic.CAMERA_REGISTERED_DEPTH,
-            ]
+                camera_topics("base").rgb,
+                camera_topics("base").depth,
+                camera_topics("base").registered_depth,
+                camera_topics("wrist").rgb,
+                camera_topics("wrist").depth,
+                camera_topics("wrist").registered_depth,
+            ],
         )
 
     def test_default_callbacks_used_when_none_provided(self, env):
@@ -109,7 +112,7 @@ class TestInit:
 class TestReset:
     def test_returns_observation_from_robot_state(self, env):
         state = _make_state(timestamp=1.5)
-        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None, None, None])
+        env.subscriber.receive = MagicMock(side_effect=_state_only_receive(state))
 
         observation = env.reset()
 
@@ -130,7 +133,10 @@ class TestReset:
         state = _make_state()
         mode_msg = OrchestratorMode(timestamp=0.0, mode=Mode.OCULUS)
         env.subscriber.receive = MagicMock(
-            side_effect=[state, None, None, None, mode_msg, None, None]
+            side_effect=lambda topic, **_: {
+                Topic.ROBOT_STATE: state,
+                Topic.ORCHESTRATOR_MODE: mode_msg,
+            }.get(topic)
         )
 
         observation = env.reset()
@@ -145,11 +151,11 @@ class TestReset:
     def test_falls_back_to_cached_state_when_receive_returns_none(self, env):
         state = _make_state(timestamp=1.0)
         # First reset populates the cache.
-        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None, None, None])
+        env.subscriber.receive = MagicMock(side_effect=_state_only_receive(state))
         env.reset()
 
         # Second reset: ROBOT_STATE returns None — should use cached state.
-        env.subscriber.receive = MagicMock(side_effect=[None, None, None, None, None, None, None])
+        env.subscriber.receive = MagicMock(return_value=None)
         observation = env.reset()
 
         assert observation.robot_state is state
@@ -159,12 +165,15 @@ class TestReset:
         joint_cmd = RobotJointCommand(timestamp=0.0, joint_positions=np.zeros(7))
         # First reset populates the caches.
         env.subscriber.receive = MagicMock(
-            side_effect=[state, joint_cmd, None, None, None, None, None]
+            side_effect=lambda topic, **_: {
+                Topic.ROBOT_STATE: state,
+                Topic.ROBOT_JOINT_COMMAND: joint_cmd,
+            }.get(topic)
         )
         env.reset()
 
         # Second reset: command topics return None — cached joint_cmd should be reused.
-        env.subscriber.receive = MagicMock(side_effect=[state, None, None, None, None, None, None])
+        env.subscriber.receive = MagicMock(side_effect=_state_only_receive(state))
         observation = env.reset()
 
         assert observation.robot_joint_command is joint_cmd
@@ -374,13 +383,17 @@ def test_optional_camera_observations_pair_by_host_timestamp():
         depth_scale=0.001,
         timestamp=2,
     )
-    messages = {Topic.ROBOT_STATE: _make_state(), Topic.CAMERA_RGB: rgb, Topic.CAMERA_DEPTH: depth}
+    messages = {
+        Topic.ROBOT_STATE: _make_state(),
+        camera_topics("base").rgb: rgb,
+        camera_topics("base").depth: depth,
+    }
     cast(MagicMock, environment.subscriber).receive.side_effect = lambda topic, **_: messages.pop(
         topic, None
     )
-    assert environment.observe().camera_frames is None
-    messages[Topic.CAMERA_RGB] = replace(rgb, timestamp=2)
-    paired = environment.observe().camera_frames
+    assert environment.observe().camera_frames.get("base") is None
+    messages[camera_topics("base").rgb] = replace(rgb, timestamp=2)
+    paired = environment.observe().camera_frames.get("base")
     assert paired is not None and paired.depth is depth
-    messages[Topic.CAMERA_RGB] = replace(rgb, timestamp=3)
-    assert environment.observe().camera_frames is paired
+    messages[camera_topics("base").rgb] = replace(rgb, timestamp=3)
+    assert environment.observe().camera_frames.get("base") is paired

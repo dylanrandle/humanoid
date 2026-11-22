@@ -7,6 +7,7 @@ import re
 import threading
 import time
 import uuid
+from collections import deque
 from concurrent.futures import CancelledError
 
 from humanoid.agent.commands import motion_command
@@ -23,25 +24,31 @@ from humanoid.types.agent import (
 )
 from humanoid.types.camera import CameraFrames, DepthView
 from humanoid.types.observation import Observation
+from humanoid.types.robot import RobotState
 
 
 class AgentControlService:
     def __init__(self, policy: AgentPolicy, config: AgentControlServerConfig) -> None:
         self.session_id = uuid.uuid4().hex
         self.policy = policy
+        self._primary = next(iter(policy.robot.config.cameras), "")
         self.config = config
         self._lock = threading.Lock()
         self._commands: dict[str, CommandRecord] = {}
         self._observation: Observation | None = None
-        self._registered: CameraFrames | None = None
+        self._state_history: deque[RobotState] = deque(maxlen=128)
+        self._registered: dict[str, CameraFrames] = {}
         self._closed = False
 
     def observe(self, observation: Observation) -> None:
         with self._lock:
             self._observation = observation
-            frames = observation.camera_frames
-            if frames is not None and frames.registered is not None:
-                self._registered = frames
+            state = observation.robot_state
+            if not self._state_history or state.timestamp > self._state_history[-1].timestamp:
+                self._state_history.append(state)
+            for name, frames in observation.camera_frames.items():
+                if frames.registered is not None:
+                    self._registered[name] = frames
 
     def observation(self, *, camera: bool = False) -> Observation:
         with self._lock:
@@ -52,7 +59,7 @@ class AgentControlService:
         if not 0 <= age <= self.policy.config.feedback_timeout:
             raise RuntimeError("Robot feedback is stale.")
         if camera:
-            frames = observation.camera_frames
+            frames = observation.camera_frames.get(self._primary)
             if frames is None or any(
                 not 0 <= time.perf_counter() - frame.timestamp <= self.config.camera_timeout_seconds
                 for frame in (frames.rgb, frames.depth)
@@ -61,10 +68,10 @@ class AgentControlService:
         return observation
 
     def camera_frames(self, *, depth_view: DepthView) -> CameraFrames:
-        frames = self.observation(camera=True).camera_frames
+        frames = self.observation(camera=True).camera_frames[self._primary]
         assert frames is not None
         with self._lock:
-            registered = self._registered
+            registered = self._registered.get(self._primary)
         if (
             depth_view is DepthView.ALIGNED
             and registered
@@ -75,6 +82,34 @@ class AgentControlService:
         ):
             return registered
         return frames
+
+    def capture(self) -> dict[str, tuple[Observation, CameraFrames]]:
+        """Match each live camera to measured joint feedback on the host clock."""
+        self.observation()
+        with self._lock:
+            current = self._observation
+            if current is None or self._closed:
+                raise RuntimeError("Robot control service is not ready.")
+            now = time.perf_counter()
+            result = {}
+            for name, latest in current.camera_frames.items():
+                frames = latest
+                registered = self._registered.get(name)
+                if (
+                    registered
+                    and registered.rgb.serial_number == frames.rgb.serial_number
+                    and 0 <= now - registered.rgb.timestamp <= self.config.camera_timeout_seconds
+                ):
+                    frames = registered
+                stamp = frames.rgb.timestamp
+                if not 0 <= now - stamp <= self.config.camera_timeout_seconds:
+                    continue
+                state = min(self._state_history, key=lambda sample: abs(sample.timestamp - stamp))
+                if abs(state.timestamp - stamp) <= self.config.capture_state_tolerance:
+                    result[name] = Observation(robot_state=state, mode=current.mode), frames
+            if not result:
+                raise RuntimeError("No fresh camera capture with matching joint feedback.")
+            return result
 
     def submit(self, request: CommandRequest) -> CommandStatus:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", request.command_id):

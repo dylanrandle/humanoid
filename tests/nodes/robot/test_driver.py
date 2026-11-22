@@ -94,7 +94,9 @@ def _robot_config(
         actuator_control_modes={f"joint_{index}": mode for index, mode in enumerate(modes)},
         hardware=None,
         gripper=(
-            RobotGripperConfig(joint_names=gripper_joint_names)
+            RobotGripperConfig(
+                joint_names=gripper_joint_names, units=("rad",) * len(gripper_joint_names)
+            )
             if gripper_joint_names is not None
             else None
         ),

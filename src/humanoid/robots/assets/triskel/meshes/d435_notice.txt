@@ -15,7 +15,9 @@ Triangle count: 231186.
 
 Placement and nominal optical offsets follow upstream _d435.urdf.xacro
 at the same revision. Optical offsets are CAD estimates, not measured
-calibration. Camera and bracket inertia are not modeled.
+calibration.
 
 OBJ preserves all triangles and vertex coordinates while avoiding MuJoCo's
 200,000-face STL decoder limit. Repeated vertices are indexed once.
+
+The main URDF uses this OBJ for both display and housing contact.

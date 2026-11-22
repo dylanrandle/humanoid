@@ -40,12 +40,16 @@ type SegmentRequest = SegmentEverything | SegmentAtPoint | SegmentInBox | Refine
 
 
 class CompleteDepth(ToolModel):
+    # Structured model replies must name every field. An empty list requests only the map.
+    model_config = ConfigDict(json_schema_extra={"required": ["observation_id", "points_xy"]})
+
     observation_id: ObservationId
+    points_xy: tuple[Pixel, ...] = Field(default_factory=tuple)
 
 
 @dataclass(frozen=True, kw_only=True)
 class DepthCompletionResult:
     observation_id: ObservationId
     valid_pixels: int
-    preview_range_m: tuple[float, float]
+    depths_m: tuple[float | None, ...]
     operation: Literal["complete_depth"] = "complete_depth"

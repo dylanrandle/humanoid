@@ -46,6 +46,7 @@ POST bodies use `Content-Type: application/json`.
 | `GET /v1/state` | Current session ID, operator mode, joint feedback and feedback age in seconds |
 | `GET /v1/camera` or `GET /v1/camera?depth_view=aligned` | RGB and aligned measured depth PNGs, frame IDs, intrinsics, depth scale, timestamps and age. Missing aligned depth is JSON `null`. |
 | `GET /v1/camera?depth_view=native` | RGB and native measured depth with their respective calibration. |
+| `GET /v1/capture` | Named RGB-D views. Each view includes the joint state nearest its host capture time and the current operator mode. |
 | `POST /v1/commands` | HTTP 202 with the command ID and current status |
 | `GET /v1/commands/<id>` | Command status and, on completion, measured result |
 | `POST /v1/commands/<id>/cancel` | Updated status for that command. Send `{}` as the body. |
@@ -84,7 +85,7 @@ device code and sign-in link. Select an image-capable model from the account
 catalog. The panel selects Astra 6.2 when available.
 
 Enter an instruction and select **Run task**. In **Idle**, the agent answers
-using current measured state, RGB, and a colorized preview of the matching measured depth when available. In **Autonomy**, it can
+using measured robot state and a labeled RGB image from each camera. In **Autonomy**, it can
 also issue bounded tool, base, gripper and hold commands. For a simulation
 test, ask it to move the base 2 cm forward and report the measured result.
 Each motion refreshes the observation. Perception tools can work on the same
@@ -121,10 +122,10 @@ RGB segmentation also works on an RGB-only view.
 
 Call `complete_depth(observation_id)` when a task needs a dense metric depth map.
 It uses synchronized RGB and aligned measured depth from the pinned observation.
-It works on its own or before or after mask selection. The first call loads the depth
-model and returns a color preview, its range in metres, and the valid pixel count.
-Repeated calls for the same observation reuse the saved map. The preview uses amber
-for near, blue for far and black for invalid pixels. [Depth model installation](../../../models/cdm/README.md)
+It saves the full RGB-aligned float32 map under the observation ID and returns the valid
+pixel count. Supply native RGB pixels in `points_xy` to read their axial depths in
+metres. The `depths_m` values follow the requested order, with `null` for invalid
+pixels. Repeated calls for the same observation read the cached map. [Depth model installation](../../../models/cdm/README.md)
 
 ### Using a saved observation
 

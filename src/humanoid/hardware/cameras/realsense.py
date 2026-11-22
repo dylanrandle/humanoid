@@ -81,6 +81,10 @@ class RealSenseCamera:
             self._serial_number = str(device.get_info(sdk.camera_info.serial_number))
             name = str(device.get_info(sdk.camera_info.name)).lower().split()
             self._model = next((model for model in DepthCamera if model.value in name), None)
+            if self.config.expected_model is not None and self.config.expected_model != self._model:
+                raise RuntimeError(
+                    f"Selected RealSense device must be a {self.config.expected_model}."
+                )
             self._align = sdk.align(sdk.stream.color) if self._model else None
             self._intrinsics = {
                 encoding: self._read_intrinsics(profile.get_stream(stream))

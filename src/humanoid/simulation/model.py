@@ -69,8 +69,10 @@ def build_mujoco_spec(
 
     _configure_robot_contacts(spec, robot.config.mesh_contacts)
 
-    camera = config.camera
-    if camera is not None:
+    for mount in robot.config.cameras.values():
+        camera = mount.simulation
+        if not config.enable_cameras or camera is None:
+            continue
         frames = (camera.rgb_frame, camera.depth_frame)
         bodies = [spec.body(frame) for frame in frames]
         if any(body is not None for body in bodies):

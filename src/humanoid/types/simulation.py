@@ -6,7 +6,6 @@ from enum import StrEnum
 
 import numpy as np
 
-from humanoid.types.camera import SimulatedCameraConfig
 from humanoid.types.robot import RobotName
 
 
@@ -31,7 +30,7 @@ class MujocoSimulationConfig:
     root_force_limit: float = 100.0
     minimum_body_mass: float = 0.001
     minimum_body_inertia: float = 1e-6
-    camera: SimulatedCameraConfig | None = None
+    enable_cameras: bool = True
 
     def __post_init__(self) -> None:
         positive_values = (

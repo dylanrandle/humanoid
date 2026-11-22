@@ -13,6 +13,7 @@ from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.robots.watchdog import VelocityCommandWatchdog
 from humanoid.simulation.engine import NativeMujocoEngine
+from humanoid.types.camera import camera_topics
 from humanoid.types.robot import RobotConfig
 from humanoid.types.simulation import MujocoSimulationConfig
 
@@ -82,12 +83,8 @@ class SimulationNode(Node):
         if self._viewer_ticks >= self._viewer_interval:
             self.publisher.publish(self.engine.simulation_state(), topic=Topic.SIMULATION_STATE)
             self._viewer_ticks = 0
-        frames = self.engine.read_camera_frames(timestamp=robot_state.timestamp)
-        if frames is not None:
-            if frames.registered is not None:
-                self.publisher.publish(frames.registered, topic=Topic.CAMERA_REGISTERED_DEPTH)
-            self.publisher.publish(frames.rgb, topic=Topic.CAMERA_RGB)
-            self.publisher.publish(frames.depth, topic=Topic.CAMERA_DEPTH)
+        for name, frames in self.engine.read_camera_frames(timestamp=robot_state.timestamp).items():
+            self.publisher.publish_camera(frames, camera_topics(name))
 
     def _stop_velocity_actuators(self) -> None:
         self.engine.stop_velocity_actuators()

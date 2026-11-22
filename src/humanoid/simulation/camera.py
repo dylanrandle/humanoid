@@ -14,7 +14,6 @@ from humanoid.types.camera import (
     RegisteredDepth,
     SimulatedCameraConfig,
 )
-from humanoid.types.depth import DepthCamera
 
 
 class MujocoCamera:
@@ -59,7 +58,7 @@ class MujocoCamera:
             rgb=color,
             depth=native,
             registered=RegisteredDepth(
-                camera_model=DepthCamera.D435,
+                camera_model=self.config.model,
                 rgb_frame_number=color.frame_number,
                 image=replace(
                     native,
@@ -94,7 +93,7 @@ class MujocoCamera:
             timestamp_domain="simulation_clock",
             frame_number=self._frame_number,
             frame_id=frame,
-            serial_number="simulation",
+            serial_number=f"simulation-{self.config.rgb_frame}",
             encoding=encoding,
             data=pixels,
             intrinsics=CameraIntrinsics(

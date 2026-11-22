@@ -910,12 +910,22 @@ def test_camera_monitor_is_lazy_reset_on_configuration_change_and_closed(monkeyp
     assert service._camera_monitor is None
     assert service.camera_previews(3) is camera.snapshot.return_value
     service.camera_previews(5)
-    factory.assert_called_once_with()
+    factory.assert_called_once_with(camera_name="base")
     camera.snapshot.assert_any_call(5)
     service.set_robot(
         RobotName.PANDA,
         SafetyContext(expected_runtime=Runtime.SIM, expected_robot=RobotName.TRISKEL),
     )
-    camera.reset.assert_called_once()
+    assert service._camera_monitor is None
     service.close()
     camera.close.assert_called_once()
+
+
+@pytest.mark.parametrize("robot", [RobotName.PANDA, RobotName.SO101])
+def test_robot_without_cameras_has_disconnected_previews(robot):
+    service, manager, _, _ = _make_service()
+    manager.robot = robot
+    preview = service.camera_previews(3)
+    assert not preview.rgb.connected and not preview.depth.connected
+    assert service._camera_monitor is None
+    service.close()

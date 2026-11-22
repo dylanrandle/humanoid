@@ -53,32 +53,7 @@ def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
             url = urlsplit(self.path)
             path = url.path
             if not post:
-                if path == AgentRoute.STATE:
-                    observation = service.observation()
-                    self._reply(
-                        HTTPStatus.OK,
-                        {
-                            "session_id": service.session_id,
-                            "state": encode_state(observation.robot_state),
-                            "mode": observation.mode,
-                        },
-                    )
-                elif path == AgentRoute.CAMERA:
-                    query = parse_qs(
-                        url.query, keep_blank_values=True, strict_parsing=True, max_num_fields=1
-                    )
-                    if query.keys() - {HttpKey.DEPTH_VIEW}:
-                        raise ValueError(f"Expected a {HttpKey.DEPTH_VIEW} camera selector.")
-                    view = DepthView(query.get(HttpKey.DEPTH_VIEW, [DepthView.ALIGNED])[0])
-                    frames = service.camera_frames(depth_view=view)
-                    self._reply(HTTPStatus.OK, encode_frames(frames, depth_view=view))
-                elif (command_id := AgentRoute.COMMAND.match_command_id(path)) is not None:
-                    self._reply(
-                        HTTPStatus.OK,
-                        asdict(service.status(command_id)),
-                    )
-                else:
-                    self._reply(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint."})
+                self._get(path, url.query)
                 return
             payload = self._body()
             if path == AgentRoute.COMMANDS:
@@ -113,6 +88,50 @@ def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
                 not payload and (command_id := AgentRoute.CANCEL.match_command_id(path)) is not None
             ):
                 self._reply(HTTPStatus.OK, asdict(service.cancel(command_id)))
+            else:
+                self._reply(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint."})
+
+        def _get(self, path: str, query_string: str) -> None:
+            if path == AgentRoute.STATE:
+                observation = service.observation()
+                self._reply(
+                    HTTPStatus.OK,
+                    {
+                        "session_id": service.session_id,
+                        "state": encode_state(observation.robot_state),
+                        "mode": observation.mode,
+                    },
+                )
+            elif path == AgentRoute.CAPTURE:
+                captures = service.capture()
+                self._reply(
+                    HTTPStatus.OK,
+                    {
+                        "session_id": service.session_id,
+                        "views": {
+                            name: {
+                                "state": encode_state(obs.robot_state),
+                                "mode": obs.mode,
+                                "camera": encode_frames(frames),
+                            }
+                            for name, (obs, frames) in captures.items()
+                        },
+                    },
+                )
+            elif path == AgentRoute.CAMERA:
+                query = parse_qs(
+                    query_string, keep_blank_values=True, strict_parsing=True, max_num_fields=1
+                )
+                if query.keys() - {HttpKey.DEPTH_VIEW}:
+                    raise ValueError(f"Expected a {HttpKey.DEPTH_VIEW} camera selector.")
+                view = DepthView(query.get(HttpKey.DEPTH_VIEW, [DepthView.ALIGNED])[0])
+                frames = service.camera_frames(depth_view=view)
+                self._reply(HTTPStatus.OK, encode_frames(frames, depth_view=view))
+            elif (command_id := AgentRoute.COMMAND.match_command_id(path)) is not None:
+                self._reply(
+                    HTTPStatus.OK,
+                    asdict(service.status(command_id)),
+                )
             else:
                 self._reply(HTTPStatus.NOT_FOUND, {"error": "Unknown endpoint."})
 

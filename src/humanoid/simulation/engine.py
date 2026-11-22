@@ -52,11 +52,12 @@ class NativeMujocoEngine:
             self.model,
             self.robot,
         )
-        self.camera = (
-            MujocoCamera(self.model, config.camera)
-            if config.camera is not None and self.model.ncam > 0
-            else None
-        )
+
+        self.cameras = {
+            name: MujocoCamera(self.model, mount.simulation)
+            for name, mount in robot_config.cameras.items()
+            if config.enable_cameras and mount.simulation is not None
+        }
         self.reset()
 
     @property
@@ -85,8 +86,8 @@ class NativeMujocoEngine:
             self.data.ctrl[list(root.actuator_ids)] = 0.0
 
         mujoco.mj_forward(self.model, self.data)
-        if self.camera is not None:
-            self.camera.reset()
+        for camera in self.cameras.values():
+            camera.reset()
 
     def simulation_state(self) -> SimulationState:
         signature = mujoco.mjtState.mjSTATE_INTEGRATION
@@ -94,12 +95,16 @@ class NativeMujocoEngine:
         mujoco.mj_getState(self.model, self.data, state, signature)
         return SimulationState(self.robot.config.name, self.config.scene, state)
 
-    def read_camera_frames(self, timestamp: float) -> CameraFrames | None:
-        return self.camera.read(self.data, timestamp) if self.camera is not None else None
+    def read_camera_frames(self, timestamp: float) -> dict[str, CameraFrames]:
+        return {
+            name: frames
+            for name, camera in self.cameras.items()
+            if (frames := camera.read(self.data, timestamp)) is not None
+        }
 
     def close(self) -> None:
-        if self.camera is not None:
-            self.camera.close()
+        for camera in self.cameras.values():
+            camera.close()
 
     def apply_joint_command(self, command: RobotJointCommand) -> NormalizedRobotJointCommand:
         """Apply one full-stack command to named MuJoCo actuator targets."""

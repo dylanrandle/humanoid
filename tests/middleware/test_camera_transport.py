@@ -6,10 +6,9 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
-from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics
+from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics, camera_topics
 from humanoid.types.lcm import camera_image_t
 from humanoid.types.lcm.converter import LCMConverter
 
@@ -44,9 +43,11 @@ def make_image(encoding):
 
 
 @pytest.mark.parametrize("encoding", list(CameraEncoding))
-def test_wire_roundtrip_and_subscriber(encoding, monkeypatch):
+@pytest.mark.parametrize("name", ["base", "wrist", "Inspection_2"])
+def test_wire_roundtrip_and_subscriber(encoding, name, monkeypatch):
+    topics = camera_topics(name)
     original = make_image(encoding)
-    topic = Topic.CAMERA_RGB if encoding is CameraEncoding.RGB8 else Topic.CAMERA_DEPTH
+    topic = topics.rgb if encoding is CameraEncoding.RGB8 else topics.depth
     transport = MagicMock()
     monkeypatch.setattr("humanoid.middleware.publisher.lcm.LCM", lambda url: transport)
     # Avoid a transport thread; exercise actual receive queues and decoding below.
@@ -59,6 +60,10 @@ def test_wire_roundtrip_and_subscriber(encoding, monkeypatch):
     try:
         publisher.publish(original, topic)
         channel, payload = transport.publish.call_args.args
+        assert (
+            channel
+            == f"CAMERA/{name.upper()}/{'RGB' if encoding is CameraEncoding.RGB8 else 'DEPTH'}"
+        )
         assert camera_image_t.decode(payload).compression == "lz4"
         subscriber._handle_message(channel, payload)
         recovered = subscriber.receive(topic)
@@ -76,7 +81,7 @@ def test_wire_roundtrip_and_subscriber(encoding, monkeypatch):
             "depth_scale",
         ):
             assert getattr(recovered, field) == getattr(original, field)
-        wrong_topic = Topic.CAMERA_DEPTH if topic is Topic.CAMERA_RGB else Topic.CAMERA_RGB
+        wrong_topic = topics.depth if topic is topics.rgb else topics.rgb
         with pytest.raises(ValueError, match="requires"):
             publisher.publish(original, wrong_topic)
     finally:

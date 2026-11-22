@@ -10,15 +10,25 @@ from openai_codex import Codex, Thread
 
 from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness.model import connect, decide, open_codex, start_thread
-from humanoid.agent.harness.robot import TriskelTools, image_url
+from humanoid.agent.harness.robot import RobotTools, image_url
 from humanoid.config.agent import (
     MAX_AGENT_COMMANDS,
     MAX_AGENT_PERCEPTION_CALLS,
     get_agent_endpoint,
     get_agent_policy_config,
 )
-from humanoid.types.agent import AgentPanelStatus, AgentPhase, AgentTask, ControlOperation
-from humanoid.types.agent_decision import DecisionContext, MotionArguments, ObserveAgain, ToolError
+from humanoid.config.robot import ROBOT_CONFIGS
+from humanoid.robots.base import Robot
+from humanoid.types.agent import (
+    AgentPanelStatus,
+    AgentPhase,
+    AgentTask,
+    ControlOperation,
+    DecisionContext,
+    MotionArguments,
+    ObserveAgain,
+    ToolError,
+)
 from humanoid.types.orchestrator import Mode
 from humanoid.types.tools import CompleteDepth
 
@@ -28,20 +38,20 @@ def run_task(
 ) -> str:
     if client.session_id != task.session_id:
         raise RuntimeError("Agent API restarted. Submit a new task.")
-    with closing(TriskelTools(client)) as tools:
+    with closing(RobotTools(client, Robot(ROBOT_CONFIGS[task.robot]))) as tools:
         thread = start_thread(codex, task.model)
         return _run_steps(thread, tools, client, task, update)
 
 
 def _run_steps(
     thread: Thread,
-    tools: TriskelTools,
+    tools: RobotTools,
     client: AgentControlClient,
     task: AgentTask,
     update: Callable[[str], None],
 ) -> str:
     count = perception = 0
-    status, image, measured_depth_image = tools.observe(task.mode)
+    status, images = tools.observe(task.mode)
     feedback = None
     while True:
         allow_motion = task.mode is Mode.AUTONOMY and count < MAX_AGENT_COMMANDS
@@ -56,9 +66,8 @@ def _run_steps(
         decision = decide(
             thread,
             context,
-            image,
+            images,
             allow_motion=allow_motion,
-            measured_depth_image=measured_depth_image,
         )
         command = decision.command
         if command is None:
@@ -73,15 +82,17 @@ def _run_steps(
                 raise RuntimeError("Robot mode changed during the task.")
             update(f"{decision.message}\nRunning {name}.")
             if isinstance(args, ObserveAgain):
-                status, image, measured_depth_image = tools.observe(task.mode)
+                status, images = tools.observe(task.mode)
                 feedback = None
             else:
                 try:
                     if isinstance(args, CompleteDepth):
-                        feedback, preview = tools.depth.complete_depth(args)
+                        feedback = tools.depth.complete_depth(args)
                     else:
                         feedback, preview = tools.segmentation.segment(args)
-                    image = image_url(preview)
+                        images["Perception result for " + feedback.observation_id] = image_url(
+                            preview
+                        )
                 except (ValueError, OSError, RuntimeError, ImportError) as error:
                     feedback = ToolError(operation=name, error=str(error))
             continue
@@ -92,7 +103,7 @@ def _run_steps(
         feedback = client.execute(operation, args.model_dump(mode="json"))
         update(f"{operation} finished (reached={feedback['reached']}). Observing again.")
         count += 1
-        status, image, measured_depth_image = tools.observe(task.mode)
+        status, images = tools.observe(task.mode)
 
 
 def _stop(signum, frame) -> None:

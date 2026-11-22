@@ -1,5 +1,7 @@
 """Managed nodes for the agent policy and HTTP control server."""
 
+from collections.abc import Collection
+
 from humanoid.agent.server import AgentControlServer
 from humanoid.agent.service import AgentControlService
 from humanoid.config import ROBOT_CONFIG
@@ -15,12 +17,19 @@ from humanoid.types.robot import RobotConfig
 
 
 class AgentPolicyNode(Node):
-    def __init__(self, policy: Policy, *, rate_hz: float) -> None:
+    def __init__(
+        self,
+        policy: Policy,
+        *,
+        rate_hz: float,
+        camera_names: Collection[str] = ROBOT_CONFIG.cameras.keys(),
+    ) -> None:
         self.policy = policy
         self.rate_hz = rate_hz
         self._ready = False
         self.env = RealtimeEnvironment(
             ActionTopics(tool=Topic.AUTONOMY_TOOL_COMMAND, base=Topic.AUTONOMY_BASE_COMMAND),
+            camera_names=camera_names,
         )
 
     def setup(self) -> None:
@@ -52,7 +61,11 @@ class AgentControlServerNode(AgentPolicyNode):
     ) -> None:
         config = config or get_agent_policy_config()
         policy = AgentPolicy(Robot(robot_config), config=config)
-        super().__init__(policy, rate_hz=1.0 / config.dt)
+        super().__init__(
+            policy,
+            rate_hz=1.0 / config.dt,
+            camera_names=robot_config.cameras.keys(),
+        )
         self.service = AgentControlService(
             policy, server_config or get_agent_control_server_config()
         )

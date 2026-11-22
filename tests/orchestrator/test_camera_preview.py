@@ -8,10 +8,9 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.orchestrator.monitor.camera import CameraPreviewMonitor
-from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics
+from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics, camera_topics
 
 
 def _frame(encoding):
@@ -57,7 +56,7 @@ def test_preview_encodes_both_streams_and_expires_by_local_receipt():
         None,
         None,
     ]
-    monitor = CameraPreviewMonitor(subscriber=subscriber, clock=lambda: now)
+    monitor = CameraPreviewMonitor(camera_name="base", subscriber=subscriber, clock=lambda: now)
     snapshot = monitor.snapshot(3.0)
     assert snapshot.rgb.connected and snapshot.depth.connected
     assert snapshot.rgb.age_seconds == 0
@@ -83,7 +82,7 @@ def test_depth_colors_use_scale_and_range_without_modifying_samples():
     subscriber = MagicMock(spec=Subscriber)
     frame = _frame(CameraEncoding.DEPTH16)
     subscriber.receive_with_timestamp.side_effect = [None, (frame, 1), None, None]
-    monitor = CameraPreviewMonitor(subscriber=subscriber, clock=lambda: 1)
+    monitor = CameraPreviewMonitor(camera_name="base", subscriber=subscriber, clock=lambda: 1)
     first = monitor.snapshot(3)
     colors = monitor._colorize_depth(frame)
     np.testing.assert_array_equal(colors[0, 0], [0, 0, 0])
@@ -105,16 +104,16 @@ def test_reset_and_wrong_encoding_never_show_previous_frames():
         None,
         None,
     ]
-    monitor = CameraPreviewMonitor(subscriber=subscriber, clock=lambda: 1)
+    monitor = CameraPreviewMonitor(camera_name="base", subscriber=subscriber, clock=lambda: 1)
     assert not monitor.snapshot(3).rgb.connected
     monitor.reset()
     snapshot = monitor.snapshot(3)
     assert not snapshot.rgb.connected and not snapshot.depth.connected
-    subscriber.receive_with_timestamp.assert_any_call(Topic.CAMERA_DEPTH)
+    subscriber.receive_with_timestamp.assert_any_call(camera_topics("base").depth)
 
 
 @pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf"), 2])
 def test_rejects_invalid_depth_range(value):
-    monitor = CameraPreviewMonitor(subscriber=MagicMock(spec=Subscriber))
+    monitor = CameraPreviewMonitor(camera_name="base", subscriber=MagicMock(spec=Subscriber))
     with pytest.raises(ValueError, match="range"):
         monitor.snapshot(value)

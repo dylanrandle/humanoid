@@ -1,27 +1,29 @@
 """Shared types for the agent policy, control API, and operator console."""
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, TypedDict
+from typing import Literal, Protocol, TypedDict
 
 import numpy as np
+import pinocchio as pin
 from numpy.typing import NDArray
 
+from humanoid.types.camera import ObservationId
+from humanoid.types.observation import CameraCaptures, Observation
 from humanoid.types.orchestrator import Mode
-
-if TYPE_CHECKING:
-    import pinocchio as pin
-
-
-@dataclass(frozen=True)
-class PendingCommand:
-    command: MotionCommand
-    result: Future[MotionResult]
-    deadline: float | None = None
+from humanoid.types.robot import RobotName
+from humanoid.types.segmentation import SegmentationResult, SegmentOperation
+from humanoid.types.tools import (
+    CompleteDepth,
+    DepthCompletionResult,
+    RefineMask,
+    SegmentAtPoint,
+    SegmentEverything,
+    SegmentInBox,
+    ToolModel,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -48,6 +50,13 @@ class MotionResult(TypedDict):
     gripper_error_rad: float
     elapsed_seconds: float
     step_id: int
+
+
+@dataclass(frozen=True)
+class PendingCommand:
+    command: MotionCommand
+    result: Future[MotionResult]
+    deadline: float | None = None
 
 
 @dataclass
@@ -118,6 +127,7 @@ class AgentRoute(StrEnum):
     ROOT = "/v1"
     STATE = f"{ROOT}/state"
     CAMERA = f"{ROOT}/camera"
+    CAPTURE = f"{ROOT}/capture"
     COMMANDS = f"{ROOT}/commands"
     COMMAND = f"{COMMANDS}/{{command_id}}"
     CANCEL = f"{COMMAND}/cancel"
@@ -174,6 +184,7 @@ class AgentControlServerConfig:
     max_request_bytes: int = 65536
     max_start_delay_seconds: float = 2.0
     camera_timeout_seconds: float = 0.5
+    capture_state_tolerance: float = 0.04
 
 
 @dataclass(frozen=True)
@@ -199,6 +210,7 @@ class AgentTask:
     model: str
     mode: Mode
     session_id: str
+    robot: RobotName
 
 
 @dataclass(frozen=True)
@@ -210,3 +222,119 @@ class AgentPanelStatus:
     model: str = ""
     login_url: str = ""
     login_code: str = ""
+
+
+class HarnessRobot(Protocol):
+    def observation(self) -> Observation: ...
+    def capture(self) -> CameraCaptures: ...
+    def execute(
+        self, operation: ControlOperation, arguments: Mapping[str, object]
+    ) -> MotionResult: ...
+
+
+class ObserveAgain(ToolModel):
+    pass
+
+
+class MotionArguments(ToolModel):
+    duration: float
+
+
+class Hold(MotionArguments):
+    pass
+
+
+class MoveBase(MotionArguments):
+    delta: tuple[float, float, float]
+
+
+class MoveTool(MotionArguments):
+    position: tuple[float, float, float]
+    quaternion: tuple[float, float, float, float]
+
+
+class SetGripper(MotionArguments):
+    positions: tuple[float, ...]
+
+
+class ToolCall[Name: str, Args: ToolModel](ToolModel):
+    operation: Name
+    arguments: Args
+
+
+type PerceptionCall = (
+    ToolCall[Literal[SegmentOperation.EVERYTHING], SegmentEverything]
+    | ToolCall[Literal[SegmentOperation.POINT], SegmentAtPoint]
+    | ToolCall[Literal[SegmentOperation.BOX], SegmentInBox]
+    | ToolCall[Literal[SegmentOperation.REFINE], RefineMask]
+    | ToolCall[Literal["complete_depth"], CompleteDepth]
+    | ToolCall[Literal["observe_again"], ObserveAgain]
+)
+type MotionCall = (
+    ToolCall[Literal[ControlOperation.MOVE_BASE], MoveBase]
+    | ToolCall[Literal[ControlOperation.MOVE_TOOL], MoveTool]
+    | ToolCall[Literal[ControlOperation.SET_GRIPPER], SetGripper]
+    | ToolCall[Literal[ControlOperation.HOLD], Hold]
+)
+
+
+class Decision[Command](ToolModel):
+    message: str
+    command: Command | None
+
+
+type AgentDecision = (
+    Decision[MotionCall | PerceptionCall]
+    | Decision[MotionCall]
+    | Decision[PerceptionCall]
+    | Decision[None]
+)
+
+
+class PoseRecord(TypedDict):
+    position_m: list[float]
+    quaternion_xyzw: list[float]
+
+
+class CameraStatus(TypedDict):
+    optical_frame: str
+    model: str | None
+    observation_id: ObservationId
+    frame_number: int
+    device_timestamp: float
+    timestamp_domain: str
+    camera_pose: PoseRecord
+    intrinsics: dict[str, object]
+    registered_depth_available: bool
+
+
+class ObservationStatus(TypedDict):
+    cameras: dict[str, CameraStatus]
+    mode: Mode
+    base_pose_world: PoseRecord | None
+    tool_frame: str
+    tool_pose_reference_frame: str
+    tool_pose: PoseRecord
+    gripper_units: list[str]
+    gripper_positions: list[float]
+    gripper_limits: list[tuple[float, float]]
+    rgb_frame: int
+    observation_id: ObservationId
+    rgb_size_xy: list[int]
+    registered_depth_available: bool
+
+
+@dataclass(frozen=True, kw_only=True)
+class ToolError:
+    operation: str
+    error: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class DecisionContext:
+    instruction: str
+    observation: ObservationStatus
+    last_result: MotionResult | DepthCompletionResult | SegmentationResult | ToolError | None
+    commands_remaining: int
+    perception_remaining: int
+    limits: AgentPolicyConfig
