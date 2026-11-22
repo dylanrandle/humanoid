@@ -19,6 +19,7 @@ pytest.importorskip(
 from pynput import keyboard as pynput_keyboard
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.teleop import get_keyboard_teleop_policy_config
 from humanoid.policy.teleop.keyboard import (
     KeyboardTeleopPolicy,
     KeyboardTeleopPolicyConfig,
@@ -51,7 +52,7 @@ def panda_policy(monkeypatch) -> KeyboardTeleopPolicy:
     """Keyboard policy on the fixed-base Panda with the listener disabled."""
     policy = KeyboardTeleopPolicy(
         robot_config=ROBOT_CONFIGS["panda"],
-        config=KeyboardTeleopPolicyConfig(verbose=False),
+        config=replace(get_keyboard_teleop_policy_config(), verbose=False),
     )
     monkeypatch.setattr(policy, "start_listener", lambda: None)
     monkeypatch.setattr(policy, "stop_listener", lambda: None)
@@ -63,7 +64,7 @@ def mobile_policy(monkeypatch) -> KeyboardTeleopPolicy:
     """Keyboard policy on the mobile robot (has a base frame)."""
     policy = KeyboardTeleopPolicy(
         robot_config=ROBOT_CONFIGS["triskel"],
-        config=KeyboardTeleopPolicyConfig(verbose=False),
+        config=replace(get_keyboard_teleop_policy_config(), verbose=False),
     )
     monkeypatch.setattr(policy, "start_listener", lambda: None)
     monkeypatch.setattr(policy, "stop_listener", lambda: None)
@@ -75,35 +76,39 @@ class TestConstruction:
         policy = KeyboardTeleopPolicy(robot_config=ROBOT_CONFIGS["panda"], config=None)
         assert isinstance(policy.config, KeyboardTeleopPolicyConfig)
 
-    def test_steps_use_robot_velocity_limits(self):
+    @pytest.mark.parametrize("tool_scale,base_scale", [(0.1, 1.0), (0.05, 1.0), (0.1, 0.5)])
+    def test_steps_use_robot_velocity_limits(self, tool_scale, base_scale):
         robot_config = ROBOT_CONFIGS["triskel"]
-
-        policy = KeyboardTeleopPolicy(robot_config=robot_config, config=None)
+        config = replace(
+            get_keyboard_teleop_policy_config(),
+            tool_step_scale=tool_scale,
+            base_step_scale=base_scale,
+        )
+        policy = KeyboardTeleopPolicy(robot_config=robot_config, config=config)
+        step_seconds = config.dt * tool_scale
 
         assert robot_config.base is not None
         assert policy.tool_translation_step == pytest.approx(
-            robot_config.tool.velocity_limits.linear * policy.config.dt
+            robot_config.tool.velocity_limits.linear * step_seconds
         )
         assert policy.tool_rotation_step == pytest.approx(
-            robot_config.tool.velocity_limits.angular * policy.config.dt
+            robot_config.tool.velocity_limits.angular * step_seconds
         )
         assert policy.base_translation_step == pytest.approx(
-            robot_config.base.velocity_limits.linear * policy.config.dt
+            robot_config.base.velocity_limits.linear * config.dt * base_scale
         )
         assert policy.base_rotation_step == pytest.approx(
-            robot_config.base.velocity_limits.angular * policy.config.dt
+            robot_config.base.velocity_limits.angular * config.dt * base_scale
         )
-
-    def test_gripper_step_derived_from_range(self, panda_policy):
-        # gripper_step = gripper_range * dt / gripper_close_time
-        gripper_range = panda_policy.gripper_max - panda_policy.gripper_min
-        expected = gripper_range * panda_policy.config.dt / panda_policy.config.gripper_close_time
-        assert panda_policy.gripper_step == pytest.approx(expected)
+        assert policy.gripper_step == pytest.approx(
+            (policy.gripper_max - policy.gripper_min) * step_seconds / config.gripper_close_time
+        )
 
     def test_no_gripper_config_zeroes_step_and_limits(self):
         cfg = replace(ROBOT_CONFIGS["panda"], gripper=None)
         policy = KeyboardTeleopPolicy(
-            robot_config=cfg, config=KeyboardTeleopPolicyConfig(verbose=False)
+            robot_config=cfg,
+            config=replace(get_keyboard_teleop_policy_config(), verbose=False),
         )
         assert policy.gripper_step == 0.0
         assert policy.gripper_min == 0.0

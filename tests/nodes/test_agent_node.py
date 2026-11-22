@@ -2,13 +2,16 @@ from unittest.mock import Mock, call
 
 import pytest
 
+from humanoid.config.agent import get_agent_policy_config
 from humanoid.nodes.policy.agent import AgentPolicyNode
 
 
 @pytest.fixture
 def node(monkeypatch):
     monkeypatch.setattr("humanoid.nodes.policy.agent.RealtimeEnvironment", Mock())
-    return AgentPolicyNode(Mock(), rate_hz=50)
+    return AgentPolicyNode(
+        Mock(), rate_hz=50, subscriptions=get_agent_policy_config().subscriptions
+    )
 
 
 def test_setup_initializes_environment(node):

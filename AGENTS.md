@@ -29,3 +29,8 @@ uv run ruff check --fix
 - Keep concrete configuration instances, including project defaults, in
   `src/humanoid/config/`; modules in `src/humanoid/types/` should define configuration
   shapes without instantiating them.
+
+# Documentation Rules
+
+- Describe configurable behavior using the parameter name and what it controls.
+  Quote its current value only when the instruction or example depends on it.

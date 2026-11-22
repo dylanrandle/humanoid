@@ -11,7 +11,7 @@ import numpy as np
 
 from humanoid.types.depth import DepthCamera
 
-MAX_VERTICAL_FOV_DEGREES = 180
+MAX_FOV_DEGREES = 180
 
 
 class DepthView(StrEnum):
@@ -67,15 +67,15 @@ class RealSenseCameraConfig(HardwareCameraConfig):
 @dataclass(frozen=True, kw_only=True)
 class SimulatedCameraConfig(CameraConfig):
     model: DepthCamera
-    rgb_vertical_fov: float
-    depth_vertical_fov: float
+    rgb_fov_degrees: tuple[float, float]  # horizontal, vertical at the configured resolution
+    depth_fov_degrees: tuple[float, float]
     depth_scale: float
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        for fov in (self.rgb_vertical_fov, self.depth_vertical_fov):
-            if not math.isfinite(fov) or not 0 < fov < MAX_VERTICAL_FOV_DEGREES:
-                raise ValueError("Camera vertical field of view must be between 0 and 180 degrees.")
+        for fov in (*self.rgb_fov_degrees, *self.depth_fov_degrees):
+            if not math.isfinite(fov) or not 0 < fov < MAX_FOV_DEGREES:
+                raise ValueError("Camera field of view must be between 0 and 180 degrees.")
         if not math.isfinite(self.depth_scale) or self.depth_scale <= 0:
             raise ValueError("Camera depth scale must be positive and finite.")
 

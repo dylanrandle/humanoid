@@ -3,6 +3,8 @@ from ipaddress import AddressValueError, IPv4Address
 
 import numpy as np
 
+from humanoid.types.observation import ObservationSubscriptions
+
 MIN_NETWORK_PORT = 1
 MAX_NETWORK_PORT = 65_535
 
@@ -12,16 +14,17 @@ class KeyboardTeleopPolicyConfig:
     """Tunable parameters for KeyboardTeleopPolicy.
 
     Per-keypress step sizes are derived from the selected robot's Cartesian
-    velocity limits multiplied by ``dt``. ``dt`` also sets the teleop node's
-    update rate.
+    velocity limits multiplied by ``dt`` and the configured step scale.
 
     Args:
         dt: Control loop period in seconds. Used to convert the selected
             robot's velocity limits into per-keypress steps and to set the
             rate of the teleop node.
-        gripper_close_time: Seconds of held input required to traverse the
-            full gripper joint range. The per-keypress step is
-            ``(gripper_max - gripper_min) * dt / gripper_close_time``.
+        tool_step_scale: Fraction of the full tool and gripper step per keypress.
+        base_step_scale: Fraction of the full base translation or yaw step per keypress.
+        gripper_close_time: Nominal full-range gripper travel time at scale 1.
+            Each keypress moves a fraction ``dt * tool_step_scale / gripper_close_time``
+            of the full gripper range.
         tool_linear_acceleration_limit: Optional tool translation acceleration
             limit in m/s^2. ``None`` disables acceleration shaping.
         tool_angular_acceleration_limit: Optional tool rotation acceleration
@@ -29,6 +32,9 @@ class KeyboardTeleopPolicyConfig:
         verbose: Whether to log pose updates.
     """
 
+    subscriptions: ObservationSubscriptions = field(kw_only=True)
+    tool_step_scale: float = field(kw_only=True)
+    base_step_scale: float = field(kw_only=True)
     dt: float = 0.01
     gripper_close_time: float = 1.0
     tool_linear_acceleration_limit: float | None = None
@@ -36,6 +42,10 @@ class KeyboardTeleopPolicyConfig:
     verbose: bool = True
 
     def __post_init__(self) -> None:
+        if not 0.0 < self.tool_step_scale <= 1.0:
+            raise ValueError("Keyboard tool step scale must be greater than zero and at most one.")
+        if not 0.0 < self.base_step_scale <= 1.0:
+            raise ValueError("Keyboard base step scale must be greater than zero and at most one.")
         _validate_motion_config(
             self.dt,
             self.tool_linear_acceleration_limit,
@@ -93,6 +103,7 @@ class OculusTeleopPolicyConfig:
         verbose: Whether to log pose updates.
     """
 
+    subscriptions: ObservationSubscriptions = field(kw_only=True)
     dt: float = 0.01
     oculus_to_tool_command_rotation: np.ndarray = field(
         default_factory=lambda: np.array(

@@ -42,7 +42,7 @@ class AgentPolicy(Policy):
         self._pending_command: PendingCommand | None = None
         self._active_result: Future[MotionResult] | None = None
         self.robot = robot
-        self.config = config or get_agent_policy_config()
+        self.config = config or get_agent_policy_config(robot.config)
         bounds = np.asarray(robot.get_gripper_limits()).reshape(-1, 2)
         self.gripper_speed = (bounds[:, 1] - bounds[:, 0]) / self.config.gripper_close_time
         self.step_id = 0

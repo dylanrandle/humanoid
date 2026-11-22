@@ -82,11 +82,18 @@ def build_mujoco_spec(
             # transforms of cameras added after the URDF import.
             spec.compiler.fusestatic = False
             for frame, body, fov in zip(
-                frames, bodies, (camera.rgb_vertical_fov, camera.depth_vertical_fov), strict=True
+                frames, bodies, (camera.rgb_fov_degrees, camera.depth_fov_degrees), strict=True
             ):
                 assert body is not None
                 # Optical +Z forward/+Y down -> OpenGL -Z forward/+Y up.
-                body.add_camera(name=frame, quat=[0, 1, 0, 0], fovy=fov)
+                # At unit focal length the sensor spans twice each half-angle's tangent.
+                body.add_camera(
+                    name=frame,
+                    quat=[0, 1, 0, 0],
+                    resolution=[camera.width, camera.height],
+                    sensor_size=2 * np.tan(np.deg2rad(fov) / 2),
+                    focal_length=[1, 1],
+                )
             spec.visual.global_.offwidth = max(spec.visual.global_.offwidth, camera.width)
             spec.visual.global_.offheight = max(spec.visual.global_.offheight, camera.height)
 

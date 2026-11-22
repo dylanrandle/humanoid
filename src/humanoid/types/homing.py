@@ -1,7 +1,18 @@
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from humanoid.types.observation import ObservationSubscriptions
+
+
+@dataclass(frozen=True, kw_only=True)
+class HomingPolicyConfig:
+    subscriptions: "ObservationSubscriptions"
+    speed: float
+    rate_hz: float
 
 
 class HomingPreset(StrEnum):

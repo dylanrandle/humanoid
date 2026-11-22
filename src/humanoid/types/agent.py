@@ -13,7 +13,7 @@ import pinocchio as pin
 from numpy.typing import NDArray
 
 from humanoid.types.camera import ObservationId
-from humanoid.types.observation import CameraCaptures, Observation
+from humanoid.types.observation import CameraCaptures, Observation, ObservationSubscriptions
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotName
 from humanoid.types.segmentation import SegmentationResult, SegmentOperation
@@ -98,7 +98,7 @@ class AgentMotion:
 
 
 @dataclass(frozen=True, kw_only=True)
-class AgentPolicyConfig:
+class AgentMotionLimits:
     """Policy timing, bounded command horizons, and feedback requirements.
 
     Tool/base speeds come from RobotConfig, and joint bounds come from the URDF.
@@ -140,6 +140,11 @@ class AgentPolicyConfig:
                 raise ValueError("Tool workspace must use finite 3D coordinates.")
         if np.any(np.asarray(self.tool_workspace_min) >= self.tool_workspace_max):
             raise ValueError("Tool workspace minimum must be below maximum.")
+
+
+@dataclass(frozen=True, kw_only=True)
+class AgentPolicyConfig(AgentMotionLimits):
+    subscriptions: ObservationSubscriptions
 
 
 class CommandExpiredError(RuntimeError):
@@ -358,4 +363,4 @@ class DecisionContext:
     observation: ObservationStatus
     last_result: MotionResult | DepthCompletionResult | SegmentationResult | ToolError | None
     seconds_remaining: float
-    limits: AgentPolicyConfig
+    limits: AgentMotionLimits

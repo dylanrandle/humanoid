@@ -74,8 +74,34 @@ LCM network.
 
 In simulation mode, select a scene before starting
 the stack. Run `uv run sim-viewer` in a second terminal to inspect the robot
-and all movable objects in the running world. To view a simulation running on the
-Jetson, run `uv run sim-viewer --host triskel` on your Mac.
+and all movable objects in the running world.
+
+### LCM networking
+
+Hardware and simulation use host-local multicast (`ttl=0`) by default for
+commands, robot and simulation state, and raw camera images. The operator console
+serves camera previews over HTTP. To view a Jetson simulation from a Mac, run
+`uv run sim-viewer --host triskel` on the Mac. The viewer subscribes to
+`SIMULATION/STATE` on the Jetson and forwards it over SSH.
+
+For direct LCM communication between hosts on the same subnet, set the same
+multicast group and port on each participating process before launch. Use
+`ttl=1` on each publisher that needs to reach another host. For manual launches,
+run the following on the participating hosts before starting the nodes.
+
+```bash
+export LCM_DEFAULT_URL='udpm://239.255.76.67:7667?ttl=1'
+```
+
+The override applies to every LCM topic the process publishes. Prefer wired
+Ethernet when sending raw RGB-D images between hosts.
+
+The deployed `humanoid.service` sets `LCM_DEFAULT_URL` to
+`udpm://239.255.76.67:7667?ttl=0&recv_buf_size=8388608` for an 8 MiB receive
+buffer. Deployment applies the matching kernel settings from
+`/etc/sysctl.d/90-humanoid-lcm.conf`. Manual launches on the robot can use the
+same URL. Restart the affected processes after changing the buffer settings so
+they open new sockets.
 
 ### Agent control API
 
@@ -151,9 +177,6 @@ This installs locked dependencies, enables `humanoid.service`, and restarts the 
 The robot needs no source checkout. The stack remains stopped until started from the UI.
 Deployment may prompt for `sudo`; use `--dry-run` to build without deploying. Override the
 defaults with `HUMANOID_ROBOT_HOST` and `HUMANOID_ROBOT_DIR`.
-The deployed service keeps LCM traffic local and configures 8 MiB receive buffers
-for camera images. See [camera transport setup](src/humanoid/hardware/cameras/README.md#pi-throughput-and-lcm-buffers)
-for cross-host LCM.
 
 Forward the dashboard and MeshCat ports from another local terminal:
 

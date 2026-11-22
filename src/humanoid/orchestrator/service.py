@@ -10,7 +10,6 @@ from humanoid.agent.harness.service import AgentConsole
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.agent import get_agent_endpoint
 from humanoid.config.application_logging import get_application_log_path
-from humanoid.config.camera import CAMERA_PREVIEW_CONFIG
 from humanoid.logger import get_logger
 from humanoid.nodes.groups import process_display_name
 from humanoid.nodes.manager import NodeManager, NodeManagerError
@@ -39,7 +38,7 @@ from humanoid.orchestrator.monitor.node import NodeRateMonitor
 from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.agent import AgentPanelStatus, AgentPhase, AgentTask
-from humanoid.types.camera import CameraPreview, CameraPreviewSnapshot
+from humanoid.types.camera import CameraPreviewSnapshot
 from humanoid.types.homing import HomingPreset
 from humanoid.types.logging import ApplicationLogSnapshot
 from humanoid.types.orchestrator import (
@@ -107,7 +106,7 @@ class OrchestratorService:
         self._parameterized_request_at: float | None = None
         self._parameterized_mode_seen = False
         self._handled_stack_failure: ProcessStatus | None = None
-        self._camera_monitor: CameraPreviewMonitor | None = None
+        self._camera_monitors: dict[str, CameraPreviewMonitor] = {}
         self.agent = AgentConsole()
 
     def run_agent(
@@ -183,25 +182,21 @@ class OrchestratorService:
     def application_logs(self, after: int | None = None) -> ApplicationLogSnapshot:
         return self.application_log_monitor.snapshot(after)
 
-    def camera_previews(self, depth_far: float) -> CameraPreviewSnapshot:
+    def camera_previews(self, depth_far: float) -> dict[str, CameraPreviewSnapshot]:
         with self._lock:
-            if self._camera_monitor is None:
-                cameras = ROBOT_CONFIGS[self.node_manager.robot].cameras
-                if not cameras:
-                    return CameraPreviewSnapshot(
-                        rgb=CameraPreview(connected=False),
-                        depth=CameraPreview(connected=False),
-                        depth_near_meters=CAMERA_PREVIEW_CONFIG.depth_near_meters,
-                        depth_far_meters=depth_far,
-                    )
-                self._camera_monitor = CameraPreviewMonitor(camera_name=next(iter(cameras)))
-            monitor = self._camera_monitor
-        return monitor.snapshot(depth_far)
+            for name, mount in ROBOT_CONFIGS[self.node_manager.robot].cameras.items():
+                source = (
+                    mount.simulation if self.node_manager.runtime is Runtime.SIM else mount.hardware
+                )
+                if source is not None and name not in self._camera_monitors:
+                    self._camera_monitors[name] = CameraPreviewMonitor(camera_name=name)
+            monitors = self._camera_monitors.copy()
+        return {name: monitor.snapshot(depth_far) for name, monitor in monitors.items()}
 
     def _reset_camera_previews(self) -> None:
-        if self._camera_monitor is not None:
-            self._camera_monitor.close()
-            self._camera_monitor = None
+        for monitor in self._camera_monitors.values():
+            monitor.close()
+        self._camera_monitors.clear()
 
     def set_runtime(self, runtime: Runtime, safety: SafetyContext) -> OrchestratorStatus:
         return self._set_configuration(lambda: self.node_manager.set_runtime(runtime), safety)
@@ -393,8 +388,8 @@ class OrchestratorService:
             self.logging_monitor.close()
             self.node_rate_monitor.close()
             self.actuator_health_monitor.close()
-            if self._camera_monitor is not None:
-                self._camera_monitor.close()
+            with self._lock:
+                self._reset_camera_previews()
             self.replay_manager.close()
             self.application_log_monitor.close()
 

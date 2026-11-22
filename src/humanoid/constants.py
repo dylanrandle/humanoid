@@ -17,7 +17,7 @@ from humanoid.types.robot import (
 )
 from humanoid.types.simulation import SimulationState
 
-DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", "udpm://239.255.76.67:7667?ttl=1")
+DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", "udpm://239.255.76.67:7667?ttl=0")
 RUNTIME_ENVIRONMENT_VARIABLE = "HUMANOID_RUNTIME"
 SCENE_ENVIRONMENT_VARIABLE = "HUMANOID_SCENE"
 ROBOT_ENVIRONMENT_VARIABLE = "HUMANOID_ROBOT"

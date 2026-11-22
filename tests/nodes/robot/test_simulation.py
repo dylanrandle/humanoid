@@ -1,12 +1,15 @@
 """LCM boundary tests for the MuJoCo simulation node."""
 
 import multiprocessing
+from queue import Queue
+from threading import Event
 from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
 
 from humanoid.config.robot.so101 import SO101_CONFIG
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.constants import Topic
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
@@ -46,6 +49,7 @@ def _make_node(monkeypatch, *, clock=None, timeout: float = 0.25):
     publisher = MagicMock(spec=Publisher)
     engine = MagicMock(spec=NativeMujocoEngine)
     engine.physics_timestep = MujocoSimulationConfig().physics_timestep
+    engine.cameras = {}
     engine.read_robot_state.return_value = _state()
     engine.read_camera_frames.return_value = {}
     engine.apply_joint_command.return_value = NormalizedRobotJointCommand(
@@ -93,18 +97,43 @@ def test_default_simulation_runs_at_two_hundred_hz(monkeypatch):
     assert node.substeps == EXPECTED_SIMULATION_SUBSTEPS
 
 
-def test_publishes_camera_pairs_on_shared_topics(monkeypatch):
-    node, engine, subscriber, publisher = _make_node(monkeypatch)
-    subscriber.receive.return_value = None
+def test_slow_camera_uses_latest_snapshot_without_blocking_physics(monkeypatch):
+    engine = NativeMujocoEngine(TRISKEL_CONFIG)
+    started, release = Event(), Event()
+    published = Queue()
+    samples = []
     frames = MagicMock(spec=CameraFrames)
-    frames.rgb = MagicMock()
-    frames.depth = MagicMock()
-    engine.read_camera_frames.return_value = {"arm": frames}
 
-    node.step()
+    def render(data, timestamp):
+        assert data is not engine.data
+        samples.append((data.time, timestamp))
+        started.set()
+        assert release.wait(timeout=5)
+        return frames
 
-    engine.read_camera_frames.assert_called_once_with(timestamp=1.0)
-    publisher.publish_camera.assert_called_once_with(frames, camera_topics("arm"))
+    monkeypatch.setattr(engine.cameras["wrist"], "render", render)
+    monkeypatch.setattr(engine.cameras["base"], "render", MagicMock(return_value=frames))
+    camera_publisher = MagicMock()
+    camera_publisher.publish_camera.side_effect = lambda image, topics: (
+        published.put(image) if topics == camera_topics("wrist") else None
+    )
+    monkeypatch.setattr("humanoid.simulation.render_stream.Publisher", lambda **_: camera_publisher)
+    node = SimulationNode(
+        TRISKEL_CONFIG, engine=engine, clock=lambda: 10 + engine.data.time, lcm_url="memq://"
+    )
+    try:
+        node.step()
+        assert started.wait(timeout=5)
+        for _ in range(19):
+            node.step()
+        assert engine.data.time == pytest.approx(0.1)
+        release.set()
+        assert published.get(timeout=5) is frames
+        assert published.get(timeout=5) is frames
+        np.testing.assert_allclose(samples, [(0.005, 10.005), (0.1, 10.1)])
+    finally:
+        release.set()
+        node.close()
 
 
 def test_watchdog_stops_velocity_actuators_once(monkeypatch):

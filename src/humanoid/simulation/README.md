@@ -39,9 +39,10 @@ continue to receive and simulate their commanded angular velocities.
 
 ## Timing and safety
 
-The default physics timestep is 5 ms. The simulation node publishes at 200 Hz and takes
-one physics step per LCM tick. Position targets latch and hold; velocity targets are
-zeroed by the same 250 ms stale-command policy used by the hardware driver.
+`MujocoSimulationConfig.physics_timestep` sets the duration of each physics step.
+The simulation node publishes `ROBOT/STATE` at `MujocoSimulationConfig.publish_rate_hz`.
+Each publish period must span a whole number of physics steps. Position targets hold
+until updated. The watchdog zeros stale velocity targets after `command_timeout_seconds`.
 
 Restarting the simulation process resets it to the configured Home preset. The engine
 also exposes `reset()` directly for future simulation-control messages and integration
@@ -61,9 +62,15 @@ Each image carries its own intrinsics, frame ID and scale. Multiply depth sample
 `depth_scale` to get axial metres. Zero represents missing depth. Simulated pinholes
 use nominal optics. Hardware publishes device calibration.
 
-Rendering starts on the first requested frame. Reset restarts each sensor's cadence
-and frame counter. `engine.close()` releases the graphics resources. Configure optics in each named entry of the robot’s `cameras` mapping.
+Each camera samples on its own simulation-time clock using `cameras[name].simulation.fps`
+from the robot config. The same camera entry defines its optics.
+Its worker renders the latest pending snapshot and publishes it
+with the corresponding robot state's `timestamp`. The image's `device_timestamp` records
+simulation time. If rendering falls behind, newer snapshots replace pending ones.
 Set `MujocoSimulationConfig.enable_cameras=False` to disable rendering for all sensors.
+
+For camera preview transport and raw image subscriptions across hosts, see
+[LCM networking](../../../README.md#lcm-networking).
 
 Rendering needs an OpenGL context. Desktop macOS uses CGL; headless Linux can use
 `MUJOCO_GL=egl` with suitable GPU drivers or `MUJOCO_GL=osmesa` with Mesa installed.
@@ -81,10 +88,6 @@ The service user needs access to `/dev/dri/renderD*` (the `render` group on Ubun
 `MUJOCO_GL=osmesa` with `libosmesa6` is a slower software alternative on machines
 without a compatible GPU. GLFW requires an X11 display and cannot render from a
 headless systemd service with no `DISPLAY`.
-
-Rendering and image compression run synchronously with physics, so camera load can
-reduce wall-clock simulation speed. Reduce resolution/FPS when needed. Device
-timestamps use the simulation clock, independently of host receipt timestamps.
 
 ## Cleanup scene and live viewer
 

@@ -12,7 +12,8 @@ REALSENSE_CAMERA_CONFIG = RealSenseCameraConfig(
     frame_timeout_seconds=3.0,
 )
 
-# Nominal pinhole views; hardware publishes its device-specific calibration.
+# D400 Series Datasheet (337029-017), camera SKU properties: D435 VGA depth.
+# The RGB sensor's 42.5° vertical view gives 54.8° horizontally for a 4:3 crop.
 SIMULATED_CAMERA_CONFIG = SimulatedCameraConfig(
     model=DepthCamera.D435,
     width=640,
@@ -20,8 +21,8 @@ SIMULATED_CAMERA_CONFIG = SimulatedCameraConfig(
     fps=30,
     rgb_frame="ego_camera_color_optical_frame",
     depth_frame="ego_camera_depth_optical_frame",
-    rgb_vertical_fov=42.0,
-    depth_vertical_fov=58.0,
+    rgb_fov_degrees=(54.8, 42.5),
+    depth_fov_degrees=(75.0, 62.0),
     depth_scale=0.001,
 )
 
@@ -34,7 +35,8 @@ CAMERA_PREVIEW_CONFIG = CameraPreviewConfig(
     default_depth_far_meters=3.0,
 )
 
-# Nominal VGA pinhole view for the wrist-mounted close-range module.
+# The datasheet specifies D405 depth at 16:9 and lists VGA as N/A.
+# Use this wrist unit's recorded VGA stream intrinsics for the 4:3 views.
 WRIST_D405_CONFIG = SimulatedCameraConfig(
     model=DepthCamera.D405,
     width=640,
@@ -42,7 +44,7 @@ WRIST_D405_CONFIG = SimulatedCameraConfig(
     fps=30,
     rgb_frame="wrist_camera_color_optical_frame",
     depth_frame="wrist_camera_depth_optical_frame",
-    rgb_vertical_fov=58,
-    depth_vertical_fov=58,
+    rgb_fov_degrees=(79.15, 63.63),
+    depth_fov_degrees=(80.11, 64.47),
     depth_scale=0.0001,
 )

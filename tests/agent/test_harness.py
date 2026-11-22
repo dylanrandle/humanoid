@@ -10,9 +10,9 @@ from pydantic import ValidationError
 from humanoid.agent.harness import model, worker
 from humanoid.agent.harness.service import AgentConsole
 from humanoid.config.agent import (
+    AGENT_MOTION_LIMITS,
     CONSOLE_TASK_SECONDS,
     DEFAULT_MOTION_TIMEOUT_SECONDS,
-    get_agent_policy_config,
 )
 from humanoid.types.agent import (
     AgentPanelStatus,
@@ -124,7 +124,7 @@ def test_model_receives_rgb_from_both_cameras():
         observation=observation_status(),
         last_result=None,
         seconds_remaining=10,
-        limits=get_agent_policy_config(),
+        limits=AGENT_MOTION_LIMITS,
     )
     views = {"primary RGB": "rgb-image", "wrist RGB": "wrist-image"}
     model.decide(thread, context, views, allow_motion=False, timer=TimeBudget(10))
@@ -328,7 +328,7 @@ def test_timed_decision_interrupts_an_in_flight_model_turn():
         observation=observation_status(),
         last_result=None,
         seconds_remaining=0.1,
-        limits=get_agent_policy_config(),
+        limits=AGENT_MOTION_LIMITS,
     )
     with pytest.raises(EpisodeTimeExpired):
         model.decide(

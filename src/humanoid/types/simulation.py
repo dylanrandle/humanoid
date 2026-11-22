@@ -1,12 +1,20 @@
 """Configuration types for the native MuJoCo digital twin."""
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from humanoid.types.robot import RobotName
+
+if TYPE_CHECKING:
+    import mujoco
+
+
+type RenderFrame = Callable[[mujoco.MjData, float], None]
 
 
 class SimulationScene(StrEnum):

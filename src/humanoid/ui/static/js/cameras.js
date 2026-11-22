@@ -10,42 +10,66 @@ export async function fetchCameraPreviews(depthFar) {
   return response.json();
 }
 
-export function renderCameraPreviews(snapshot, elements) {
-  for (const stream of ["rgb", "depth"]) {
-    const frame = snapshot?.[stream];
-    const view = elements[stream];
-    const live = Boolean(frame?.connected && frame.image);
-    const stale = !live && frame?.age_seconds != null;
-    view.image.hidden = !live;
-    view.empty.hidden = live;
-    view.status.textContent = live
-      ? "Live"
-      : stale
-        ? "Stale"
-        : snapshot
-          ? "Waiting"
-          : "Unavailable";
-    view.status.classList.toggle("live", live);
-    view.status.classList.toggle("stale", stale);
-    if (live) {
-      if (view.image.getAttribute("src") !== frame.image)
-        view.image.src = frame.image;
-      view.detail.textContent = `${frame.width} × ${frame.height} · ${frame.frame_id} · ${frame.age_seconds.toFixed(1)} s ago`;
-    } else {
-      view.image.removeAttribute("src");
-      view.empty.textContent = stale
-        ? "Camera stream stopped"
-        : snapshot
-          ? `Waiting for ${stream === "rgb" ? "RGB" : "depth"} images`
-          : "Camera previews unavailable";
-      view.detail.textContent = stale
-        ? `Last image ${frame.age_seconds.toFixed(1)} s ago`
-        : "Start a stack with a camera to view images.";
+export function renderCameraPreviews(cameras, elements) {
+  const entries = Object.entries(cameras ?? {});
+  const empty = entries.length === 0;
+  elements.message.hidden = !empty;
+  elements.depthKey.hidden = empty;
+  elements.range.disabled = empty;
+  if (empty) {
+    elements.grid.replaceChildren();
+    elements.message.textContent = cameras
+      ? "No cameras configured for this robot."
+      : "Camera previews unavailable.";
+    return;
+  }
+
+  let index = 0;
+  for (const [name, snapshot] of entries) {
+    for (const stream of ["rgb", "depth"]) {
+      const label = name + (stream === "rgb" ? " · RGB" : " · Native depth");
+      let figure = elements.grid.children[index++];
+      if (figure?.dataset.label !== label) {
+        const next =
+          elements.template.content.firstElementChild.cloneNode(true);
+        next.dataset.label = label;
+        next.querySelector("h3").textContent = label;
+        next.querySelector("img").alt = label;
+        if (figure) figure.replaceWith(next);
+        else elements.grid.append(next);
+        figure = next;
+      }
+      renderFrame(figure, snapshot[stream]);
     }
   }
-  if (snapshot) {
-    elements.near.textContent = `≤ ${snapshot.depth_near_meters} m`;
-    elements.far.textContent = `≥ ${snapshot.depth_far_meters} m`;
+  while (elements.grid.children.length > index)
+    elements.grid.lastElementChild.remove();
+  const scale = entries[0][1];
+  elements.near.textContent = `≤ ${scale.depth_near_meters} m`;
+  elements.far.textContent = `≥ ${scale.depth_far_meters} m`;
+}
+
+function renderFrame(figure, frame) {
+  const image = figure.querySelector("img");
+  const empty = figure.querySelector(".camera-image-area p");
+  const status = figure.querySelector(".mini-status");
+  const detail = figure.querySelector(".camera-detail");
+  const live = Boolean(frame.connected && frame.image);
+  const stale = !live && frame.age_seconds != null;
+  image.hidden = !live;
+  empty.hidden = live;
+  status.textContent = live ? "Live" : stale ? "Stale" : "Waiting";
+  status.classList.toggle("live", live);
+  status.classList.toggle("stale", stale);
+  if (live) {
+    if (image.getAttribute("src") !== frame.image) image.src = frame.image;
+    detail.textContent = `${frame.width} × ${frame.height} · ${frame.frame_id} · ${frame.age_seconds.toFixed(1)} s ago`;
+  } else {
+    image.removeAttribute("src");
+    empty.textContent = stale ? "Camera stream stopped" : "Waiting for images";
+    detail.textContent = stale
+      ? `Last image ${frame.age_seconds.toFixed(1)} s ago`
+      : "";
   }
 }
 

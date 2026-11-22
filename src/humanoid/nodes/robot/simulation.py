@@ -3,6 +3,7 @@
 import math
 import time
 from collections.abc import Callable
+from contextlib import ExitStack
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
@@ -13,7 +14,7 @@ from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.robots.watchdog import VelocityCommandWatchdog
 from humanoid.simulation.engine import NativeMujocoEngine
-from humanoid.types.camera import camera_topics
+from humanoid.simulation.render_stream import SimulationRenderStream, publish_camera
 from humanoid.types.robot import RobotConfig
 from humanoid.types.simulation import MujocoSimulationConfig
 
@@ -57,6 +58,23 @@ class SimulationNode(Node):
         )
         self.subscriber = Subscriber(topics=[Topic.ROBOT_JOINT_COMMAND], url=lcm_url)
         self.publisher = Publisher(url=lcm_url)
+        self._render_streams: list[SimulationRenderStream] = []
+        with ExitStack() as startup:
+            self._streams = startup
+            for name, camera in self.engine.cameras.items():
+                self.add_render_stream(
+                    SimulationRenderStream(
+                        name,
+                        camera.model,
+                        camera.config.fps,
+                        publish_camera(name, camera, lcm_url),
+                    )
+                )
+            self._streams = startup.pop_all()
+
+    def add_render_stream(self, stream: SimulationRenderStream) -> None:
+        self._streams.callback(stream.close)
+        self._render_streams.append(stream)
 
     def setup(self) -> None:
         logger.info(
@@ -80,23 +98,24 @@ class SimulationNode(Node):
         robot_state = self.engine.read_robot_state(timestamp=self._clock())
         self.publisher.publish(robot_state, topic=Topic.ROBOT_STATE)
         self._viewer_ticks += 1
-        if self._viewer_ticks >= self._viewer_interval:
-            self.publisher.publish(self.engine.simulation_state(), topic=Topic.SIMULATION_STATE)
-            self._viewer_ticks = 0
-        for name, frames in self.engine.read_camera_frames(timestamp=robot_state.timestamp).items():
-            self.publisher.publish_camera(frames, camera_topics(name))
+        due = [stream for stream in self._render_streams if stream.clock.due(self.engine.data.time)]
+        if due or self._viewer_ticks >= self._viewer_interval:
+            state = self.engine.simulation_state()
+            for stream in due:
+                stream.submit(state, robot_state.timestamp)
+            if self._viewer_ticks >= self._viewer_interval:
+                self.publisher.publish(state, topic=Topic.SIMULATION_STATE)
+                self._viewer_ticks = 0
 
     def _stop_velocity_actuators(self) -> None:
         self.engine.stop_velocity_actuators()
 
     def on_close(self) -> None:
-        try:
+        with ExitStack() as cleanup:
+            cleanup.callback(self.subscriber.close)
+            cleanup.callback(self.engine.close)
+            cleanup.callback(self._streams.close)
             self._command_watchdog.stop()
-        finally:
-            try:
-                self.engine.close()
-            finally:
-                self.subscriber.close()
 
 
 def main() -> None:

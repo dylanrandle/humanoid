@@ -6,6 +6,7 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.config import ROBOT_CONFIG
+from humanoid.config.teleop import TELEOP_SUBSCRIPTIONS
 from humanoid.logger import get_logger
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop.base import BaseTeleopPolicy
@@ -61,7 +62,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
     Args:
         robot_config: Robot configuration (default: ROBOT_CONFIG)
-        config: Tunable policy parameters (default: OculusTeleopPolicyConfig())
+        config: Optional policy parameters and observation subscriptions.
         orchestrator_client: Client used for homing and logging requests
     """
 
@@ -75,7 +76,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
     ):
         """Initialize the Oculus teleoperation policy."""
         if config is None:
-            config = OculusTeleopPolicyConfig()
+            config = OculusTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS)
         super().__init__(robot_config=robot_config, verbose=config.verbose)
 
         self.config = config

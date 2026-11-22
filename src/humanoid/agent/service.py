@@ -31,7 +31,7 @@ class AgentControlService:
     def __init__(self, policy: AgentPolicy, config: AgentControlServerConfig) -> None:
         self.session_id = uuid.uuid4().hex
         self.policy = policy
-        self._primary = next(iter(policy.robot.config.cameras), "")
+        self._primary = next(iter(policy.config.subscriptions.camera_names), "")
         self.config = config
         self._lock = threading.Lock()
         self._commands: dict[str, CommandRecord] = {}

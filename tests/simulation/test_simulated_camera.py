@@ -1,5 +1,6 @@
 """URDF camera placement, native depth semantics, and simulation timing."""
 
+from contextlib import closing
 from dataclasses import replace
 from unittest.mock import MagicMock
 
@@ -15,6 +16,42 @@ from humanoid.types.camera import CameraEncoding
 
 COLLISION_GROUP = 3
 EXPECTED_RENDERED_PAIRS = 3
+
+
+def test_rendered_camera_frustums_match_published_intrinsics(monkeypatch):
+    renderer = MagicMock()
+    renderer.render.side_effect = [
+        np.zeros((480, 640, 3), dtype=np.uint8),
+        np.ones((480, 640)),
+        np.ones((480, 640)),
+    ] * 2
+    monkeypatch.setattr(
+        "humanoid.simulation.camera.mujoco.Renderer", MagicMock(return_value=renderer)
+    )
+    with closing(NativeMujocoEngine(TRISKEL_CONFIG)) as engine:
+        scene = mujoco.MjvScene(engine.model, maxgeom=1000)
+        for name, frames in engine.read_camera_frames(0).items():
+            expected = TRISKEL_CONFIG.cameras[name].simulation
+            assert expected is not None
+            for image, fov in (
+                (frames.rgb, expected.rgb_fov_degrees),
+                (frames.depth, expected.depth_fov_degrees),
+            ):
+                camera = mujoco.MjvCamera()
+                camera.type = mujoco.mjtCamera.mjCAMERA_FIXED
+                camera.fixedcamid = engine.model.camera(image.frame_id).id
+                mujoco.mjv_updateCamera(engine.model, engine.data, camera, scene)
+                projection = scene.camera[0]
+                half_extent = np.array([projection.frustum_width, projection.frustum_top])
+                np.testing.assert_allclose(
+                    np.rad2deg(2 * np.arctan(half_extent / projection.frustum_near)), fov, atol=1e-4
+                )
+                k = image.intrinsics
+                np.testing.assert_allclose(
+                    [k.fx, k.fy],
+                    np.array([k.width, k.height]) * projection.frustum_near / (2 * half_extent),
+                    rtol=1e-6,
+                )
 
 
 def test_camera_poses_follow_urdf_at_nonzero_mobile_pose():

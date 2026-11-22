@@ -14,7 +14,7 @@ from pathlib import Path, PurePosixPath
 
 import lcm
 
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.lcm import simulation_state_t
 from humanoid.types.lcm.converter import LCMConverter
@@ -25,7 +25,7 @@ _MAX_LINE_BYTES = 8 * 1024 * 1024
 
 def _relay_frames() -> None:
     """Write LCM frames to SSH stdout until the client closes stdin."""
-    bus = lcm.LCM()
+    bus = lcm.LCM(DEFAULT_LCM_URL)
 
     def send(_channel: str, packet: bytes) -> None:
         sys.stdout.buffer.write(base64.b64encode(packet) + b"\n")

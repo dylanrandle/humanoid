@@ -16,6 +16,21 @@ from humanoid.types.camera import (
 )
 
 
+class FrameClock:
+    """Select physics ticks on the sensor's simulation-time grid."""
+
+    def __init__(self, fps: int):
+        self.fps = fps
+        self._last_frame = -1
+
+    def due(self, simulation_time: float) -> bool:
+        frame = math.floor(simulation_time * self.fps + 1e-9)
+        if frame == self._last_frame:
+            return False
+        self._last_frame = frame
+        return True
+
+
 class MujocoCamera:
     def __init__(self, model: mujoco.MjModel, config: SimulatedCameraConfig) -> None:
         self.model = model
@@ -26,12 +41,15 @@ class MujocoCamera:
         self.reset()
 
     def reset(self) -> None:
-        self._next_frame_at = 0.0
+        self._clock = FrameClock(self.config.fps)
         self._frame_number = 0
 
     def read(self, data: mujoco.MjData, timestamp: float) -> CameraFrames | None:
-        if data.time + 1e-9 < self._next_frame_at:
+        if not self._clock.due(data.time):
             return None
+        return self.render(data, timestamp)
+
+    def render(self, data: mujoco.MjData, timestamp: float) -> CameraFrames:
         if self._renderer is None:
             self._renderer = mujoco.Renderer(
                 self.model, height=self.config.height, width=self.config.width
@@ -49,9 +67,6 @@ class MujocoCamera:
         finally:
             renderer.disable_depth_rendering()
         self._frame_number += 1
-        # Keep the target cadence on the simulation clock, without accumulating
-        # rounding error when FPS does not divide the physics rate.
-        self._next_frame_at = (math.floor(data.time * self.config.fps + 1e-9) + 1) / self.config.fps
         color = self._image(rgb, CameraEncoding.RGB8, timestamp, data.time)
         native = self._image(depth, CameraEncoding.DEPTH16, timestamp, data.time)
         return CameraFrames(
@@ -85,8 +100,14 @@ class MujocoCamera:
     ) -> CameraImage:
         is_depth = encoding is CameraEncoding.DEPTH16
         frame = self.config.depth_frame if is_depth else self.config.rgb_frame
-        fovy = float(self.model.cam_fovy[self.model.camera(frame).id])
-        focal = self.config.height / (2 * math.tan(math.radians(fovy) / 2))
+        camera = self.model.camera(frame)
+        sensor_size = self.model.cam_sensorsize[camera.id]
+        if np.all(sensor_size > 0):
+            focal_lengths = self.model.cam_intrinsic[camera.id, :2]
+            fx, fy = focal_lengths * [self.config.width, self.config.height] / sensor_size
+        else:
+            fovy = float(camera.fovy[0])
+            fx = fy = self.config.height / (2 * math.tan(math.radians(fovy) / 2))
         return CameraImage(
             timestamp=timestamp,
             device_timestamp=simulation_time,
@@ -99,8 +120,8 @@ class MujocoCamera:
             intrinsics=CameraIntrinsics(
                 width=self.config.width,
                 height=self.config.height,
-                fx=focal,
-                fy=focal,
+                fx=float(fx),
+                fy=float(fy),
                 cx=(self.config.width - 1) / 2,
                 cy=(self.config.height - 1) / 2,
                 distortion_model="none",

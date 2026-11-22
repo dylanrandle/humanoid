@@ -30,17 +30,10 @@ export const els = {
   applicationLogStatus: document.querySelector("#application-log-status"),
   applicationLogOutput: document.querySelector("#application-log-output"),
   cameras: {
-    ...Object.fromEntries(
-      ["rgb", "depth"].map((stream) => [
-        stream,
-        {
-          image: document.querySelector(`#camera-${stream}-image`),
-          empty: document.querySelector(`#camera-${stream}-empty`),
-          status: document.querySelector(`#camera-${stream}-status`),
-          detail: document.querySelector(`#camera-${stream}-detail`),
-        },
-      ]),
-    ),
+    grid: document.querySelector("#camera-views"),
+    template: document.querySelector("#camera-view"),
+    message: document.querySelector("#camera-message"),
+    depthKey: document.querySelector("#camera-depth-key"),
     range: document.querySelector("#camera-depth-range"),
     near: document.querySelector("#camera-depth-near"),
     far: document.querySelector("#camera-depth-far"),

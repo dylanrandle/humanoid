@@ -1,9 +1,8 @@
 import time
-from collections.abc import Callable, Collection
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from humanoid.config.selection import ROBOT_CONFIG
 from humanoid.constants import Topic
 from humanoid.environment.base import Environment
 from humanoid.logger import get_logger
@@ -17,7 +16,7 @@ from humanoid.types.camera import (
     RegisteredDepth,
     camera_topics,
 )
-from humanoid.types.observation import Observation
+from humanoid.types.observation import Observation, ObservationSubscriptions
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import (
     RobotBaseCommand,
@@ -89,8 +88,7 @@ class RealtimeEnvironment(Environment):
     """Environment that talks to a running robot (or simulator) over LCM.
 
     This environment:
-    - Subscribes to ROBOT_STATE for observations and to the final ROBOT_*
-      command topics so observations reflect what's actually being commanded.
+    - Subscribes to the feedback topics and named cameras requested by the policy.
     - Publishes each action field to its configured per-source topic in
       ``action_topics``. The orchestrator decides which per-source topic
       currently feeds each final ROBOT_* topic.
@@ -104,12 +102,13 @@ class RealtimeEnvironment(Environment):
         done_fn: DoneFunction | None = None,
         truncated_fn: TruncatedFunction | None = None,
         *,
-        camera_names: Collection[str] = ROBOT_CONFIG.cameras.keys(),
+        subscriptions: ObservationSubscriptions,
     ):
         """Initialize the environment.
 
         Args:
             action_topics: Per-source topics to publish each action field on.
+            subscriptions: Robot feedback, events and camera streams to observe.
             timeout_ms: Timeout in milliseconds for receiving messages on reset
             reward_fn: Optional function to compute reward
             done_fn: Optional function to determine if episode is done
@@ -119,15 +118,14 @@ class RealtimeEnvironment(Environment):
         self.timeout_ms = timeout_ms
 
         # Initialize LCM communication
-        self._cameras = {name: _CameraStream(camera_topics(name)) for name in camera_names}
+        self.subscriptions = subscriptions
+        self._cameras = {
+            name: _CameraStream(camera_topics(name)) for name in subscriptions.camera_names
+        }
         self.publisher = Publisher()
         self.subscriber = Subscriber(
             topics=[
-                Topic.ROBOT_STATE,
-                Topic.ROBOT_JOINT_COMMAND,
-                Topic.ROBOT_TOOL_COMMAND,
-                Topic.ROBOT_BASE_COMMAND,
-                Topic.ORCHESTRATOR_MODE,
+                *subscriptions.topics,
                 *(
                     topic
                     for stream in self._cameras.values()
@@ -281,8 +279,8 @@ class RealtimeEnvironment(Environment):
     ) -> Observation:
         """Receive the latest messages and build an Observation.
 
-        Each topic is cached; if receive() returns None the last known value is
-        used. Raises if robot state has never been received.
+        Retain the last feedback sample from each configured stream. Events are
+        delivered once. Raises if robot state has never been received.
 
         Raises:
             RuntimeError: If no robot state has ever been received
@@ -295,21 +293,31 @@ class RealtimeEnvironment(Environment):
         if self._last_robot_state is None:
             raise RuntimeError("Failed to receive robot state")
 
-        joint_command = self.subscriber.receive(Topic.ROBOT_JOINT_COMMAND, timeout=timeout_ms)
-        if joint_command is not None:
-            self._last_joint_command = joint_command
-
-        tool_command = self.subscriber.receive(Topic.ROBOT_TOOL_COMMAND, timeout=timeout_ms)
-        if tool_command is not None:
-            self._last_tool_command = tool_command
-
-        base_command = self.subscriber.receive(Topic.ROBOT_BASE_COMMAND, timeout=timeout_ms)
-        if base_command is not None:
-            self._last_base_command = base_command
-
-        mode_msg = self.subscriber.receive(Topic.ORCHESTRATOR_MODE, timeout=timeout_ms)
-        if mode_msg is not None:
-            self._last_mode = mode_msg.mode
+        homing_target = None
+        for topic in self.subscriptions.topics:
+            match topic:
+                case Topic.ROBOT_JOINT_COMMAND:
+                    self._last_joint_command = (
+                        self.subscriber.receive(topic, timeout=timeout_ms)
+                        or self._last_joint_command
+                    )
+                case Topic.ROBOT_TOOL_COMMAND:
+                    self._last_tool_command = (
+                        self.subscriber.receive(topic, timeout=timeout_ms)
+                        or self._last_tool_command
+                    )
+                case Topic.ROBOT_BASE_COMMAND:
+                    self._last_base_command = (
+                        self.subscriber.receive(topic, timeout=timeout_ms)
+                        or self._last_base_command
+                    )
+                case Topic.ORCHESTRATOR_MODE:
+                    mode = self.subscriber.receive(topic, timeout=timeout_ms)
+                    if mode is not None:
+                        self._last_mode = mode.mode
+                case Topic.HOMING_TARGET:
+                    # Retarget once per request, even when the target is identical.
+                    homing_target = self.subscriber.receive(topic)
 
         return Observation(
             robot_state=self._last_robot_state,
@@ -317,6 +325,7 @@ class RealtimeEnvironment(Environment):
             robot_tool_command=self._last_tool_command,
             robot_base_command=self._last_base_command,
             mode=self._last_mode,
+            homing_target=homing_target,
             camera_frames={
                 name: frames
                 for name, stream in self._cameras.items()

@@ -904,21 +904,26 @@ def test_close_releases_mode_monitor_when_stack_status_fails():
 
 def test_camera_monitor_is_lazy_reset_on_configuration_change_and_closed(monkeypatch):
     service, _, _, _ = _make_service()
-    camera = MagicMock()
-    factory = MagicMock(return_value=camera)
+    base, wrist = MagicMock(), MagicMock()
+    factory = MagicMock(side_effect=[base, wrist])
     monkeypatch.setattr("humanoid.orchestrator.service.CameraPreviewMonitor", factory)
-    assert service._camera_monitor is None
-    assert service.camera_previews(3) is camera.snapshot.return_value
-    service.camera_previews(5)
-    factory.assert_called_once_with(camera_name="base")
-    camera.snapshot.assert_any_call(5)
+    factory.assert_not_called()
+    for depth_far in (3, 5):
+        assert service.camera_previews(depth_far) == {
+            "base": base.snapshot.return_value,
+            "wrist": wrist.snapshot.return_value,
+        }
+        for monitor in (base, wrist):
+            monitor.snapshot.assert_called_with(depth_far)
+    assert factory.call_args_list == [call(camera_name="base"), call(camera_name="wrist")]
     service.set_robot(
         RobotName.PANDA,
         SafetyContext(expected_runtime=Runtime.SIM, expected_robot=RobotName.TRISKEL),
     )
-    assert service._camera_monitor is None
+    assert not service._camera_monitors
     service.close()
-    camera.close.assert_called_once()
+    for monitor in (base, wrist):
+        monitor.close.assert_called_once()
 
 
 @pytest.mark.parametrize("robot", [RobotName.PANDA, RobotName.SO101])
@@ -926,6 +931,5 @@ def test_robot_without_cameras_has_disconnected_previews(robot):
     service, manager, _, _ = _make_service()
     manager.robot = robot
     preview = service.camera_previews(3)
-    assert not preview.rgb.connected and not preview.depth.connected
-    assert service._camera_monitor is None
+    assert preview == {}
     service.close()

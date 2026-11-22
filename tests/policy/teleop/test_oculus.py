@@ -15,6 +15,7 @@ import pinocchio as pin
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.teleop import TELEOP_SUBSCRIPTIONS
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop import oculus as oculus_module
 from humanoid.policy.teleop.oculus import (
@@ -105,6 +106,7 @@ def _make_policy(
     robot_config = ROBOT_CONFIGS[robot_name]
     if config is None:
         config = OculusTeleopPolicyConfig(
+            subscriptions=TELEOP_SUBSCRIPTIONS,
             verbose=False,
             oculus_to_tool_command_rotation=np.eye(3),
         )
@@ -133,7 +135,9 @@ class TestConstruction:
         assert policy.config.verbose is False
 
     def test_default_mapping_rotates_oculus_y_and_z_axes(self):
-        config = OculusTeleopPolicyConfig()
+        config = OculusTeleopPolicyConfig(
+            subscriptions=TELEOP_SUBSCRIPTIONS,
+        )
 
         np.testing.assert_array_equal(
             config.oculus_to_tool_command_rotation,
@@ -148,6 +152,7 @@ class TestConstruction:
 
     def test_passes_wireless_connection_to_reader(self):
         config = OculusTeleopPolicyConfig(
+            subscriptions=TELEOP_SUBSCRIPTIONS,
             ip_address="192.168.1.42",
             port=CUSTOM_ADB_PORT,
             verbose=False,
@@ -170,7 +175,7 @@ class TestConstruction:
     )
     def test_rejects_invalid_connection_config(self, kwargs, message):
         with pytest.raises(ValueError, match=message):
-            OculusTeleopPolicyConfig(**kwargs)
+            OculusTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS, **kwargs)
 
     def test_mobile_base_limits_come_from_robot_config(self):
         robot_config = ROBOT_CONFIGS["triskel"]
@@ -365,6 +370,7 @@ class TestControllerDeltaApplied:
     def test_translation_scale_amplifies_delta(self):
         policy, reader = _make_policy(
             config=OculusTeleopPolicyConfig(
+                subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
                 tool_translation_scale=3.0,
                 oculus_to_tool_command_rotation=np.eye(3),
@@ -387,6 +393,7 @@ class TestControllerDeltaApplied:
         rotation_about_z_90 = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
         policy, reader = _make_policy(
             config=OculusTeleopPolicyConfig(
+                subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
                 oculus_to_tool_command_rotation=rotation_about_z_90,
             ),
@@ -412,7 +419,9 @@ class TestControllerDeltaApplied:
         ],
     )
     def test_default_mapping_rotates_up_and_forward_axes(self, oculus_delta, command_delta):
-        policy, _ = _make_policy(config=OculusTeleopPolicyConfig(verbose=False))
+        policy, _ = _make_policy(
+            config=OculusTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS, verbose=False)
+        )
         policy.reference_controller_pose = np.eye(4)
         policy.reference_tool_pose = pin.SE3.Identity()
         policy.commanded_tool_pose = pin.SE3.Identity()
@@ -480,6 +489,7 @@ class TestControllerDeltaApplied:
         command_rotation = pin.utils.rotate("z", np.pi / 2)
         policy, _ = _make_policy(
             config=OculusTeleopPolicyConfig(
+                subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
                 oculus_to_tool_command_rotation=command_rotation,
             ),
@@ -768,6 +778,7 @@ class TestGripper:
         policy = OculusTeleopPolicy(
             robot_config=cfg,
             config=OculusTeleopPolicyConfig(
+                subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
                 oculus_to_tool_command_rotation=np.eye(3),
             ),
@@ -962,6 +973,7 @@ class TestHomingButtons:
         policy = OculusTeleopPolicy(
             robot_config=cfg,
             config=OculusTeleopPolicyConfig(
+                subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
                 oculus_to_tool_command_rotation=np.eye(3),
             ),

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from pynput import keyboard
 
 from humanoid.config import ROBOT_CONFIG
+from humanoid.config.teleop import get_keyboard_teleop_policy_config
 from humanoid.logger import get_logger
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.policy.teleop.motion import CartesianPoseLimiter
@@ -48,7 +49,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
 
     Args:
         robot_config: Robot configuration (default: ROBOT_CONFIG)
-        config: Tunable policy parameters (default: KeyboardTeleopPolicyConfig())
+        config: Optional policy parameters and observation subscriptions.
     """
 
     mode = Mode.KEYBOARD
@@ -60,31 +61,29 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
     ):
         """Initialize the keyboard teleoperation policy."""
         if config is None:
-            config = KeyboardTeleopPolicyConfig()
+            config = get_keyboard_teleop_policy_config()
         super().__init__(robot_config=robot_config, verbose=config.verbose)
 
         self.config = config
-        self.tool_translation_step = robot_config.tool.velocity_limits.linear * config.dt
-        self.tool_rotation_step = robot_config.tool.velocity_limits.angular * config.dt
+        tool_step_seconds = config.dt * config.tool_step_scale
+        self.tool_translation_step = robot_config.tool.velocity_limits.linear * tool_step_seconds
+        self.tool_rotation_step = robot_config.tool.velocity_limits.angular * tool_step_seconds
+        base_step_seconds = config.dt * config.base_step_scale
         self.base_translation_step = (
-            robot_config.base.velocity_limits.linear * config.dt
+            robot_config.base.velocity_limits.linear * base_step_seconds
             if robot_config.base is not None
             else 0.0
         )
         self.base_rotation_step = (
-            robot_config.base.velocity_limits.angular * config.dt
+            robot_config.base.velocity_limits.angular * base_step_seconds
             if robot_config.base is not None
             else 0.0
         )
 
         gripper_range = self.gripper_max - self.gripper_min
-        self.gripper_step = gripper_range * config.dt / config.gripper_close_time
+        self.gripper_step = gripper_range * tool_step_seconds / config.gripper_close_time
         if self.verbose and robot_config.gripper is not None:
-            logger.info(
-                f"Gripper step: {self.gripper_step:.4f} "
-                f"({self.gripper_step * 1000:.2f}mm, "
-                f"{config.gripper_close_time:.2f}s to close)"
-            )
+            logger.info(f"Gripper step: {self.gripper_step:.4f} {robot_config.gripper.units[0]}")
 
         # Current target tool pose (will be initialized on first observation)
         self.current_tool_pose: pin.SE3 | None = None
@@ -315,10 +314,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                             self.gripper_min, self.gripper_positions[0] - self.gripper_step
                         )
                         if self.verbose:
-                            logger.info(
-                                f"⊏ Close gripper (-{self.gripper_step:.4f}, "
-                                f"-{self.gripper_step * 1000:.2f}mm)"
-                            )
+                            logger.info(f"⊏ Close gripper (-{self.gripper_step:.4f})")
                             logger.info(f"Gripper position: {self.gripper_positions[0]:.4f}")
             elif key_char == "]":
                 # Open gripper (increase gripper position)
@@ -329,10 +325,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                             self.gripper_max, self.gripper_positions[0] + self.gripper_step
                         )
                         if self.verbose:
-                            logger.info(
-                                f"⊐ Open gripper (+{self.gripper_step:.4f}, "
-                                f"+{self.gripper_step * 1000:.2f}mm)"
-                            )
+                            logger.info(f"⊐ Open gripper (+{self.gripper_step:.4f})")
                             logger.info(f"Gripper position: {self.gripper_positions[0]:.4f}")
             # Base controls (only active for mobile robots).
             elif key == keyboard.Key.up:

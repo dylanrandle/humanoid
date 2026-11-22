@@ -12,10 +12,10 @@ from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness.model import connect, decide, open_codex, start_thread
 from humanoid.agent.harness.robot import RobotTools, image_url
 from humanoid.config.agent import (
+    AGENT_MOTION_LIMITS,
     CONSOLE_TASK_SECONDS,
     DEFAULT_MOTION_TIMEOUT_SECONDS,
     get_agent_endpoint,
-    get_agent_policy_config,
 )
 from humanoid.config.robot import ROBOT_CONFIGS
 from humanoid.robots.base import Robot
@@ -63,7 +63,7 @@ def run_steps(
             observation=status,
             last_result=feedback,
             seconds_remaining=budget.remaining(),
-            limits=get_agent_policy_config(),
+            limits=AGENT_MOTION_LIMITS,
         )
         decision = decide(
             thread,

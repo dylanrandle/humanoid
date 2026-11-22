@@ -14,6 +14,7 @@ returns its `CameraSource`. The node uses the same publishing loop for each driv
 
 `uv sync` installs the official `pyrealsense2` dependency on non-macOS platforms.
 Linux also needs the [librealsense USB/udev setup](https://github.com/realsenseai/librealsense/blob/master/doc/installation.md).
+Use a USB 3 cable and port for the D435. `lsusb -t` should show `5000M`.
 No RealSense package is installed on macOS; the physical driver intentionally fails
 there. MuJoCo camera simulation and browser previews work without that SDK.
 
@@ -41,19 +42,6 @@ Derive transforms to the robot base from the URDF. Pixels use fast lossless LZ4 
 Older zlib recordings remain readable. Update image consumers together: older versions
 cannot decode LZ4 images.
 
-## Pi throughput and LCM buffers
-
-The deployed service sets `LCM_DEFAULT_URL` to
-`udpm://239.255.76.67:7667?ttl=0&recv_buf_size=8388608`, keeping camera traffic on
-the robot instead of saturating Wi-Fi multicast. Browser previews still work over HTTP.
-Deployment installs `/etc/sysctl.d/90-humanoid-lcm.conf` and applies 8 MiB kernel
-receive limits before restarting the service. Existing sockets need a stack restart.
-
-For manual launches, export the same URL before `uv run start`. For intentional
-cross-host LCM, use `ttl=1` (prefer wired Ethernet for full-rate images) in that
-environment variable or a systemd service override. The undeployed default remains
-`ttl=1`. Use a USB 3 cable/port for the D435; `lsusb -t` should show `5000M`.
-
 `timestamp` is host monotonic receipt time shared by each pair. `device_timestamp` is
 seconds in `timestamp_domain`; source clocks are not assumed synchronized to the host.
 Subscribers keep the latest image per topic. Match host timestamps if a consumer needs
@@ -74,10 +62,15 @@ finally:
     subscriber.close()
 ```
 
+For receive buffer settings or subscribing to images from another host, see
+[LCM networking](../../../../README.md#lcm-networking).
+
 ## Browser previews
 
-The console requests the latest previews at up to 5 Hz independently of control-status
-polling. RGB and colorized depth are JPEG previews; the original LCM images remain
+The console requests the latest previews for every camera configured for the selected robot
+and runtime in one request at up to 5 Hz, independently of control-status polling.
+Each camera has a named RGB view and a colorized native-depth view with independent freshness.
+RGB and colorized depth are JPEG previews; the original LCM images remain
 unchanged. Amber means near, teal means middle distance, and blue means far. Values
 outside the selected range saturate at the endpoints; invalid depth is black.
 

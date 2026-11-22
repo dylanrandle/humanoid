@@ -2,8 +2,18 @@
 
 import os
 
-from humanoid.types.agent import AgentControlEndpoint, AgentControlServerConfig, AgentPolicyConfig
+from humanoid.config.selection import ROBOT_CONFIG
+from humanoid.constants import Topic
+from humanoid.types.agent import (
+    AgentControlEndpoint,
+    AgentControlServerConfig,
+    AgentMotionLimits,
+    AgentPolicyConfig,
+)
+from humanoid.types.observation import ObservationSubscriptions
+from humanoid.types.robot import RobotConfig
 
+AGENT_MOTION_LIMITS = AgentMotionLimits()
 AGENT_HOST = "127.0.0.1"
 DEFAULT_AGENT_MODEL = "gpt-6.2-astra"
 CONSOLE_TASK_SECONDS = 600
@@ -13,8 +23,13 @@ MAX_TCP_PORT = 65535
 DEFAULT_AGENT_ENDPOINT = AgentControlEndpoint(f"http://{AGENT_HOST}:{DEFAULT_AGENT_PORT}")
 
 
-def get_agent_policy_config() -> AgentPolicyConfig:
-    return AgentPolicyConfig()
+def get_agent_policy_config(robot_config: RobotConfig = ROBOT_CONFIG) -> AgentPolicyConfig:
+    return AgentPolicyConfig(
+        subscriptions=ObservationSubscriptions(
+            topics=(Topic.ROBOT_STATE, Topic.ORCHESTRATOR_MODE),
+            camera_names=tuple(robot_config.cameras),
+        ),
+    )
 
 
 def get_agent_endpoint() -> AgentControlEndpoint:

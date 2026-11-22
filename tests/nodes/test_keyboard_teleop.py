@@ -1,6 +1,20 @@
 from unittest.mock import MagicMock, patch
 
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
+from humanoid.types.camera import CameraTopic
+
+
+def test_keyboard_never_subscribes_to_images(monkeypatch):
+    subscriber = MagicMock()
+    monkeypatch.setattr("humanoid.environment.realtime.Subscriber", subscriber)
+    monkeypatch.setattr("humanoid.environment.realtime.Publisher", MagicMock())
+    node = KeyboardTeleopNode(TRISKEL_CONFIG)
+    try:
+        topics = subscriber.call_args.kwargs["topics"]
+        assert not any(isinstance(topic, CameraTopic) for topic in topics)
+    finally:
+        node.close()
 
 
 def test_keyboard_node_run_stops_when_policy_quits():

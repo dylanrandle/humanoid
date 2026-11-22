@@ -430,47 +430,28 @@
               </select>
             </label>
           </div>
-          <div class="camera-grid">
+          <p id="camera-message" class="camera-detail">Loading camera views…</p>
+          <div id="camera-views" class="camera-grid"></div>
+          <template id="camera-view">
             <figure class="camera-view">
               <figcaption>
-                <h3>RGB</h3>
-                <span class="mini-status" id="camera-rgb-status">Waiting</span>
+                <h3></h3>
+                <span class="mini-status"></span>
               </figcaption>
               <div class="camera-image-area">
-                <img id="camera-rgb-image" alt="Live RGB camera view" hidden />
-                <p id="camera-rgb-empty">Waiting for RGB images</p>
+                <img hidden alt="" />
+                <p></p>
               </div>
-              <p class="camera-detail" id="camera-rgb-detail">
-                Start the stack to view the camera.
-              </p>
+              <p class="camera-detail"></p>
             </figure>
-            <figure class="camera-view">
-              <figcaption>
-                <h3>Native depth</h3>
-                <span class="mini-status" id="camera-depth-status"
-                  >Waiting</span
-                >
-              </figcaption>
-              <div class="camera-image-area">
-                <img
-                  id="camera-depth-image"
-                  alt="Live depth camera view, amber for near and blue for far"
-                  hidden
-                />
-                <p id="camera-depth-empty">Waiting for depth images</p>
-              </div>
-              <p class="camera-detail" id="camera-depth-detail">
-                Depth uses its own viewpoint, separate from RGB.
-              </p>
-              <div class="depth-legend" aria-label="Depth color scale">
-                <span id="camera-depth-near">≤ 0.2 m</span>
-                <span class="depth-gradient" aria-hidden="true"></span>
-                <span id="camera-depth-far">≥ 3 m</span>
-              </div>
-              <p class="camera-legend-note">
-                Black: no depth measurement. Colors are for display only.
-              </p>
-            </figure>
+          </template>
+          <div id="camera-depth-key" hidden>
+            <div class="depth-legend" aria-label="Depth color scale">
+              <span id="camera-depth-near"></span>
+              <span class="depth-gradient" aria-hidden="true"></span>
+              <span id="camera-depth-far"></span>
+            </div>
+            <p class="camera-legend-note">Black indicates missing depth.</p>
           </div>
         </section>
 

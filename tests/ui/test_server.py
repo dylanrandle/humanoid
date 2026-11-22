@@ -566,8 +566,8 @@ def test_static_path_cannot_escape_ui_directory(server_client):
 def test_routes_camera_previews(server_client):
     service, client = server_client
     service.camera_previews.return_value = {
-        "rgb": {"connected": False},
-        "depth": {"connected": False},
+        name: {"rgb": {"connected": False}, "depth": {"connected": False}}
+        for name in ("base", "wrist")
     }
     response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far=5")
     assert response.status_code == HTTPStatus.OK

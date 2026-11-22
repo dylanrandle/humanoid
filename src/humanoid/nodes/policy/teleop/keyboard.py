@@ -42,7 +42,8 @@ class KeyboardTeleopNode(Node):
             action_topics=ActionTopics(
                 tool=Topic.KEYBOARD_TOOL_COMMAND,
                 base=Topic.KEYBOARD_BASE_COMMAND,
-            )
+            ),
+            subscriptions=policy_config.subscriptions,
         )
 
         self.rate_hz = 1.0 / self.policy.config.dt

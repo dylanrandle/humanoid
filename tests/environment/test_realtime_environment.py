@@ -6,11 +6,13 @@ import numpy as np
 import pinocchio as pin
 import pytest
 
+from humanoid.config.homing import HOMING_POLICY_CONFIG
 from humanoid.constants import Topic
 from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.types.action import Action
 from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics, camera_topics
-from humanoid.types.observation import Observation
+from humanoid.types.homing import HomingTarget
+from humanoid.types.observation import Observation, ObservationSubscriptions
 from humanoid.types.orchestrator import Mode, OrchestratorMode
 from humanoid.types.robot import (
     CartesianVelocity,
@@ -18,6 +20,17 @@ from humanoid.types.robot import (
     RobotJointCommand,
     RobotState,
     RobotToolCommand,
+)
+
+_ALL_FEEDBACK = ObservationSubscriptions(
+    topics=(
+        Topic.ROBOT_STATE,
+        Topic.ROBOT_JOINT_COMMAND,
+        Topic.ROBOT_TOOL_COMMAND,
+        Topic.ROBOT_BASE_COMMAND,
+        Topic.ORCHESTRATOR_MODE,
+    ),
+    camera_names=("base", "wrist"),
 )
 
 _TEST_TOPICS = ActionTopics(
@@ -47,13 +60,16 @@ def _state_only_receive(state: RobotState):
     return receive
 
 
-def _make_env(action_topics: ActionTopics = _TEST_TOPICS) -> RealtimeEnvironment:
+def _make_env(
+    action_topics: ActionTopics = _TEST_TOPICS,
+    subscriptions: ObservationSubscriptions = _ALL_FEEDBACK,
+) -> RealtimeEnvironment:
     """Build a RealtimeEnvironment with mocked Publisher and Subscriber."""
     with (
         patch("humanoid.environment.realtime.Publisher"),
         patch("humanoid.environment.realtime.Subscriber"),
     ):
-        return RealtimeEnvironment(action_topics=action_topics)
+        return RealtimeEnvironment(action_topics=action_topics, subscriptions=subscriptions)
 
 
 @pytest.fixture
@@ -67,7 +83,7 @@ class TestInit:
             patch("humanoid.environment.realtime.Publisher"),
             patch("humanoid.environment.realtime.Subscriber") as mock_sub,
         ):
-            RealtimeEnvironment(action_topics=_TEST_TOPICS)
+            RealtimeEnvironment(action_topics=_TEST_TOPICS, subscriptions=_ALL_FEEDBACK)
         mock_sub.assert_called_once_with(
             topics=[
                 Topic.ROBOT_STATE,
@@ -99,6 +115,7 @@ class TestInit:
         ):
             env = RealtimeEnvironment(
                 action_topics=_TEST_TOPICS,
+                subscriptions=_ALL_FEEDBACK,
                 reward_fn=lambda prev, a, o: reward_val,
                 done_fn=lambda o: True,
                 truncated_fn=lambda o: True,
@@ -353,7 +370,7 @@ def test_optional_camera_observations_pair_by_host_timestamp():
         patch("humanoid.environment.realtime.Publisher"),
         patch("humanoid.environment.realtime.Subscriber"),
     ):
-        environment = RealtimeEnvironment(_TEST_TOPICS)
+        environment = RealtimeEnvironment(_TEST_TOPICS, subscriptions=_ALL_FEEDBACK)
     intrinsics = CameraIntrinsics(
         width=1,
         height=1,
@@ -397,3 +414,45 @@ def test_optional_camera_observations_pair_by_host_timestamp():
     assert paired is not None and paired.depth is depth
     messages[camera_topics("base").rgb] = replace(rgb, timestamp=3)
     assert environment.observe().camera_frames.get("base") is paired
+
+
+def test_subscription_selection_controls_both_subscriber_and_reads():
+    wrist = camera_topics("wrist")
+    subscriptions = ObservationSubscriptions(
+        topics=(Topic.ROBOT_STATE, Topic.ROBOT_BASE_COMMAND),
+        camera_names=("wrist",),
+    )
+    with (
+        patch("humanoid.environment.realtime.Publisher"),
+        patch("humanoid.environment.realtime.Subscriber") as make_subscriber,
+    ):
+        env = RealtimeEnvironment(_TEST_TOPICS, subscriptions=subscriptions)
+    selected = [*subscriptions.topics, wrist.rgb, wrist.depth, wrist.registered_depth]
+    assert make_subscriber.call_args.kwargs["topics"] == selected
+    base = RobotBaseCommand(timestamp=1.0, pose=pin.SE3.Identity())
+    messages = {Topic.ROBOT_STATE: _make_state(), Topic.ROBOT_BASE_COMMAND: base}
+
+    def receive(topic, **kwargs):
+        assert topic in selected
+        return messages.pop(topic, None)
+
+    make_subscriber.return_value.receive.side_effect = receive
+    for obs in (env.reset(), env.observe(), env.step(Action()).observation):
+        assert obs.robot_base_command is base
+        assert (
+            obs.mode is None and obs.robot_tool_command is None and obs.robot_joint_command is None
+        )
+        assert obs.camera_frames == {}
+
+
+def test_homing_target_is_delivered_once_per_publication():
+    env = _make_env(subscriptions=HOMING_POLICY_CONFIG.subscriptions)
+    target = HomingTarget(timestamp=1.0, target_position=np.zeros(7))
+    messages = {Topic.ROBOT_STATE: _make_state(), Topic.HOMING_TARGET: target}
+    cast(MagicMock, env.subscriber).receive.side_effect = lambda topic, **_: messages.pop(
+        topic, None
+    )
+    assert env.reset().homing_target is target
+    assert env.step(Action()).observation.homing_target is None
+    messages[Topic.HOMING_TARGET] = target
+    assert env.step(Action()).observation.homing_target is target
