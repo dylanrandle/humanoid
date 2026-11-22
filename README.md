@@ -7,7 +7,7 @@ A Python framework for multi-robot control and teleoperation in simulation and o
 - **Multi-robot support**: Compatible with SO101, Triskel, and Panda robot platforms
 - **Actuator control**: Runtime-independent joint control with optional typed Feetech hardware
 - **MuJoCo digital twin**: Native rigid-body dynamics behind the same LCM interface as hardware
-- **Visualization**: Real-time robot visualization using MeshCat
+- **Visualization**: Native MuJoCo viewer for the real robot and simulation
 - **LCM middleware**: Lightweight Communications and Marshalling for inter-process communication
 - **Operational space control**: Advanced control algorithms for precise robot manipulation
 - **Teleoperation**: Keyboard and Oculus control interfaces
@@ -72,17 +72,30 @@ same LCM interface to the rest of the stack. Hardware actions require explicit o
 acknowledgement. Stop other stacks or standalone drivers before replaying on the shared
 LCM network.
 
-In simulation mode, select a scene before starting
-the stack. Run `uv run sim-viewer` in a second terminal to inspect the robot
-and all movable objects in the running world.
+### Live 3D viewer
+
+Run `uv run viz` on your Mac to open the native MuJoCo viewer for a local stack.
+Use `uv run viz --host triskel` for the stack on Triskel over SSH.
+The viewer follows hardware, simulation, and replay. Amber shows commanded
+joints, blue shows the commanded tool, and an arrow shows the base target.
+
+Simulation shows the selected scene and its moving objects. Hardware feedback
+positions the robot on a reference floor. Before the first state arrives, the
+viewer labels and displays the configured robot's home pose.
+
+Drag to orbit and scroll to zoom. Use the rendering controls to inspect contacts,
+forces, and coordinate frames.
+Close the viewer window to disconnect.
 
 ### LCM networking
 
-Hardware and simulation use host-local multicast (`ttl=0`) by default for
-commands, robot and simulation state, and raw camera images. The operator console
-serves camera previews over HTTP. To view a Jetson simulation from a Mac, run
-`uv run sim-viewer --host triskel` on the Mac. The viewer subscribes to
-`SIMULATION/STATE` on the Jetson and forwards it over SSH.
+Hardware and simulation use host-local multicast (`ttl=0`) by default.
+The viewer reads `SIMULATION/STATE` for the physics scene or `ROBOT/STATE` for
+hardware feedback. Command overlays appear when the viewer receives the existing
+`ROBOT/JOINT_COMMAND`, `ROBOT/TOOL_COMMAND`, and `ROBOT/BASE_COMMAND` messages.
+With `--host`, SSH carries those topics. The dashboard serves camera previews
+separately over HTTP. Use matching model code and robot assets on both machines.
+Set `HUMANOID_ROBOT_DIR` to select the installation directory on the SSH host.
 
 For direct LCM communication between hosts on the same subnet, set the same
 multicast group and port on each participating process before launch. Use
@@ -178,14 +191,13 @@ The robot needs no source checkout. The stack remains stopped until started from
 Deployment may prompt for `sudo`; use `--dry-run` to build without deploying. Override the
 defaults with `HUMANOID_ROBOT_HOST` and `HUMANOID_ROBOT_DIR`.
 
-Forward the dashboard and MeshCat ports from another local terminal:
+Forward the dashboard port from another local terminal:
 
 ```bash
 ./scripts/forward-ports
 ```
 
-Open the [dashboard](http://127.0.0.1:8765) or
-[visualizer](http://127.0.0.1:7000/static/). Run `./scripts/forward-ports --help` for port
+Open the [dashboard](http://127.0.0.1:8765). Run `./scripts/forward-ports --help` for port
 overrides. The dashboard shows live motor feedback and temperatures and retains the last
 driver or servo-reported failure after the stack stops. Recordings and the dashboard's
 `humanoid.log` application log are preserved in `/opt/humanoid/logs`.
@@ -250,7 +262,7 @@ humanoid/
 │   ├── types/            # Type definitions and LCM message types
 │   ├── ui/               # Local operator console backend and frontend
 │   ├── utils/            # General utilities
-│   └── visualizers/      # Visualization tools (MeshCat)
+│   └── visualizers/      # Native MuJoCo viewer
 ├── tests/                # Unit tests
 └── scripts/              # Utility scripts
 ```

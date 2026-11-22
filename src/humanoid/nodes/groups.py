@@ -10,7 +10,6 @@ from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.nodes.robot.simulation import SimulationNode
-from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import NodeGroup
 from humanoid.types.process import ProcessName, Runtime
 
@@ -22,7 +21,6 @@ NODE_GROUPS = {
             display_name="Main stack",
             nodes=(
                 RobotControllerNode,
-                RobotVisualizerNode,
                 OrchestratorNode,
                 RobotLoggerNode,
             ),
@@ -35,7 +33,7 @@ NODE_GROUPS = {
         NodeGroup(
             name=ProcessName.REPLAY,
             display_name="Replay runtime",
-            nodes=(RobotVisualizerNode,),
+            nodes=(),
             runtime_nodes={
                 Runtime.SIM: (SimulationNode,),
                 Runtime.REAL: (RobotDriverNode, CameraDriverNode),

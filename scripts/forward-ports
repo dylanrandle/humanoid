@@ -4,22 +4,18 @@ set -euo pipefail
 
 REMOTE_HOST="${HUMANOID_ROBOT_HOST:-triskel}"
 REMOTE_DASHBOARD_PORT="${HUMANOID_DASHBOARD_PORT:-8765}"
-REMOTE_VISUALIZER_PORT="${HUMANOID_VISUALIZER_PORT:-7000}"
 LOCAL_DASHBOARD_PORT="${HUMANOID_LOCAL_DASHBOARD_PORT:-${REMOTE_DASHBOARD_PORT}}"
-LOCAL_VISUALIZER_PORT="${HUMANOID_LOCAL_VISUALIZER_PORT:-${REMOTE_VISUALIZER_PORT}}"
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0")
 
-Forward the robot dashboard and MeshCat visualizer to localhost.
+Forward the robot dashboard to localhost.
 
 Environment overrides:
   HUMANOID_ROBOT_HOST             SSH host (default: triskel)
   HUMANOID_DASHBOARD_PORT         Remote dashboard port (default: 8765)
-  HUMANOID_VISUALIZER_PORT        Remote visualizer port (default: 7000)
   HUMANOID_LOCAL_DASHBOARD_PORT   Local dashboard port (default: remote port)
-  HUMANOID_LOCAL_VISUALIZER_PORT  Local visualizer port (default: remote port)
 EOF
 }
 
@@ -42,12 +38,9 @@ validate_port() {
 }
 
 validate_port "remote dashboard" "${REMOTE_DASHBOARD_PORT}"
-validate_port "remote visualizer" "${REMOTE_VISUALIZER_PORT}"
 validate_port "local dashboard" "${LOCAL_DASHBOARD_PORT}"
-validate_port "local visualizer" "${LOCAL_VISUALIZER_PORT}"
 
 echo "Forwarding dashboard: http://127.0.0.1:${LOCAL_DASHBOARD_PORT}"
-echo "Forwarding visualizer: http://127.0.0.1:${LOCAL_VISUALIZER_PORT}/static/"
 echo "Press Ctrl-C to close the tunnel."
 
 ssh \
@@ -57,5 +50,4 @@ ssh \
     -o ServerAliveInterval=30 \
     -o ServerAliveCountMax=3 \
     -L "127.0.0.1:${LOCAL_DASHBOARD_PORT}:127.0.0.1:${REMOTE_DASHBOARD_PORT}" \
-    -L "127.0.0.1:${LOCAL_VISUALIZER_PORT}:127.0.0.1:${REMOTE_VISUALIZER_PORT}" \
     "${REMOTE_HOST}"

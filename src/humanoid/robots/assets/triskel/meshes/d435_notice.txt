@@ -6,7 +6,7 @@ Source: https://github.com/realsenseai/realsense-ros/blob/7a87097c499e3b0b69518d
 Source SHA-256: 42f3b66f47a1f8f425a2e4dc07c1d9c283183167d8441f520a15623d98f9bf78
 License: Apache License 2.0; see d435_license.txt.
 
-Modified 2026-11-14: converted COLLADA through binary STL to indexed OBJ for MeshCat/Pinocchio
+Modified 2026-11-14: converted COLLADA through binary STL to indexed OBJ for Pinocchio
 and MuJoCo compatibility. Concatenated all 18 geometry instances' indexed
 triangles, preserving source coordinates, dimensions in meters, winding,
 and the original mesh frame. Facet normals follow triangle winding. No simplification.

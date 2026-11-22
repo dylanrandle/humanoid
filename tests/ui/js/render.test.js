@@ -120,7 +120,7 @@ test("node target and measured rates render healthy and unhealthy states", () =>
       age_seconds: 0.1,
     },
     {
-      node_name: "RobotVisualizerNode",
+      node_name: "SimulationNode",
       pid: 102,
       target_rate_hz: 30,
       measured_rate_hz: 22,

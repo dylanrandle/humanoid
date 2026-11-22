@@ -30,7 +30,6 @@ from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
 from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.nodes.robot.simulation import SimulationNode
-from humanoid.nodes.robot.visualizer import RobotVisualizerNode
 from humanoid.types.node import ProcessContext
 from humanoid.types.process import ProcessName, Runtime
 from humanoid.types.robot import RobotName
@@ -93,16 +92,14 @@ def _join_stack_startup(manager: NodeManager) -> None:
 def test_node_groups_reference_imported_node_classes():
     assert NODE_GROUPS[ProcessName.STACK].nodes == (
         RobotControllerNode,
-        RobotVisualizerNode,
         OrchestratorNode,
         RobotLoggerNode,
     )
     assert NODE_GROUPS[ProcessName.STACK].deferred_nodes == (HomingNode,)
-    assert NODE_GROUPS[ProcessName.REPLAY].nodes == (RobotVisualizerNode,)
+    assert NODE_GROUPS[ProcessName.REPLAY].nodes == ()
     assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.SIM) == (
         SimulationNode,
         RobotControllerNode,
-        RobotVisualizerNode,
         OrchestratorNode,
         RobotLoggerNode,
     )
@@ -110,18 +107,13 @@ def test_node_groups_reference_imported_node_classes():
         RobotDriverNode,
         CameraDriverNode,
         RobotControllerNode,
-        RobotVisualizerNode,
         OrchestratorNode,
         RobotLoggerNode,
     )
-    assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.SIM) == (
-        SimulationNode,
-        RobotVisualizerNode,
-    )
+    assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.SIM) == (SimulationNode,)
     assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.REAL) == (
         RobotDriverNode,
         CameraDriverNode,
-        RobotVisualizerNode,
     )
     assert NODE_GROUPS[ProcessName.KEYBOARD].nodes == (KeyboardTeleopNode,)
     assert NODE_GROUPS[ProcessName.AUTONOMY].nodes == (AgentControlServerNode,)
@@ -129,7 +121,7 @@ def test_node_groups_reference_imported_node_classes():
 
 
 @pytest.mark.parametrize("runtime", list(Runtime))
-def test_replay_group_starts_runtime_sensors_driver_and_visualizer(monkeypatch, runtime):
+def test_replay_group_starts_runtime_sensors_and_driver(monkeypatch, runtime):
     processes: list[MagicMock] = []
     context = _fake_context(processes)
     _use_process_context(monkeypatch, context)
@@ -138,9 +130,7 @@ def test_replay_group_starts_runtime_sensors_driver_and_visualizer(monkeypatch, 
     manager.start(ProcessName.REPLAY)
 
     expected_nodes = (
-        [SimulationNode, RobotVisualizerNode]
-        if runtime is Runtime.SIM
-        else [RobotDriverNode, CameraDriverNode, RobotVisualizerNode]
+        [SimulationNode] if runtime is Runtime.SIM else [RobotDriverNode, CameraDriverNode]
     )
     assert [entry.kwargs["target"] for entry in context.Process.call_args_list] == [
         _run_node
