@@ -89,8 +89,8 @@ using measured robot state and a labeled RGB image from each camera. In **Autono
 also issue bounded tool, base, gripper and hold commands. For a simulation
 test, ask it to move the base 2 cm forward and report the measured result.
 Each motion refreshes the observation. Perception tools can work on the same
-capture across turns. A task can issue up to eight motions and sixteen
-perception calls. The panel displays progress, the final
+capture across turns. Each console task has a 10-minute wall-clock budget for
+model decisions, perception, and motion. The panel displays progress, the final
 answer, and any errors.
 
 **Stop** interrupts the worker and cancels its in-flight command. Stopping a

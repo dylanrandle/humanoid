@@ -1,8 +1,10 @@
 """Shared types for the agent policy, control API, and operator console."""
 
+import math
+import time
 from collections.abc import Mapping
 from concurrent.futures import Future
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal, Protocol, TypedDict
 
@@ -18,12 +20,37 @@ from humanoid.types.segmentation import SegmentationResult, SegmentOperation
 from humanoid.types.tools import (
     CompleteDepth,
     DepthCompletionResult,
+    PerceptionOperation,
     RefineMask,
     SegmentAtPoint,
     SegmentEverything,
     SegmentInBox,
     ToolModel,
 )
+
+
+class EpisodeTimeExpired(Exception):
+    """The task's wall-clock budget expired."""
+
+
+@dataclass(frozen=True)
+class TimeBudget:
+    seconds: float
+    started_at: float = field(default_factory=time.monotonic, init=False)
+
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.seconds) or self.seconds <= 0:
+            raise ValueError("Episode time must be positive and finite.")
+
+    @property
+    def elapsed_seconds(self) -> float:
+        return time.monotonic() - self.started_at
+
+    def remaining(self) -> float:
+        seconds = self.seconds - self.elapsed_seconds
+        if seconds <= 0:
+            raise EpisodeTimeExpired(f"Task time budget of {self.seconds:g} seconds expired.")
+        return seconds
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -228,7 +255,7 @@ class HarnessRobot(Protocol):
     def observation(self) -> Observation: ...
     def capture(self) -> CameraCaptures: ...
     def execute(
-        self, operation: ControlOperation, arguments: Mapping[str, object]
+        self, operation: ControlOperation, arguments: Mapping[str, object], *, timeout: float
     ) -> MotionResult: ...
 
 
@@ -267,8 +294,8 @@ type PerceptionCall = (
     | ToolCall[Literal[SegmentOperation.POINT], SegmentAtPoint]
     | ToolCall[Literal[SegmentOperation.BOX], SegmentInBox]
     | ToolCall[Literal[SegmentOperation.REFINE], RefineMask]
-    | ToolCall[Literal["complete_depth"], CompleteDepth]
-    | ToolCall[Literal["observe_again"], ObserveAgain]
+    | ToolCall[Literal[PerceptionOperation.COMPLETE_DEPTH], CompleteDepth]
+    | ToolCall[Literal[PerceptionOperation.OBSERVE_AGAIN], ObserveAgain]
 )
 type MotionCall = (
     ToolCall[Literal[ControlOperation.MOVE_BASE], MoveBase]
@@ -283,12 +310,7 @@ class Decision[Command](ToolModel):
     command: Command | None
 
 
-type AgentDecision = (
-    Decision[MotionCall | PerceptionCall]
-    | Decision[MotionCall]
-    | Decision[PerceptionCall]
-    | Decision[None]
-)
+type AgentDecision = Decision[MotionCall | PerceptionCall] | Decision[PerceptionCall]
 
 
 class PoseRecord(TypedDict):
@@ -335,6 +357,5 @@ class DecisionContext:
     instruction: str
     observation: ObservationStatus
     last_result: MotionResult | DepthCompletionResult | SegmentationResult | ToolError | None
-    commands_remaining: int
-    perception_remaining: int
+    seconds_remaining: float
     limits: AgentPolicyConfig

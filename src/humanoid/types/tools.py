@@ -1,12 +1,18 @@
 """Typed arguments and results for the agent's perception tools."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from humanoid.types.camera import ObservationId
 from humanoid.types.segmentation import MAX_TOKENS, Box, MaskId, Pixel
+
+
+class PerceptionOperation(StrEnum):
+    COMPLETE_DEPTH = "complete_depth"
+    OBSERVE_AGAIN = "observe_again"
 
 
 class ToolModel(BaseModel):
@@ -52,4 +58,4 @@ class DepthCompletionResult:
     observation_id: ObservationId
     valid_pixels: int
     depths_m: tuple[float | None, ...]
-    operation: Literal["complete_depth"] = "complete_depth"
+    operation: Literal[PerceptionOperation.COMPLETE_DEPTH] = PerceptionOperation.COMPLETE_DEPTH

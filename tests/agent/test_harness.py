@@ -1,4 +1,5 @@
 import json
+from threading import Event
 from typing import cast
 from unittest.mock import Mock
 
@@ -8,17 +9,23 @@ from pydantic import ValidationError
 
 from humanoid.agent.harness import model, worker
 from humanoid.agent.harness.service import AgentConsole
-from humanoid.config.agent import get_agent_policy_config
+from humanoid.config.agent import (
+    CONSOLE_TASK_SECONDS,
+    DEFAULT_MOTION_TIMEOUT_SECONDS,
+    get_agent_policy_config,
+)
 from humanoid.types.agent import (
     AgentPanelStatus,
     AgentPhase,
     AgentTask,
     Decision,
     DecisionContext,
+    EpisodeTimeExpired,
     MotionCall,
     ObservationStatus,
     PerceptionCall,
     PoseRecord,
+    TimeBudget,
 )
 from humanoid.types.camera import ObservationId
 from humanoid.types.orchestrator import Mode
@@ -109,19 +116,19 @@ def test_model_account_and_catalog():
 
 def test_model_receives_rgb_from_both_cameras():
     thread = Mock()
-    thread.run.return_value.status.value = "completed"
-    thread.run.return_value.final_response = '{"message":"Observed","command":null}'
+    result = thread.turn.return_value.run.return_value
+    result.status.value = "completed"
+    result.final_response = '{"message":"Observed","command":null}'
     context = DecisionContext(
         instruction="Observe",
         observation=observation_status(),
         last_result=None,
-        commands_remaining=0,
-        perception_remaining=1,
+        seconds_remaining=10,
         limits=get_agent_policy_config(),
     )
     views = {"primary RGB": "rgb-image", "wrist RGB": "wrist-image"}
-    model.decide(thread, context, views, allow_motion=False)
-    images = [i.url for i in thread.run.call_args.args[0] if isinstance(i, model.ImageInput)]
+    model.decide(thread, context, views, allow_motion=False, timer=TimeBudget(10))
+    images = [i.url for i in thread.turn.call_args.args[0] if isinstance(i, model.ImageInput)]
     assert images == list(views.values())
 
 
@@ -153,7 +160,9 @@ def test_motion_result_reaches_next_model_turn(setup_worker):
         == "Held"
     )
     assert cast(Mock, worker.RobotTools).call_args.args[1].config.name is RobotName.PANDA
-    client.execute.assert_called_once_with("hold", {"duration": 1})
+    client.execute.assert_called_once_with(
+        "hold", {"duration": 1}, timeout=DEFAULT_MOTION_TIMEOUT_SECONDS
+    )
     assert decision.call_args.args[1].last_result == client.execute.return_value
 
 
@@ -257,7 +266,7 @@ def test_complete_depth_is_an_explicit_perception_command(setup_worker, mode):
     ],
 )
 def test_model_contract_rejects_invalid_or_unavailable_commands(operation, arguments):
-    contract, _ = model._decision_contract(allow_motion=False, allow_perception=True)
+    contract, _ = model._decision_contract(allow_motion=False)
     with pytest.raises(ValidationError):
         contract.model_validate_json(
             json.dumps(
@@ -266,10 +275,63 @@ def test_model_contract_rejects_invalid_or_unavailable_commands(operation, argum
         )
 
 
-def test_perception_budget_restricts_schema_and_parser():
-    contract, schema = model._decision_contract(allow_motion=True, allow_perception=False)
-    assert "complete_depth" not in json.dumps(schema)
-    with pytest.raises(ValidationError):
-        contract.model_validate_json(
-            '{"message":"act","command":{"operation":"observe_again","arguments":{}}}'
+def test_console_task_can_repeat_perception_and_motion_within_its_time_budget(setup_worker):
+    client, decide, _ = setup_worker
+    attempts = 50
+    decide.side_effect = [
+        *[decision_reply("Look", "observe_again", {})] * attempts,
+        *[decision_reply("Probe", "hold", {"duration": 1})] * attempts,
+        decision_reply("Finished"),
+    ]
+    worker.run_task(
+        Mock(),
+        client,
+        AgentTask("Explore cleanup", "vision", Mode.AUTONOMY, "session", RobotName.TRISKEL),
+        Mock(),
+    )
+    context = decide.call_args.args[1]
+    assert client.execute.call_count == attempts
+    assert 0 < context.seconds_remaining <= CONSOLE_TASK_SECONDS
+
+
+def test_console_motion_uses_remaining_time_and_reports_expiry(setup_worker, monkeypatch):
+    client, decide, tools = setup_worker
+    elapsed = CONSOLE_TASK_SECONDS - 0.25
+    monkeypatch.setattr(TimeBudget, "elapsed_seconds", property(lambda self: elapsed))
+    decide.return_value = decision_reply("Holding", "hold", {"duration": 1})
+
+    def timeout(*args, **kwargs):
+        nonlocal elapsed
+        elapsed = CONSOLE_TASK_SECONDS
+        raise RuntimeError("Timed out waiting for the motion command to finish.")
+
+    client.execute.side_effect = timeout
+    with pytest.raises(EpisodeTimeExpired, match="Task time budget"):
+        worker.run_task(
+            Mock(),
+            client,
+            AgentTask("Hold", "vision", Mode.AUTONOMY, "session", RobotName.TRISKEL),
+            Mock(),
         )
+    client.execute.assert_called_once_with("hold", {"duration": 1}, timeout=0.25)
+    tools.observe.assert_called_once()
+
+
+def test_timed_decision_interrupts_an_in_flight_model_turn():
+    thread = Mock()
+    turn = thread.turn.return_value
+    interrupted = Event()
+    turn.interrupt.side_effect = interrupted.set
+    turn.run.side_effect = lambda: interrupted.wait(timeout=2)
+    context = DecisionContext(
+        instruction="Explore",
+        observation=observation_status(),
+        last_result=None,
+        seconds_remaining=0.1,
+        limits=get_agent_policy_config(),
+    )
+    with pytest.raises(EpisodeTimeExpired):
+        model.decide(
+            thread, context, {"primary RGB": "rgb"}, allow_motion=True, timer=TimeBudget(0.1)
+        )
+    turn.interrupt.assert_called_once_with()

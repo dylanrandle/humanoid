@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from functools import cache
 from tempfile import TemporaryDirectory
+from threading import Timer
 
 from openai_codex import (
     ApprovalMode,
@@ -26,6 +27,7 @@ from humanoid.types.agent import (
     DecisionContext,
     MotionCall,
     PerceptionCall,
+    TimeBudget,
 )
 
 
@@ -126,17 +128,8 @@ class _ToolSchema(GenerateJsonSchema):
 
 
 @cache
-def _decision_contract(
-    allow_motion: bool, allow_perception: bool
-) -> tuple[type[AgentDecision], JsonSchemaValue]:
-    if allow_motion and allow_perception:
-        contract = Decision[MotionCall | PerceptionCall]
-    elif allow_motion:
-        contract = Decision[MotionCall]
-    elif allow_perception:
-        contract = Decision[PerceptionCall]
-    else:
-        contract = Decision[None]
+def _decision_contract(allow_motion: bool) -> tuple[type[AgentDecision], JsonSchemaValue]:
+    contract = Decision[MotionCall | PerceptionCall] if allow_motion else Decision[PerceptionCall]
     return contract, contract.model_json_schema(schema_generator=_ToolSchema)
 
 
@@ -146,12 +139,23 @@ def decide(
     images: dict[str, str],
     *,
     allow_motion: bool,
+    timer: TimeBudget,
 ) -> AgentDecision:
-    contract, schema = _decision_contract(allow_motion, context.perception_remaining > 0)
+    contract, schema = _decision_contract(allow_motion)
     inputs: list[InputItem] = [TextInput(json.dumps(asdict(context), allow_nan=False))]
     for label, image in images.items():
         inputs.extend((TextInput(label), ImageInput(image)))
-    result = thread.run(inputs, output_schema=schema)
+    timer.remaining()
+    turn = thread.turn(inputs, output_schema=schema)
+    # Interrupt this specific turn and drain its result before reusing the thread.
+    interrupt = Timer(max(0.0, timer.seconds - timer.elapsed_seconds), turn.interrupt)
+    interrupt.start()
+    try:
+        result = turn.run()
+    finally:
+        interrupt.cancel()
+        interrupt.join()
+        timer.remaining()
     if result.status.value != "completed" or not result.final_response:
         raise RuntimeError(f"Agent turn ended with status {result.status.value}.")
     return contract.model_validate_json(result.final_response)

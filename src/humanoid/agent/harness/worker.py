@@ -12,8 +12,8 @@ from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness.model import connect, decide, open_codex, start_thread
 from humanoid.agent.harness.robot import RobotTools, image_url
 from humanoid.config.agent import (
-    MAX_AGENT_COMMANDS,
-    MAX_AGENT_PERCEPTION_CALLS,
+    CONSOLE_TASK_SECONDS,
+    DEFAULT_MOTION_TIMEOUT_SECONDS,
     get_agent_endpoint,
     get_agent_policy_config,
 )
@@ -27,6 +27,7 @@ from humanoid.types.agent import (
     DecisionContext,
     MotionArguments,
     ObserveAgain,
+    TimeBudget,
     ToolError,
 )
 from humanoid.types.orchestrator import Mode
@@ -36,31 +37,32 @@ from humanoid.types.tools import CompleteDepth
 def run_task(
     codex: Codex, client: AgentControlClient, task: AgentTask, update: Callable[[str], None]
 ) -> str:
+    budget = TimeBudget(CONSOLE_TASK_SECONDS)
     if client.session_id != task.session_id:
         raise RuntimeError("Agent API restarted. Submit a new task.")
+    thread = start_thread(codex, task.model)
     with closing(RobotTools(client, Robot(ROBOT_CONFIGS[task.robot]))) as tools:
-        thread = start_thread(codex, task.model)
-        return _run_steps(thread, tools, client, task, update)
+        return run_steps(thread, tools, task, update, budget=budget)
 
 
-def _run_steps(
+def run_steps(
     thread: Thread,
     tools: RobotTools,
-    client: AgentControlClient,
     task: AgentTask,
     update: Callable[[str], None],
+    *,
+    budget: TimeBudget,
 ) -> str:
-    count = perception = 0
+    allow_motion = task.mode is Mode.AUTONOMY
+    budget.remaining()
     status, images = tools.observe(task.mode)
     feedback = None
     while True:
-        allow_motion = task.mode is Mode.AUTONOMY and count < MAX_AGENT_COMMANDS
         context = DecisionContext(
             instruction=task.instruction,
             observation=status,
             last_result=feedback,
-            commands_remaining=MAX_AGENT_COMMANDS - count if allow_motion else 0,
-            perception_remaining=MAX_AGENT_PERCEPTION_CALLS - perception,
+            seconds_remaining=budget.remaining(),
             limits=get_agent_policy_config(),
         )
         decision = decide(
@@ -68,19 +70,19 @@ def _run_steps(
             context,
             images,
             allow_motion=allow_motion,
+            timer=budget,
         )
+        budget.remaining()
         command = decision.command
         if command is None:
             return decision.message
         name = command.operation
         args = command.arguments
         if not isinstance(args, MotionArguments):
-            if perception >= MAX_AGENT_PERCEPTION_CALLS:
-                raise RuntimeError("Perception call budget exhausted.")
-            perception += 1
-            if client.observation().mode is not task.mode:
+            if tools.client.observation().mode is not task.mode:
                 raise RuntimeError("Robot mode changed during the task.")
             update(f"{decision.message}\nRunning {name}.")
+            budget.remaining()
             if isinstance(args, ObserveAgain):
                 status, images = tools.observe(task.mode)
                 feedback = None
@@ -96,13 +98,24 @@ def _run_steps(
                 except (ValueError, OSError, RuntimeError, ImportError) as error:
                     feedback = ToolError(operation=name, error=str(error))
             continue
-        if not allow_motion or client.observation().mode is not Mode.AUTONOMY:
+        if not allow_motion or tools.client.observation().mode is not Mode.AUTONOMY:
             raise RuntimeError("Motion requires an active Autonomy task.")
         operation = ControlOperation(name)
         update(f"{decision.message}\nExecuting {operation}.")
-        feedback = client.execute(operation, args.model_dump(mode="json"))
-        update(f"{operation} finished (reached={feedback['reached']}). Observing again.")
-        count += 1
+        try:
+            feedback = tools.client.execute(
+                operation,
+                args.model_dump(mode="json"),
+                timeout=min(DEFAULT_MOTION_TIMEOUT_SECONDS, budget.remaining()),
+            )
+            update(f"{operation} finished (reached={feedback['reached']}). Observing again.")
+        except ValueError as error:
+            feedback = ToolError(operation=name, error=str(error))
+            update(f"{operation} rejected: {error}")
+        except RuntimeError:
+            budget.remaining()
+            raise
+        budget.remaining()
         status, images = tools.observe(task.mode)
 
 

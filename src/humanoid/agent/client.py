@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from humanoid.agent.serialization import decode_frames, decode_state
-from humanoid.config.agent import DEFAULT_AGENT_ENDPOINT
+from humanoid.config.agent import DEFAULT_AGENT_ENDPOINT, DEFAULT_MOTION_TIMEOUT_SECONDS
 from humanoid.types.agent import (
     AgentControlEndpoint,
     AgentRoute,
@@ -121,7 +121,11 @@ class AgentControlClient:
         return decode_frames(payload, started)
 
     def execute(
-        self, operation: ControlOperation, arguments: Mapping[str, object], *, timeout: float = 5.0
+        self,
+        operation: ControlOperation,
+        arguments: Mapping[str, object],
+        *,
+        timeout: float = DEFAULT_MOTION_TIMEOUT_SECONDS,
     ) -> MotionResult:
         if not self._command_lock.acquire(blocking=False):
             raise RuntimeError("A command is already running on this client.")
