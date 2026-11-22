@@ -221,7 +221,7 @@ TRISKEL_CONFIG = RobotConfig(
             simulation=SIMULATED_CAMERA_CONFIG,
             hardware=replace(
                 REALSENSE_CAMERA_CONFIG,
-                serial_number="227423023282",
+                serial_number="242522071106",
                 expected_model=DepthCamera.D435,
             ),
         ),
