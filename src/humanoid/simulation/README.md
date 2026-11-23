@@ -114,3 +114,22 @@ uv run pytest -q tests/simulation/test_privileged_grasp.py
 
 To save an MP4 and a synchronized 25 Hz CSV for each trial, prefix the command
 with `HUMANOID_GRASP_OUTPUT=logs/privileged-grasp/run-1`.
+
+### Privileged single-cube delivery
+
+Run the pinch-point controller from the floor pickup test through approach, lift,
+transport, release and retreat in randomized rooms. The base translates under
+velocity control and the jaws carry the free cube through contact. The routine
+reads the simulated cube, bin and pinch poses. It scores a delivery after a
+one-second settling interval with the cube inside the bin, in contact with its
+floor and clear of both fingers.
+
+```sh
+uv run python -m humanoid.simulation.privileged_cleanup --seeds 0 1 2 3 4 5 --video
+```
+
+The default closure is approximately 0.696 rad for the 36 mm cube. Pass
+`--closure 0.6956521739130438 1.05 2.2028` to compare three jaw targets at
+the same closing speed on each layout. Each trial saves a result and per-step
+contact and pose trace under `logs/privileged-cleanup/`. With ffmpeg installed,
+`--video` also saves the room view and a close-up tracking the cube.

@@ -171,6 +171,16 @@ class ToyCleanupTask(SimulationTask):
             len(deposited) == len(self.toys), {"deposited": deposited, "total": len(self.toys)}
         )
 
+    def overview_camera(self, data: mujoco.MjData) -> mujoco.MjvCamera:
+        camera = mujoco.MjvCamera()
+        left = data.geom("wall_left").xpos
+        front = data.geom("wall_front").xpos
+        camera.lookat[:] = (0, left[1], 0)
+        camera.azimuth = 90
+        camera.elevation = -68
+        camera.distance = max(-2 * left[0], front[1] + 0.4) * 1.4
+        return camera
+
 
 def add_arguments(
     parser: argparse.ArgumentParser,
