@@ -7,7 +7,7 @@ import numpy as np
 from humanoid.agent.harness.observation import PinnedObservation
 from humanoid.perception.depth import DepthCompleter
 from humanoid.types.depth import DepthCamera
-from humanoid.types.tools import CompleteDepth, DepthCompletionResult
+from humanoid.types.tools import CompleteDepth, DepthCompletionResult, DepthSamples, ReadDepth
 
 
 class DepthTools:
@@ -18,6 +18,24 @@ class DepthTools:
 
     def close(self):
         self.resources.close()
+
+    def read_depth(self, request: ReadDepth) -> DepthSamples:
+        self.observation.select(request.observation_id)
+        frames = self.observation.frames
+        assert frames is not None
+        frame = frames.depth_image(request.view)
+        if frame is None:
+            raise ValueError(f"This observation has no {request.view} depth.")
+        height, width = frame.data.shape
+        depths = []
+        for x, y in request.points_xy:
+            if not (0 <= x < width and 0 <= y < height):
+                raise ValueError(f"Depth coordinates must be inside the {width} by {height} image.")
+            sample = int(frame.data[y, x])
+            depths.append(sample * frame.depth_scale if sample else None)
+        return DepthSamples(
+            observation_id=request.observation_id, view=request.view, depths_m=tuple(depths)
+        )
 
     def complete_depth(self, request: CompleteDepth) -> DepthCompletionResult:
         observation_id = request.observation_id

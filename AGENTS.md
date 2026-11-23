@@ -30,6 +30,11 @@ uv run ruff check --fix
   `src/humanoid/config/`; modules in `src/humanoid/types/` should define configuration
   shapes without instantiating them.
 
+# Backwards Compatibility
+
+- Maintain backwards compatibility only when explicitly requested. When changing
+  an interface, update its callers and documentation together.
+
 # Documentation Rules
 
 - Describe configurable behavior using the parameter name and what it controls.

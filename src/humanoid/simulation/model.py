@@ -22,7 +22,7 @@ ROOT_YAW_JOINT = "simulation_root_yaw"
 ROOT_JOINT_NAMES = (ROOT_X_JOINT, ROOT_Y_JOINT, ROOT_YAW_JOINT)
 
 _PACKAGE_URI_PATTERN = re.compile(r"package://([^/]+)/([^\"']+)")
-_ROBOT_CONTACT_TYPE = 1
+ROBOT_CONTACT_TYPE = 1
 _EXTERNAL_CONTACT_TYPE = 2
 
 
@@ -101,8 +101,8 @@ def build_mujoco_spec(
         _add_ideal_planar_root(spec, root_link_name, robot, config)
     _add_robot_actuators(spec, robot, config)
     _add_mimic_constraints(spec, urdf_xml)
-    if config.scene is SimulationScene.TOY_CLEANUP:
-        scene_file = Path(__file__).with_name("scenes") / "toy_cleanup.xml"
+    if config.scene is not SimulationScene.EMPTY:
+        scene_file = Path(__file__).with_name("scenes") / f"{config.scene.value}.xml"
         scene = mujoco.MjSpec.from_file(str(scene_file))
         spec.attach(scene, prefix="", frame=spec.worldbody.add_frame())
     return spec
@@ -116,7 +116,7 @@ def _configure_robot_contacts(
     # configured with the reciprocal external contact bits.
     for geom in spec.geoms:
         if geom.contype or geom.conaffinity:
-            geom.contype = _ROBOT_CONTACT_TYPE
+            geom.contype = ROBOT_CONTACT_TYPE
             geom.conaffinity = _EXTERNAL_CONTACT_TYPE
             geom.group = 3  # Hide collision proxies from camera images.
 

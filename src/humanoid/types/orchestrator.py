@@ -140,6 +140,7 @@ class EventKind(StrEnum):
     REQUEST_KEYBOARD = "request_keyboard"
     REQUEST_SYSTEM = "request_system"
     REQUEST_AUTONOMY = "request_autonomy"
+    RELEASE_AUTONOMY = "release_autonomy"
     REQUEST_IDLE = "request_idle"
     COMPLETE = "complete"
     START_LOGGING = "start_logging"

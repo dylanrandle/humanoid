@@ -1,3 +1,4 @@
+import base64
 import json
 from threading import Event
 from typing import cast
@@ -8,6 +9,7 @@ from PIL import Image
 from pydantic import ValidationError
 
 from humanoid.agent.harness import model, worker
+from humanoid.agent.harness.review import ExplorationReview
 from humanoid.agent.harness.service import AgentConsole
 from humanoid.config.agent import (
     AGENT_MOTION_LIMITS,
@@ -32,6 +34,7 @@ from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotName
 from humanoid.types.segmentation import MaskId, MaskProposal, SegmentationResult
 from humanoid.types.tools import CompleteDepth, DepthCompletionResult, SegmentAtPoint
+from humanoid.types.trial import TaskScore
 
 
 def decision_reply(message, operation=None, arguments=None):
@@ -218,6 +221,56 @@ def test_idle_segmentation_passes_numbered_mask_to_next_turn(setup_worker):
     assert decision.call_args.args[2]["Perception result for view"].startswith("data:image/jpeg;")
     assert not decision.call_args.kwargs["allow_motion"]
     client.execute.assert_not_called()
+
+
+def test_exploration_review_pairs_inputs_decisions_and_results(tmp_path, setup_worker):
+    client, decide, tools = setup_worker
+    jpeg = worker.image_url(Image.new("RGB", (8, 8), "blue"))
+    inputs = {"base RGB": jpeg}
+    tools.observe.return_value = observation_status(), inputs
+    tools.segmentation.segment.return_value = (
+        SegmentationResult(observation_id=ObservationId("view"), masks=()),
+        Image.new("RGB", (8, 8), "green"),
+    )
+    decide.side_effect = [
+        decision_reply(
+            "Inspect </script>",
+            "segment_at_point",
+            {
+                "observation_id": "view",
+                "point_xy": [1, 2],
+                "return_alternatives": False,
+            },
+        ),
+        decision_reply("Hold", "hold", {"duration": 1}),
+        decision_reply("Finished"),
+    ]
+    seed = 7
+    folder = tmp_path / f"explore-{seed}"
+    with ExplorationReview(folder, seed) as review:
+        worker.run_steps(
+            Mock(),
+            tools,
+            AgentTask("Explore", "vision", Mode.AUTONOMY, "sim", RobotName.TRISKEL),
+            Mock(),
+            budget=TimeBudget(30),
+            review=review,
+        )
+        review.finish("agent_finished", TaskScore(False, {}))
+    page = (folder / "index.html").read_text()
+    data = json.loads(page.split('type="application/json">')[1].split("</script>")[0])
+    first, second, final = data["turns"]
+    assert data["status"] == "agent_finished" and data["seed"] == seed
+    assert first["decision"]["message"] == "Inspect </script>"
+    assert first["decision"]["command"]["arguments"]["point_xy"] == [1, 2]
+    assert list(first["images"]) == ["base RGB"]
+    assert (folder / first["images"]["base RGB"]).read_bytes() == base64.b64decode(
+        jpeg.split(",")[1]
+    )
+    assert first["result_image"] == second["images"]["Perception result for view"]
+    assert second["context"]["last_result"] == first["result"]
+    assert second["result"] == client.execute.return_value == final["context"]["last_result"]
+    assert final["decision"]["command"] is None
 
 
 @pytest.mark.parametrize("mode", [Mode.IDLE, Mode.AUTONOMY])

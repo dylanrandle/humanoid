@@ -13,8 +13,14 @@ from humanoid.agent.harness.observation import PinnedObservation
 from humanoid.agent.harness.segmentation import SegmentationTools
 from humanoid.perception.masks import MaskStore
 from humanoid.robots.base import Robot
-from humanoid.types.agent import CameraStatus, HarnessRobot, ObservationStatus, PoseRecord
-from humanoid.types.camera import CameraView
+from humanoid.types.agent import (
+    CameraStatus,
+    HarnessRobot,
+    ObservationStatus,
+    OpticalCalibration,
+    PoseRecord,
+)
+from humanoid.types.camera import CameraImage, CameraView
 from humanoid.types.orchestrator import Mode
 
 
@@ -45,6 +51,16 @@ class RobotTools:
         finally:
             self.segmentation.close()
 
+    def _calibration(
+        self, frame: CameraImage, joints: np.ndarray, base: pin.SE3 | None
+    ) -> OpticalCalibration:
+        pose = self.robot.get_frame_pose(frame.frame_id, joints)
+        return OpticalCalibration(
+            optical_frame=frame.frame_id,
+            camera_pose=pose_record(base.inverse() * pose if base is not None else pose),
+            intrinsics=asdict(frame.intrinsics),
+        )
+
     def capture(self, mode: Mode) -> tuple[ObservationStatus, dict[str, CameraView]]:
         captures = self.client.capture()
         primary = next(iter(captures))
@@ -65,17 +81,17 @@ class RobotTools:
                 raise ValueError(
                     f"Joint feedback does not match the {self.robot.config.name} model."
                 )
-            pose = self.robot.get_frame_pose(view.rgb.frame_id, joints)
             base = self.robot.get_base_pose(joints)
             cameras[name] = CameraStatus(
-                optical_frame=view.rgb.frame_id,
+                **self._calibration(view.rgb, joints, base),
                 model=view.registered.camera_model if view.registered else None,
                 observation_id=self.observation.pin(view, additional=bool(cameras)),
                 frame_number=view.rgb.frame_number,
                 device_timestamp=view.rgb.device_timestamp,
                 timestamp_domain=view.rgb.timestamp_domain,
-                camera_pose=pose_record(base.inverse() * pose if base is not None else pose),
-                intrinsics=asdict(view.rgb.intrinsics),
+                raw_depth=self._calibration(view.depth, joints, base)
+                if view.depth is not None
+                else None,
                 registered_depth_available=view.registered is not None,
             )
         q = measured.robot_state.joint_positions

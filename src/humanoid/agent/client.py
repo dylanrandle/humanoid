@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping
+from http import HTTPStatus
 from typing import override
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -54,6 +55,8 @@ class AgentControlClient:
                 return json.load(response)
         except HTTPError as error:
             detail = json.loads(error.read()).get("error", "Control request failed.")
+            if path == AgentRoute.COMMANDS and error.code == HTTPStatus.BAD_REQUEST:
+                raise ValueError(detail) from None
             raise RuntimeError(detail) from None
         except (URLError, ConnectionError, TimeoutError) as error:
             raise RuntimeError("Robot control service is unreachable.") from error
@@ -100,6 +103,11 @@ class AgentControlClient:
     def capture(self) -> CameraCaptures:
         started = time.perf_counter()
         payload = self._request(AgentRoute.CAPTURE)
+        if any(
+            record["camera"].get(HttpKey.DEPTH_VIEW) != DepthView.BOTH
+            for record in payload["views"].values()
+        ):
+            raise ValueError("Camera capture requires both native and registered depth views.")
         return {
             name: (
                 self._decode_observation({**record, "session_id": payload["session_id"]}, started),
@@ -151,6 +159,8 @@ class AgentControlClient:
                 state = CommandState(status["state"])
                 if state is CommandState.COMPLETED:
                     return status["result"]
+                if state is CommandState.REJECTED:
+                    raise ValueError(status["error"] or "Command rejected.")
                 if state not in (CommandState.QUEUED, CommandState.RUNNING):
                     raise RuntimeError(status["error"] or f"Command {state}.")
                 if time.perf_counter() >= deadline:
@@ -164,6 +174,25 @@ class AgentControlClient:
         finally:
             self._current_id = None
             self._command_lock.release()
+
+    def idle(self) -> None:
+        """Release Autonomy and wait for feedback confirming it is no longer active."""
+        self.hold()
+        session = self.session_id
+        deadline = time.monotonic() + 3
+        while True:
+            self._request(AgentRoute.IDLE, {"session_id": session})
+            try:
+                mode = self.observation().mode
+            except RuntimeError as exc:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Autonomy release requested but unconfirmed.") from exc
+                mode = None
+            if mode is not None and mode is not Mode.AUTONOMY:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Timed out waiting for Autonomy to be released.")
+            time.sleep(0.05)
 
     def hold(self) -> None:
         command_id = self._current_id

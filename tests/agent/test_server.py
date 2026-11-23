@@ -1,6 +1,8 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from dataclasses import replace
 from http import HTTPStatus
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -10,6 +12,7 @@ import pytest
 from humanoid.agent.client import AgentControlClient
 from humanoid.agent.server import AgentControlServer
 from humanoid.types.agent import AgentControlEndpoint, AgentRoute, ControlOperation
+from humanoid.types.orchestrator import Mode
 
 
 @pytest.fixture
@@ -46,7 +49,7 @@ def test_http_submit_returns_before_execution_and_cancel_works(connection):
 
 @pytest.mark.parametrize(
     "query",
-    ["depth_view=both", "registered=1", "depth_view=", "depth_view=native&depth_view=aligned"],
+    ["depth_view=unknown", "registered=1", "depth_view=", "depth_view=native&depth_view=aligned"],
 )
 def test_camera_rejects_unsupported_depth_selectors(connection, query):
     client, _ = connection
@@ -101,6 +104,29 @@ def test_old_sessions_cannot_submit(connection):
     with pytest.raises(RuntimeError, match="session has expired"):
         client._request(AgentRoute.COMMANDS, request)
     assert not service._commands
+
+
+def test_idle_sends_release_while_joint_feedback_is_stale(service):
+    sample = service.observation()
+    request_count = 0
+
+    def release():
+        nonlocal request_count
+        request_count += 1
+        if request_count > 1:
+            # Fresh feedback arrives after the operator has taken control.
+            state = replace(sample.robot_state, timestamp=time.perf_counter())
+            service.observe(replace(sample, robot_state=state, mode=Mode.KEYBOARD))
+
+    with closing(AgentControlServer(service, release)) as server:
+        server.start()
+        host, port = server.server.server_address[:2]
+        with closing(AgentControlClient(AgentControlEndpoint(f"http://{host}:{port}"))) as client:
+            assert client.session_id == service.session_id
+            service.observe(replace(sample, robot_state=replace(sample.robot_state, timestamp=0)))
+            client.idle()
+            assert request_count > 1
+            assert client.observation().mode is Mode.KEYBOARD
 
 
 def test_client_cancellation_does_not_wait_for_motion_completion(connection):

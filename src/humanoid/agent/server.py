@@ -2,6 +2,7 @@
 
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import asdict
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,7 +20,9 @@ from humanoid.types.camera import DepthView
 from humanoid.types.http import HttpKey
 
 
-def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
+def _handler(
+    service: AgentControlService, request_idle: Callable[[], None] | None
+) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def setup(self) -> None:
             super().setup()
@@ -56,7 +59,12 @@ def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
                 self._get(path, url.query)
                 return
             payload = self._body()
-            if path == AgentRoute.COMMANDS:
+            if path == AgentRoute.IDLE and request_idle is not None:
+                if payload != {"session_id": service.session_id}:
+                    raise RuntimeError("Control session has expired.")
+                request_idle()
+                self._reply(HTTPStatus.ACCEPTED, {})
+            elif path == AgentRoute.COMMANDS:
                 required = {
                     "session_id",
                     "command_id",
@@ -112,7 +120,7 @@ def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
                             name: {
                                 "state": encode_state(obs.robot_state),
                                 "mode": obs.mode,
-                                "camera": encode_frames(frames),
+                                "camera": encode_frames(frames, depth_view=DepthView.BOTH),
                             }
                             for name, (obs, frames) in captures.items()
                         },
@@ -165,9 +173,13 @@ def _handler(service: AgentControlService) -> type[BaseHTTPRequestHandler]:
 
 
 class AgentControlServer:
-    def __init__(self, service: AgentControlService) -> None:
+    def __init__(
+        self, service: AgentControlService, request_idle: Callable[[], None] | None = None
+    ) -> None:
         self.service = service
-        self.server = ThreadingHTTPServer((AGENT_HOST, service.config.port), _handler(service))
+        self.server = ThreadingHTTPServer(
+            (AGENT_HOST, service.config.port), _handler(service, request_idle)
+        )
         self.thread = threading.Thread(
             target=self.server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
         )

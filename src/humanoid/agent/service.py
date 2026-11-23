@@ -73,7 +73,7 @@ class AgentControlService:
         with self._lock:
             registered = self._registered.get(self._primary)
         if (
-            depth_view is DepthView.ALIGNED
+            depth_view is not DepthView.NATIVE
             and registered
             and registered.rgb.serial_number == frames.rgb.serial_number
             and 0

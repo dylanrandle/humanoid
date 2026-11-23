@@ -9,7 +9,11 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+
+import lcm
 
 from humanoid.config import ROBOT_CONFIG
 from humanoid.constants import DEFAULT_LCM_URL, Topic
@@ -27,7 +31,8 @@ logger = get_logger(__name__)
 DEFAULT_RATE_HZ = 10.0
 SUBPROCESS_WAIT_TIMEOUT_SEC = 2.0
 EXIT_SUCCESS = 0
-LCM_LOGGER_COMMAND = "lcm-logger"
+# Signal the recorder itself. The wheel's console script spawns it as a child.
+LCM_LOGGER_COMMAND = str((Path(lcm.LCM_BIN_DIR) / "lcm-logger").resolve())
 ALL_CHANNELS_PATTERN = ".*"
 
 
@@ -81,6 +86,24 @@ class RobotLoggerNode(Node):
             elif kind is EventKind.STOP_LOGGING:
                 self._stop_logging()
 
+    @contextmanager
+    def recording(self) -> Iterator[str]:
+        """Record a locally owned session on this node's bus and verify the final flush."""
+        if self.process is not None:
+            raise RuntimeError("The LCM logger is already in use.")
+        self._start_logging()
+        started = self.logging_status
+        if started.state is not LoggingState.RUNNING or not started.file_name:
+            raise RuntimeError(started.error or "The LCM logger did not start.")
+        try:
+            yield started.file_name
+        finally:
+            self._report_unexpected_exit()
+            if self.process is not None:
+                self._stop_logging()
+            if self.logging_status.state is not LoggingState.STOPPED:
+                raise RuntimeError(self.logging_status.error or "The LCM logger did not stop.")
+
     def _start_logging(self) -> None:
         """Spawn the lcm-logger subprocess."""
         if self.process is not None:
@@ -123,7 +146,7 @@ class RobotLoggerNode(Node):
             logger.info("lcm-logger subprocess spawned successfully.")
             self._publish_status(LoggingState.RUNNING, file_name=filename)
         except FileNotFoundError:
-            error = "lcm-logger was not found in PATH."
+            error = f"LCM recorder not found at {LCM_LOGGER_COMMAND}."
             logger.error(error)
             self._publish_status(LoggingState.FAILED, error=error)
         except Exception as exc:

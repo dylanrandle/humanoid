@@ -61,6 +61,15 @@ def test_default_rate_is_one_hundred_hz(node):
 
 
 class TestTransitions:
+    @pytest.mark.parametrize("mode", list(Mode))
+    def test_release_autonomy_preserves_operator_mode(self, node, mode):
+        node.mode = mode
+        if mode is Mode.HOMING:
+            node.return_mode = Mode.OCULUS
+        node._handle_event(_event(EventKind.RELEASE_AUTONOMY))
+        assert node.mode is (Mode.IDLE if mode is Mode.AUTONOMY else mode)
+        assert node.return_mode is (Mode.OCULUS if mode is Mode.HOMING else None)
+
     def test_request_oculus_from_idle(self, node):
         node._handle_event(_event(EventKind.REQUEST_OCULUS))
         assert node.mode is Mode.OCULUS

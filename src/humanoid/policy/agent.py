@@ -4,6 +4,7 @@ import copy
 import math
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future
 
 import numpy as np
@@ -37,7 +38,14 @@ class AgentPolicy(Policy):
 
     mode = Mode.AUTONOMY
 
-    def __init__(self, robot: Robot, *, config: AgentPolicyConfig | None = None) -> None:
+    def __init__(
+        self,
+        robot: Robot,
+        *,
+        config: AgentPolicyConfig | None = None,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self._clock = clock
         self._lock = threading.RLock()
         self._pending_command: PendingCommand | None = None
         self._active_result: Future[MotionResult] | None = None
@@ -50,6 +58,9 @@ class AgentPolicy(Policy):
         self._hold_pending = True
         self._gripper_target: NDArray[np.float64] | None = None
         self._hold_tool: pin.SE3 | None = None
+
+    def _now(self) -> float:
+        return time.perf_counter() if self._clock is None else self._clock()
 
     def submit(
         self, command: MotionCommand, *, deadline: float | None = None
@@ -94,9 +105,7 @@ class AgentPolicy(Policy):
         if pending is None or not pending.result.set_running_or_notify_cancel():
             return
         try:
-            command_expired = (
-                pending.deadline is not None and time.perf_counter() >= pending.deadline
-            )
+            command_expired = pending.deadline is not None and self._now() >= pending.deadline
             if command_expired:
                 raise CommandExpiredError("Policy command expired before execution.")
             self.start_command(pending.command, observation)
@@ -132,7 +141,7 @@ class AgentPolicy(Policy):
         q = observation.robot_state.joint_positions
         if q.shape != (self.robot.model.nq,) or not np.isfinite(q).all():
             raise RuntimeError("Joint feedback does not match the configured robot.")
-        age = time.perf_counter() - observation.robot_state.timestamp
+        age = self._now() - observation.robot_state.timestamp
         if not 0 <= age <= self.config.feedback_timeout:
             raise RuntimeError("Robot feedback is stale; no motion is permitted.")
 
@@ -147,7 +156,7 @@ class AgentPolicy(Policy):
         initial, target, base_target, gripper = self._targets(command, observation)
         self._motion = AgentMotion(
             duration=duration,
-            started_at=time.perf_counter(),
+            started_at=self._now(),
             initial=initial,
             target=target,
             base_target=base_target,
@@ -158,7 +167,7 @@ class AgentPolicy(Policy):
     def advance_command(self, observation: Observation) -> tuple[Action, MotionResult | None]:
         motion = self._motion
         assert motion is not None
-        elapsed = time.perf_counter() - motion.started_at
+        elapsed = self._now() - motion.started_at
         grip_time = min(elapsed, motion.duration)
         self._gripper_target = motion.initial_gripper + np.clip(
             motion.gripper - motion.initial_gripper,
