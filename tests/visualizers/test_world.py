@@ -25,7 +25,15 @@ def test_simulation_preserves_live_scene_and_robot(name):
         q = engine.read_robot_state(0).joint_positions
         world = ViewerWorld(engine.robot, scene, Runtime.SIM)
         model = world.model
+        root = engine.robot.get_root_q_slice()
+        if root is not None:
+            q[root] = [2, 1, 0, 1]
         world.apply(engine.simulation_state(), q, RobotToolCommand(0, pin.SE3.Identity()))
+        if world.binding.root is not None:
+            addresses = list(world.binding.root.qpos_addresses)
+            np.testing.assert_allclose(
+                world.joint_ghost.qpos[addresses], engine.data.qpos[addresses]
+            )
         np.testing.assert_array_equal(world.data.qpos, engine.data.qpos)
         np.testing.assert_array_equal(world.data.qvel, engine.data.qvel)
         assert world.data.time == engine.data.time
@@ -71,12 +79,17 @@ def test_hardware_measured_base_gripper_and_modeled_optics():
     joint_ids, tool_ids = world.joint_geoms, world.tool_geoms
     wrist_positions = world.tool_ghost.geom_xpos[tool_ids].copy()
     joints = world.joint_ghost.geom_xpos[joint_ids].copy()
-    # Translating only the measured base moves the base-relative tool command
-    # by the same amount while the commanded joint ghost stays put.
+    np.testing.assert_allclose(
+        world.joint_ghost.qpos[list(world.binding.root.qpos_addresses)], [0.5, -0.2, np.pi / 2]
+    )
+    np.testing.assert_allclose(world.joint_ghost.joint("gripper_1").qpos, [0.2])
+    # Both ghosts follow the measured base even while the command stays fixed.
     moved = q.copy()
     moved[root.start] += 0.4
     world.apply(replace(state, joint_positions=moved), joint_target, tool)
     np.testing.assert_allclose(
         world.tool_ghost.geom_xpos[tool_ids], wrist_positions + np.array([0.4, 0, 0]), atol=1e-8
     )
-    np.testing.assert_allclose(world.joint_ghost.geom_xpos[joint_ids], joints)
+    np.testing.assert_allclose(
+        world.joint_ghost.geom_xpos[joint_ids], joints + np.array([0.4, 0, 0]), atol=1e-8
+    )

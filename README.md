@@ -76,8 +76,9 @@ LCM network.
 
 Run `uv run viz` on your Mac to open the native MuJoCo viewer for a local stack.
 Use `uv run viz --host triskel` for the stack on Triskel over SSH.
-The viewer follows hardware, simulation, and replay. Amber shows commanded
-joints, blue shows the commanded tool, and an arrow shows the base target.
+The viewer follows hardware, simulation, and replay. The amber ghost shows
+commanded joints at the measured base position and heading. Blue shows the
+commanded tool, and an arrow marks the commanded base position and heading.
 
 Simulation shows the selected scene and its moving objects. Hardware feedback
 positions the robot on a reference floor. Before the first state arrives, the

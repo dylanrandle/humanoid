@@ -72,7 +72,7 @@ class ViewerWorld:
             if model.eq_type[i] == mujoco.mjtEq.mjEQ_JOINT and model.eq_obj2id[i] >= 0
         ]
 
-    def _pose(self, data: mujoco.MjData, q: np.ndarray) -> None:
+    def _pose(self, data: mujoco.MjData, q: np.ndarray, *, at_measured_base: bool = False) -> None:
         if q.shape != (self.robot.model.nq,) or not np.isfinite(q).all():
             raise ValueError(f"Configuration does not match {self.robot.config.name}.")
         for address, index in self.joints:
@@ -80,8 +80,12 @@ class ViewerWorld:
         root = self.binding.root
         root_slice = self.robot.get_root_q_slice()
         if root is not None and root_slice is not None:
-            x, y, c, s = q[root_slice]
-            data.qpos[list(root.qpos_addresses)] = [x, y, math.atan2(s, c)]
+            addresses = list(root.qpos_addresses)
+            if at_measured_base:
+                data.qpos[addresses] = self.data.qpos[addresses]
+            else:
+                x, y, c, s = q[root_slice]
+                data.qpos[addresses] = [x, y, math.atan2(s, c)]
         # Kinematic playback does not step the solver that drives mimic joints in simulation.
         for target, source, (offset, scale) in self.mimics:
             data.qpos[target] = offset + scale * data.qpos[source]
@@ -107,7 +111,7 @@ class ViewerWorld:
         )
         self.show_tool = tool is not None and VISUALIZER_CONFIG.show_commanded_tool_pose
         if joint_target is not None and self.show_joints:
-            self._pose(self.joint_ghost, joint_target)
+            self._pose(self.joint_ghost, joint_target, at_measured_base=True)
         if tool is not None and self.show_tool:
             if not np.isfinite(tool.pose.homogeneous).all():
                 raise ValueError("Invalid tool command pose.")

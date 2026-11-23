@@ -300,8 +300,11 @@ class RobotControllerNode(Node):
     def _compute_base_control(self, dt: float) -> ControlResult | None:
         if self.base_controller is None or self.current_base_command is None:
             return None
-        if self.current_mode is Mode.AUTONOMY and self._feedback_state is not None:
-            self.base_controller.update_state(self._feedback_state.joint_positions)
+        if self.current_mode in (Mode.KEYBOARD, Mode.OCULUS, Mode.AUTONOMY):
+            state = self._fresh_feedback(self._clock())
+            if state is None:
+                return None
+            self.base_controller.update_state(state.joint_positions)
         return self.base_controller.compute_control(self.current_base_command.pose, dt=dt)
 
     def _receive_mode(self) -> bool:
@@ -320,17 +323,19 @@ class RobotControllerNode(Node):
         self.current_mode = mode_msg.mode
         return agent_handoff
 
+    def _fresh_feedback(self, now: float) -> RobotState | None:
+        state = self._feedback_state
+        if state is not None and 0 <= now - state.timestamp <= COMMAND_TIMEOUT_SECONDS:
+            return state
+        return None
+
     def _prepare_agent_feedback(self) -> bool:
         """Require fresh feedback and expire tool/base references in autonomy mode."""
-        state = self._feedback_state
         now = self._clock()
-        feedback_is_fresh = (
-            state is not None and 0 <= now - state.timestamp <= COMMAND_TIMEOUT_SECONDS
-        )
-        if not feedback_is_fresh:
+        state = self._fresh_feedback(now)
+        if state is None:
             self._tool_holding = False
             return False  # Driver watchdog stops velocities if feedback disappears.
-        assert state is not None
         q = state.joint_positions
 
         tool_command_expired = (

@@ -1,6 +1,9 @@
+from unittest.mock import Mock, call
+
 import mujoco
 import numpy as np
 import pinocchio as pin
+import pytest
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.robots.base import Robot
@@ -8,6 +11,7 @@ from humanoid.types.homing import HomingPreset
 from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotBaseCommand, RobotName, RobotState, RobotToolCommand
 from humanoid.types.simulation import SimulationScene
+from humanoid.visualizers import native
 from humanoid.visualizers.native import draw_commands
 from humanoid.visualizers.world import ViewerWorld
 
@@ -40,3 +44,36 @@ def test_commands_use_native_decorations_and_leave_model_cameras_available():
     assert {
         g.objid for g in scene.geoms[: scene.ngeom] if g.objtype == mujoco.mjtObj.mjOBJ_CAMERA
     } == set(range(model.ncam))
+
+
+def test_replacement_waits_for_native_window_teardown(monkeypatch):
+    world = Mock()
+    handle = Mock()
+    busy = RuntimeError("another MuJoCo viewer is already open")
+    launch = Mock(side_effect=[busy, busy, handle])
+    monkeypatch.setattr(mujoco.viewer, "launch_passive", launch)
+    wait = Mock()
+    monkeypatch.setattr(native.time, "sleep", wait)
+
+    assert native._launch_viewer(world, replacing=True) is handle
+    wait.assert_has_calls([call(native._REFRESH_SECONDS), call(native._REFRESH_SECONDS)])
+    launch.assert_called_with(world.model, world.data)
+
+
+@pytest.mark.parametrize(
+    ("replacing", "error", "elapsed"),
+    [
+        (False, "another MuJoCo viewer is already open", 0),
+        (True, "failed to initialize viewer", 0),
+        (True, "another MuJoCo viewer is already open", native._VIEWER_CLOSE_TIMEOUT_SECONDS),
+    ],
+)
+def test_launch_reports_first_window_other_errors_and_timeout(
+    monkeypatch, replacing, error, elapsed
+):
+    launch = Mock(side_effect=RuntimeError(error))
+    monkeypatch.setattr(mujoco.viewer, "launch_passive", launch)
+    monkeypatch.setattr(native.time, "monotonic", Mock(side_effect=[0, elapsed]))
+    with pytest.raises(RuntimeError, match=error):
+        native._launch_viewer(Mock(), replacing=replacing)
+    launch.assert_called_once()

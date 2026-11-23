@@ -169,8 +169,9 @@ def active_controller():
 
 @pytest.fixture
 def active_mobile_controller():
-    c = _make_controller(TRISKEL_CONFIG)
+    c = _make_controller(TRISKEL_CONFIG, clock=lambda: 0.0)
     _activate(c)
+    c._feedback_state = _make_state(c.robot.model.nq, c.robot.model.nv)
     return c
 
 
@@ -560,22 +561,56 @@ def test_active_expiry_holds_each_source_and_requires_fresh_feedback():
     assert not controller._prepare_agent_feedback()
 
 
-def test_active_base_controller_receives_measured_odometry():
-    controller = _make_controller(TRISKEL_CONFIG)
-    controller.current_mode = Mode.AUTONOMY
-    q = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy()
-    q[0] = 0.7
-    controller._feedback_state = RobotState(
-        timestamp=1,
-        joint_positions=q,
-        joint_velocities=np.zeros(17),
-        actuator_temperatures=np.zeros(18),
-    )
-    controller.current_base_command = RobotBaseCommand(timestamp=1, pose=pin.SE3.Identity())
-    controller._compute_base_control(0.005)
-    np.testing.assert_array_equal(
-        cast(MagicMock, controller.base_controller).update_state.call_args.args[0], q
-    )
+@pytest.mark.parametrize("mode", [Mode.KEYBOARD, Mode.OCULUS, Mode.AUTONOMY])
+def test_base_keeps_correcting_until_measured_pose_reaches_target(mode: Mode):
+    now = 1.0
+    with (
+        patch("humanoid.nodes.robot.controller.Subscriber") as subscriber,
+        patch("humanoid.nodes.robot.controller.Publisher") as publisher,
+    ):
+        controller = RobotControllerNode(TRISKEL_CONFIG, clock=lambda: now)
+    controller.current_mode = mode
+    home = TRISKEL_CONFIG.homing_presets[HomingPreset.HOME]
+    state = _make_state(controller.robot.model.nq, controller.robot.model.nv)
+    state.joint_positions = home.copy()
+    target = controller.robot.get_base_pose(home)
+    assert target is not None
+    target = target.copy()
+    # Small enough for the controller's predicted pose to reach it in one tick.
+    distance = 0.0001
+    target.translation[0] += distance
+    messages = {
+        Topic.ROBOT_STATE: state,
+        Topic.ROBOT_BASE_COMMAND: RobotBaseCommand(timestamp=now, pose=target),
+    }
+    subscriber.return_value.receive.side_effect = messages.get
+
+    for measured_x in (0.0, 0.0, distance / 2, distance):
+        state.timestamp = now
+        state.joint_positions[0] = measured_x
+        publisher.return_value.publish.reset_mock()
+        controller.step()
+        publisher.return_value.publish.assert_called_once()
+        command = publisher.return_value.publish.call_args.args[0]
+        expected_vx = (distance - measured_x) / TRISKEL_CONTROLLER_DT
+        assert command.joint_velocities[0] == pytest.approx(expected_vx)
+        messages.pop(Topic.ROBOT_BASE_COMMAND, None)
+        now += TRISKEL_CONTROLLER_DT
+
+
+@pytest.mark.parametrize("mode", [Mode.KEYBOARD, Mode.OCULUS])
+@pytest.mark.parametrize("feedback", ["missing", "stale"])
+def test_teleop_base_waits_for_fresh_odometry(mode: Mode, feedback: str):
+    controller = _make_controller(TRISKEL_CONFIG, clock=lambda: 1.0)
+    controller.current_mode = mode
+    messages = {Topic.ROBOT_BASE_COMMAND: _make_base_cmd()}
+    if feedback == "stale":
+        messages[Topic.ROBOT_STATE] = _make_state(
+            controller.robot.model.nq, controller.robot.model.nv
+        )
+    cast(MagicMock, controller.subscriber).receive.side_effect = messages.get
+    controller.step()
+    cast(MagicMock, controller.publisher).publish.assert_not_called()
 
 
 def test_expired_tool_latches_hold_instead_of_following_sag():
