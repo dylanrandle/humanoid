@@ -7,7 +7,7 @@ import pinocchio as pin
 import pytest
 
 from humanoid.config.homing import HOMING_POLICY_CONFIG
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.types.action import Action
 from humanoid.types.camera import CameraEncoding, CameraImage, CameraIntrinsics, camera_topics
@@ -85,6 +85,7 @@ class TestInit:
         ):
             RealtimeEnvironment(action_topics=_TEST_TOPICS, subscriptions=_ALL_FEEDBACK)
         mock_sub.assert_called_once_with(
+            url=DEFAULT_LCM_URL,
             topics=[
                 Topic.ROBOT_STATE,
                 Topic.ROBOT_JOINT_COMMAND,

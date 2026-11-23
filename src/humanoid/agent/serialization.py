@@ -69,7 +69,7 @@ def encode_frames(frames: CameraFrames, *, depth_view: DepthView | str = DepthVi
         }
 
     view = DepthView(depth_view)
-    reg = frames.registered if view is DepthView.ALIGNED else None
+    reg = frames.registered if view is not DepthView.NATIVE else None
     depth = frames.depth
     if view is DepthView.ALIGNED:
         depth = reg.image if reg else None
@@ -82,6 +82,7 @@ def encode_frames(frames: CameraFrames, *, depth_view: DepthView | str = DepthVi
         payload[HttpKey.REGISTERED] = {
             HttpKey.CAMERA_MODEL: reg.camera_model,
             HttpKey.RGB_FRAME_NUMBER: reg.rgb_frame_number,
+            **({"image": encode(reg.image)} if view is DepthView.BOTH else {}),
         }
     return payload
 
@@ -114,10 +115,21 @@ def decode_frames(payload: dict, received_after: float) -> CameraView:
     view = DepthView(payload[HttpKey.DEPTH_VIEW])
     rgb = decode(payload[HttpKey.RGB])
     depth = decode(payload[HttpKey.DEPTH]) if payload[HttpKey.DEPTH] is not None else None
-    if view is DepthView.NATIVE:
-        if reg is not None or depth is None:
-            raise ValueError("Native depth requires a depth image without registration metadata.")
-        return CameraFrames(rgb=rgb, depth=depth)
+    if view is not DepthView.ALIGNED:
+        if depth is None or depth.encoding is not CameraEncoding.DEPTH16:
+            raise ValueError("Expected a native depth image.")
+        if view is DepthView.NATIVE and reg is not None:
+            raise ValueError("Unexpected registration metadata in a native-only view.")
+        registered = (
+            None
+            if reg is None
+            else RegisteredDepth(
+                camera_model=DepthCamera(reg[HttpKey.CAMERA_MODEL]),
+                rgb_frame_number=reg[HttpKey.RGB_FRAME_NUMBER],
+                image=decode(reg["image"]),
+            )
+        )
+        return CameraFrames(rgb=rgb, depth=depth, registered=registered)
     if (reg is None) != (depth is None):
         raise ValueError("Aligned depth and its registration metadata must be supplied together.")
     registered = None

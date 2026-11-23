@@ -6,11 +6,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from humanoid.types.camera import ObservationId
+from humanoid.types.camera import DepthKind, ObservationId
 from humanoid.types.segmentation import MAX_TOKENS, Box, MaskId, Pixel
 
 
 class PerceptionOperation(StrEnum):
+    READ_DEPTH = "read_depth"
     COMPLETE_DEPTH = "complete_depth"
     OBSERVE_AGAIN = "observe_again"
 
@@ -51,6 +52,20 @@ class CompleteDepth(ToolModel):
 
     observation_id: ObservationId
     points_xy: tuple[Pixel, ...] = Field(default_factory=tuple)
+
+
+class ReadDepth(ToolModel):
+    observation_id: ObservationId
+    view: DepthKind
+    points_xy: Annotated[tuple[Pixel, ...], Field(min_length=1)]
+
+
+@dataclass(frozen=True, kw_only=True)
+class DepthSamples:
+    observation_id: ObservationId
+    view: DepthKind
+    depths_m: tuple[float | None, ...]
+    operation: Literal[PerceptionOperation.READ_DEPTH] = PerceptionOperation.READ_DEPTH
 
 
 @dataclass(frozen=True, kw_only=True)

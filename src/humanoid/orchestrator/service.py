@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 
 from humanoid.agent.client import AgentControlClient
-from humanoid.agent.harness.service import AgentConsole
+from humanoid.agent.harness.console import AgentConsole
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.agent import get_agent_endpoint
 from humanoid.config.application_logging import get_application_log_path
@@ -18,6 +18,7 @@ from humanoid.orchestrator.constants import (
     CONTROLLED_PROCESS_NAMES,
     EXTERNAL_STACK_ERROR,
     INPUT_PROCESSES,
+    LOGGING_ACKNOWLEDGEMENT_TIMEOUT_SECONDS,
     MODE_TRANSITION_POLL_INTERVAL_SECONDS,
     MODE_TRANSITION_TIMEOUT_SECONDS,
     PARAMETERIZED_REQUEST_TIMEOUT_SECONDS,
@@ -40,7 +41,7 @@ from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.types.agent import AgentPanelStatus, AgentPhase, AgentTask
 from humanoid.types.camera import CameraPreviewSnapshot
 from humanoid.types.homing import HomingPreset
-from humanoid.types.logging import ApplicationLogSnapshot
+from humanoid.types.logging import ApplicationLogSnapshot, LoggingState, LoggingStatus
 from humanoid.types.orchestrator import (
     Mode,
     OrchestratorError,
@@ -106,6 +107,7 @@ class OrchestratorService:
         self._parameterized_request_at: float | None = None
         self._parameterized_mode_seen = False
         self._handled_stack_failure: ProcessStatus | None = None
+        self._episode_recording: tuple[str, LoggingStatus] | None = None
         self._camera_monitors: dict[str, CameraPreviewMonitor] = {}
         self.agent = AgentConsole()
 
@@ -308,24 +310,69 @@ class OrchestratorService:
         with self._lock:
             current = self.status()
             self._require_ready_stack(current)
-            logging_actions = {
-                ProcessAction.START: (
-                    self.logging_monitor.start_requested,
-                    self.orchestrator_client.start_logging,
-                ),
-                ProcessAction.STOP: (
-                    self.logging_monitor.stop_requested,
-                    self.orchestrator_client.stop_logging,
-                ),
-            }
-            mark_requested, publish_request = logging_actions[action]
-            mark_requested()
-            try:
-                publish_request()
-            except Exception as exc:
-                self.logging_monitor.fail(f"Could not request data logging: {exc}")
-                raise
+            self._request_logging(action)
             return self.status()
+
+    def _request_logging(self, action: ProcessAction) -> None:
+        try:
+            if action is ProcessAction.START:
+                self.logging_monitor.start_requested()
+                self.orchestrator_client.start_logging()
+            else:
+                self.logging_monitor.stop_requested()
+                self.orchestrator_client.stop_logging()
+        except Exception as exc:
+            self.logging_monitor.fail(f"Could not request data logging: {exc}")
+            raise
+
+    def set_episode_logging(
+        self, action: ProcessAction, episode_id: str, session_id: str
+    ) -> LoggingStatus:
+        """Use the stack logger and acknowledge the bundle belonging to this episode."""
+        with self._lock:
+            current = self.logging_monitor.snapshot()
+            if self._episode_recording and self._episode_recording[0] == episode_id:
+                previous = self._episode_recording[1]
+                if previous.state is LoggingState.STOPPED and action is ProcessAction.STOP:
+                    return previous
+                if (
+                    current.file_name != previous.file_name
+                    or current.state is not LoggingState.RUNNING
+                ):
+                    raise OrchestratorError(current.error or "Episode recording was interrupted.")
+                if action is ProcessAction.START:
+                    return current
+                self._request_logging(action)
+                stopped = self._await_logging(LoggingState.STOPPED)
+                if stopped.file_name != current.file_name:
+                    raise OrchestratorError("The episode recording changed during shutdown.")
+                self._episode_recording = (episode_id, stopped)
+                return stopped
+
+            if action is ProcessAction.STOP:
+                raise OrchestratorError("This episode does not own the current recording.")
+            if current.state not in (LoggingState.STOPPED, LoggingState.FAILED):
+                raise OrchestratorError("The stack logger is already in use.")
+            if self.node_manager.runtime is not Runtime.REAL:
+                raise OrchestratorError("Hardware recording requires the real stack.")
+            self._require_ready_stack(self.status())
+            with contextlib.closing(AgentControlClient(get_agent_endpoint())) as client:
+                if client.session_id != session_id:
+                    raise OrchestratorError("The console and trial use different Agent APIs.")
+            self._request_logging(action)
+            started = self._await_logging(LoggingState.RUNNING)
+            if not started.file_name:
+                raise OrchestratorError("The logger did not report an LCM recording path.")
+            self._episode_recording = (episode_id, started)
+            return started
+
+    def _await_logging(self, target: LoggingState) -> LoggingStatus:
+        deadline = time.monotonic() + LOGGING_ACKNOWLEDGEMENT_TIMEOUT_SECONDS
+        while (status := self.logging_monitor.snapshot()).state is not target:
+            if status.state is LoggingState.FAILED or time.monotonic() >= deadline:
+                raise OrchestratorError(status.error or f"LCM logger did not reach {target}.")
+            time.sleep(MODE_TRANSITION_POLL_INTERVAL_SECONDS)
+        return status
 
     def start_replay(
         self,

@@ -20,16 +20,16 @@
     <frame pos="0 0 -0.032" childclass="cleanup">
       <geom name="task_floor" type="plane" size="2 2 0.01" rgba="0.45 0.45 0.45 1"/>
       <light pos="0 0.7 2" dir="0 0 -1" ambient="0.3 0.3 0.3"/>
-      <geom class="wall" pos="-0.8 0.6 0.2" size="0.015 1 0.2"/>
-      <geom class="wall" pos="0.8 0.6 0.2" size="0.015 1 0.2"/>
-      <geom class="wall" pos="0 -0.4 0.2" size="0.8 0.015 0.2"/>
-      <geom class="wall" pos="0 1.6 0.2" size="0.8 0.015 0.2"/>
+      <geom name="wall_left" class="wall" pos="-0.8 0.6 0.2" size="0.015 1 0.2"/>
+      <geom name="wall_right" class="wall" pos="0.8 0.6 0.2" size="0.015 1 0.2"/>
+      <geom name="wall_back" class="wall" pos="0 -0.4 0.2" size="0.8 0.015 0.2"/>
+      <geom name="wall_front" class="wall" pos="0 1.6 0.2" size="0.8 0.015 0.2"/>
       <frame pos="-0.48 0.4 0" childclass="bin">
         <geom name="bin_floor" pos="0 0 0.003" size="0.126 0.096 0.003"/>
-        <geom pos="-0.123 0 0.0635" size="0.003 0.096 0.0635"/>
-        <geom pos="0.123 0 0.0635" size="0.003 0.096 0.0635"/>
-        <geom pos="0 -0.093 0.0635" size="0.126 0.003 0.0635"/>
-        <geom pos="0 0.093 0.0635" size="0.126 0.003 0.0635"/>
+        <geom name="bin_left" pos="-0.123 0 0.0635" size="0.003 0.096 0.0635"/>
+        <geom name="bin_right" pos="0.123 0 0.0635" size="0.003 0.096 0.0635"/>
+        <geom name="bin_back" pos="0 -0.093 0.0635" size="0.126 0.003 0.0635"/>
+        <geom name="bin_front" pos="0 0.093 0.0635" size="0.126 0.003 0.0635"/>
       </frame>
       <replicate count="3" offset="0.35 0.23 0" sep="_">
         <body name="car" pos="-0.32 0.65 0.011">

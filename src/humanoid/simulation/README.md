@@ -67,6 +67,8 @@ from the robot config. The same camera entry defines its optics.
 Its worker renders the latest pending snapshot and publishes it
 with the corresponding robot state's `timestamp`. The image's `device_timestamp` records
 simulation time. If rendering falls behind, newer snapshots replace pending ones.
+Passing `--record` to the agent trial CLI saves these sensor channels alongside
+simulation state and robot commands in an LCM bundle for each episode.
 Set `MujocoSimulationConfig.enable_cameras=False` to disable rendering for all sensors.
 
 For camera preview transport and raw image subscriptions across hosts, see

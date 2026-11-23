@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from humanoid.constants import Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.environment.base import Environment
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
@@ -102,6 +102,7 @@ class RealtimeEnvironment(Environment):
         done_fn: DoneFunction | None = None,
         truncated_fn: TruncatedFunction | None = None,
         *,
+        lcm_url: str = DEFAULT_LCM_URL,
         subscriptions: ObservationSubscriptions,
     ):
         """Initialize the environment.
@@ -122,8 +123,9 @@ class RealtimeEnvironment(Environment):
         self._cameras = {
             name: _CameraStream(camera_topics(name)) for name in subscriptions.camera_names
         }
-        self.publisher = Publisher()
+        self.publisher = Publisher(url=lcm_url)
         self.subscriber = Subscriber(
+            url=lcm_url,
             topics=[
                 *subscriptions.topics,
                 *(

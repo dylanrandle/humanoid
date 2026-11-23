@@ -79,6 +79,14 @@ def test_request_autonomy_publishes_its_own_event():
     assert publisher.publish.call_args.args[0].kind is EventKind.REQUEST_AUTONOMY
 
 
+def test_release_autonomy_publishes_conditional_release():
+    client, publisher = _make_client()
+    client.release_autonomy()
+    call = publisher.publish.call_args
+    assert call.kwargs["topic"] is Topic.ORCHESTRATOR_EVENT
+    assert call.args[0].kind is EventKind.RELEASE_AUTONOMY
+
+
 def test_request_idle_publishes_single_event():
     client, publisher = _make_client()
     client.request_idle()

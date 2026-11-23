@@ -56,6 +56,9 @@ class OrchestratorClient:
     def request_idle(self) -> None:
         self._send(EventKind.REQUEST_IDLE)
 
+    def release_autonomy(self) -> None:
+        self._send(EventKind.RELEASE_AUTONOMY)
+
     def complete(self) -> None:
         """Signal that the current policy has finished (homing → return mode)."""
         self._send(EventKind.COMPLETE)

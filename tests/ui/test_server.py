@@ -379,6 +379,27 @@ def test_serializes_orchestrator_status_dataclass(server_client):
             result={"logging": "started"},
         ),
         RouteCase(
+            path="/api/logging/start",
+            payload={"episode_id": "one", "session_id": "agent"},
+            method_name="set_episode_logging",
+            arguments=(ProcessAction.START, "one", "agent"),
+            result={"state": "running", "file_name": "recording.lcm"},
+        ),
+        RouteCase(
+            path="/api/logging/stop",
+            payload={},
+            method_name="set_logging",
+            arguments=(ProcessAction.STOP,),
+            result={"logging": "stopping"},
+        ),
+        RouteCase(
+            path="/api/logging/stop",
+            payload={"episode_id": "one", "session_id": "agent"},
+            method_name="set_episode_logging",
+            arguments=(ProcessAction.STOP, "one", "agent"),
+            result={"state": "stopped", "file_name": "recording.lcm"},
+        ),
+        RouteCase(
             path="/api/replay/start",
             payload={PayloadKey.RECORDING: "recording_1", **_safety_payload()},
             method_name="start_replay",
@@ -419,6 +440,24 @@ def test_routes_typed_control_actions(
     assert response.status_code == HTTPStatus.OK
     assert response.json == {"ok": True, "status": case.result}
     method.assert_called_once_with(*case.arguments)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"episode_id": "one"},
+        {"session_id": "agent"},
+        {"episode_id": "", "session_id": "agent"},
+        {"episode_id": "one", "session_id": None},
+        {"epsiode_id": "one"},
+    ],
+)
+def test_malformed_episode_stop_never_stops_manual_recording(server_client, payload):
+    service, client = server_client
+    response = client.post("/api/logging/stop", json=payload)
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    service.set_logging.assert_not_called()
+    service.set_episode_logging.assert_not_called()
 
 
 @pytest.mark.parametrize(

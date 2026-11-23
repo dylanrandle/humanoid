@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Exploration review</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        color: #edf1f4;
+        background: #11171a;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      body {
+        max-width: 1300px;
+        margin: auto;
+        padding: 24px clamp(16px, 4vw, 48px) 50px;
+      }
+      header,
+      nav,
+      .heading {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      header {
+        justify-content: space-between;
+        border-bottom: 1px solid #39484e;
+        padding-bottom: 16px;
+      }
+      h1,
+      h2,
+      h3,
+      p,
+      figure {
+        margin: 0;
+      }
+      h1 {
+        font-size: 1.5rem;
+      }
+      h2 {
+        font-size: 1.25rem;
+      }
+      h3,
+      summary {
+        font-size: 0.93rem;
+      }
+      #status,
+      small,
+      figcaption {
+        color: #b5c8ce;
+      }
+      nav {
+        margin: 20px 0;
+      }
+      button,
+      select {
+        font: inherit;
+        color: inherit;
+        background: #203039;
+        padding: 8px;
+        border: 1px solid #51646e;
+        border-radius: 5px;
+      }
+      button:enabled,
+      summary,
+      select {
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.4;
+      }
+      select {
+        flex: 1;
+        min-width: 140px;
+      }
+      a {
+        color: #8ae1cf;
+      }
+      :focus-visible {
+        outline: 2px solid #8ae1cf;
+      }
+      #intent {
+        font-size: 1.17rem;
+        line-height: 1.5;
+        max-width: 85ch;
+        margin: 8px 0 18px;
+        white-space: pre-wrap;
+      }
+      #images {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      figure {
+        background: #192328;
+        border: 1px solid #37464d;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      figure img {
+        display: block;
+        width: 100%;
+        max-height: 340px;
+        object-fit: contain;
+        background: #0b1012;
+      }
+      figcaption {
+        padding: 7px 10px;
+      }
+      figure a {
+        display: block;
+      }
+      .data {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin: 18px 0;
+      }
+      .data section,
+      details {
+        padding: 14px;
+        border: 1px solid #37464d;
+        border-radius: 6px;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font:
+          0.82rem/1.55 ui-monospace,
+          monospace;
+        margin: 8px 0 0;
+      }
+      #overlay {
+        max-width: 540px;
+      }
+      #note {
+        color: #edcc97;
+        margin: 10px 0;
+      }
+      @media (max-width: 700px) {
+        #images {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .data {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1 id="title">Exploration review</h1>
+      <span id="status"></span>
+    </header>
+    <p id="note" hidden></p>
+    <nav aria-label="Step navigation">
+      <button id="prev" type="button">← Previous</button
+      ><select id="steps" aria-label="Select step"></select
+      ><button id="next" type="button">Next →</button>
+    </nav>
+    <main>
+      <div class="heading">
+        <h2 id="turn"></h2>
+        <small id="time"></small>
+      </div>
+      <p id="intent"></p>
+      <div id="images"></div>
+      <div class="data">
+        <section>
+          <h3>Command</h3>
+          <pre id="command"></pre>
+        </section>
+        <section>
+          <h3>Result</h3>
+          <pre id="result"></pre>
+          <div id="overlay"></div>
+        </section>
+      </div>
+      <details id="details">
+        <summary>Model input and measured robot state</summary>
+        <pre id="context"></pre>
+      </details>
+    </main>
+    <script id="review-data" type="application/json">
+      <!-- EXPLORATION_DATA -->
+    </script>
+    <script>
+      const data = JSON.parse(
+        document.getElementById("review-data").textContent,
+      );
+      const byId = (id) => document.getElementById(id);
+      const write = (id, value) => {
+        byId(id).textContent = value;
+      };
+      const json = (value) => JSON.stringify(value, null, 2);
+      const select = byId("steps");
+      const turns = data.turns;
+      const title = "Exploration · Seed " + data.seed;
+      document.title = title;
+      write("title", title);
+      write(
+        "status",
+        [
+          data.status.replaceAll("_", " "),
+          data.score && (data.score.success ? "Success" : "Objective unmet"),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+      if (data.note) {
+        write("note", data.note);
+        byId("note").hidden = false;
+      }
+      const operation = (t) =>
+        t.decision
+          ? (t.decision.command?.operation ?? "Finish")
+          : "Awaiting decision";
+      turns.forEach((t, i) =>
+        select.add(
+          new Option(
+            i + 1 + " / " + turns.length + " · " + operation(t),
+            String(i),
+          ),
+        ),
+      );
+      function picture(label, src) {
+        const figure = document.createElement("figure"),
+          caption = document.createElement("figcaption");
+        const link = document.createElement("a"),
+          img = document.createElement("img");
+        link.href = src;
+        link.target = "_blank";
+        link.rel = "noopener";
+        img.src = src;
+        img.alt = label;
+        caption.textContent = label;
+        link.append(img);
+        figure.append(link, caption);
+        return figure;
+      }
+      function show() {
+        const i = Math.min(
+          turns.length - 1,
+          Math.max(0, (parseInt(location.hash.slice(1), 10) || 1) - 1),
+        );
+        const t = turns[i];
+        byId("prev").disabled = i <= 0;
+        byId("next").disabled = i >= turns.length - 1;
+        select.disabled = !t;
+        if (!t) {
+          write("turn", "No decisions recorded");
+          byId("details").hidden = true;
+          document.querySelector(".data").hidden = true;
+          return;
+        }
+        select.value = String(i);
+        write("turn", "Step " + (i + 1) + " · " + operation(t));
+        write(
+          "time",
+          t.elapsed_seconds == null
+            ? ""
+            : Math.round(t.elapsed_seconds) + " s into episode",
+        );
+        write(
+          "intent",
+          t.decision?.message ?? "The model had not returned a decision.",
+        );
+        byId("images").replaceChildren(
+          ...Object.entries(t.images).map(([label, src]) =>
+            picture(label, src),
+          ),
+        );
+        write("command", t.decision?.command ? json(t.decision.command) : "—");
+        write("result", t.result == null ? "—" : json(t.result));
+        byId("overlay").replaceChildren(
+          ...(t.result_image
+            ? [picture("Segmentation result", t.result_image)]
+            : []),
+        );
+        byId("details").hidden = !t.context;
+        write("context", t.context ? json(t.context) : "");
+      }
+      function go(index) {
+        if (index >= 0 && index < turns.length)
+          location.hash = String(index + 1);
+      }
+      select.onchange = () => go(select.selectedIndex);
+      byId("prev").onclick = () => go(select.selectedIndex - 1);
+      byId("next").onclick = () => go(select.selectedIndex + 1);
+      document.addEventListener("keydown", (e) => {
+        if (
+          e.target instanceof HTMLSelectElement ||
+          e.altKey ||
+          e.metaKey ||
+          e.ctrlKey
+        )
+          return;
+        if (e.key === "ArrowRight") go(select.selectedIndex + 1);
+        if (e.key === "ArrowLeft") go(select.selectedIndex - 1);
+      });
+      window.addEventListener("hashchange", show);
+      show();
+    </script>
+  </body>
+</html>

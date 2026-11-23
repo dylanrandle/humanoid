@@ -46,7 +46,9 @@ POST bodies use `Content-Type: application/json`.
 | `GET /v1/state` | Current session ID, operator mode, joint feedback and feedback age in seconds |
 | `GET /v1/camera` or `GET /v1/camera?depth_view=aligned` | RGB and aligned measured depth PNGs, frame IDs, intrinsics, depth scale, timestamps and age. Missing aligned depth is JSON `null`. |
 | `GET /v1/camera?depth_view=native` | RGB and native measured depth with their respective calibration. |
-| `GET /v1/capture` | Named RGB-D views. Each view includes the joint state nearest its host capture time and the current operator mode. |
+| `GET /v1/camera?depth_view=both` | RGB and native depth with their own calibration, plus RGB-registered depth when available. |
+| `GET /v1/capture` | Per-camera RGB, native and registered depth, nearest joint state, and current operator mode. |
+| `POST /v1/release_autonomy` | Requests release for the current `session_id`. The robot enters Idle only if Autonomy is still active. |
 | `POST /v1/commands` | HTTP 202 with the command ID and current status |
 | `GET /v1/commands/<id>` | Command status and, on completion, measured result |
 | `POST /v1/commands/<id>/cancel` | Updated status for that command. Send `{}` as the body. |
@@ -85,7 +87,8 @@ device code and sign-in link. Select an image-capable model from the account
 catalog. The panel selects Astra 6.2 when available.
 
 Enter an instruction and select **Run task**. In **Idle**, the agent answers
-using measured robot state and a labeled RGB image from each camera. In **Autonomy**, it can
+using measured robot state and one labeled RGB image per camera. It can request
+depth measurements from the same capture. In **Autonomy**, it can
 also issue bounded tool, base, gripper and hold commands. For a simulation
 test, ask it to move the base 2 cm forward and report the measured result.
 Each motion refreshes the observation. Perception tools can work on the same
@@ -118,14 +121,13 @@ returns an RGB overlay and a numbered list with mask IDs, bounding boxes, pixel
 counts and the decoder's predicted IoU score. Higher scores rank first.
 RGB segmentation also works on an RGB-only view.
 
-### Depth completion
+### Read or complete depth
 
-Call `complete_depth(observation_id)` when a task needs a dense metric depth map.
-It uses synchronized RGB and aligned measured depth from the pinned observation.
-It saves the full RGB-aligned float32 map under the observation ID and returns the valid
-pixel count. Supply native RGB pixels in `points_xy` to read their axial depths in
-metres. The `depths_m` values follow the requested order, with `null` for invalid
-pixels. Repeated calls for the same observation read the cached map. [Depth model installation](../../../models/cdm/README.md)
+`read_depth(observation_id, view, points_xy)` returns axial depth in metres, or `null` for
+missing samples. Use `registered` for RGB pixels and `raw` for native depth pixels.
+Valid simulated depth is ground truth. For holes in hardware depth, `complete_depth`
+uses CDM to estimate and cache an RGB-aligned map. It returns the valid pixel count
+and depths at the requested RGB pixels. [CDM installation](../../../models/cdm/README.md)
 
 ### Using a saved observation
 
@@ -152,3 +154,57 @@ valid = target.mask & np.isfinite(target.completed_depth_m) & (target.completed_
 v, u = np.nonzero(valid)
 depth_m = target.completed_depth_m[v, u]  # Use (u, v) and target.intrinsics for deprojection.
 ```
+
+## Toy cleanup trials
+
+Sign the harness in to ChatGPT, start Docker, and run the trial from the repository root.
+
+```sh
+uv run python -m humanoid.agent.harness.trial --explore 3 --test 3 --record toy_cleanup --items 1
+```
+
+The agent explores three seeded MuJoCo layouts with one cube, then writes a Python controller.
+The runner tests that controller in Docker on the next three seeds. A toy counts as deposited
+when it settles inside the bin after release, supported by the bin floor or another deposited toy.
+
+Place shared trial options before the task name. Use `--seed` to choose the first layout and
+`--explore-seconds` or `--test-seconds` to set the per-episode time budgets.
+Use `toy_cleanup --items 12` for the full toy set.
+To evaluate a saved controller directly, pass `--replay PATH/TO/controller.py --seed N`,
+where `N` is the first test layout.
+
+During exploration, the agent sees RGB and requests depth by observation ID. During evaluation,
+`step(obs, memory)` receives measured robot state and per-camera `rgb`, `registered_depth_m`, and
+`raw_depth_m` arrays sampled every eighth pixel. Use the RGB calibration for registered depth
+and `obs["cameras"][name]["raw_depth"]` for native depth.
+
+**Hardware.** Start the real stack and Agent API, then add `--backend real --robot triskel`.
+For each episode, set up the layout, home the robot, and select **Autonomy**. The runner
+requests **Idle** before asking you to grade the result. For remote recording, forward both
+the Agent API and console ports. Set `--endpoint` and `--console-url` to the forwarded addresses.
+
+### Review results and recordings
+
+The runner prints the run directory under `logs/trials/`. Use `--output` to change it.
+
+| File in the run directory | What to inspect |
+| --- | --- |
+| `explore-<seed>/index.html` | Each decision's intent, camera images, tool arguments, and result. Reload during a run or copy the whole episode folder to view it elsewhere. |
+| `controller.py` | The generated controller used for evaluation and replay. |
+| `test-<seed>.json` | Motion commands, measured outcomes, score, and the reason the episode ended (`ended_by`). |
+
+`--record` saves one LCM log per episode, including camera and robot channels. The episode
+JSON gives its path in `lcm_recording`. Simulation logs go under the run's `recordings/`
+directory. Hardware logs stay on the robot. Every exploration gets an HTML review.
+
+With FFmpeg installed, this command exports synchronized RGB and colorized depth MP4s from a log or bundle.
+
+```sh
+uv run python scripts/export_camera_videos.py /path/to/recording.lcm
+```
+
+### Add a simulation task
+
+Implement `SimulationTask` with a scene, goal, and `score(data)` method. Override
+`configure_scene(spec, seed)` for randomized layouts. Register the task's CLI argument
+function in `TASKS`. [Toy cleanup example](../simulation/tasks/toy_cleanup.py) · [Task registry](../simulation/tasks/__init__.py)

@@ -10,6 +10,7 @@ from openai_codex import Codex, Thread
 
 from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness.model import connect, decide, open_codex, start_thread
+from humanoid.agent.harness.review import ExplorationReview
 from humanoid.agent.harness.robot import RobotTools, image_url
 from humanoid.config.agent import (
     AGENT_MOTION_LIMITS,
@@ -26,12 +27,20 @@ from humanoid.types.agent import (
     ControlOperation,
     DecisionContext,
     MotionArguments,
+    MotionResult,
     ObserveAgain,
     TimeBudget,
     ToolError,
 )
 from humanoid.types.orchestrator import Mode
-from humanoid.types.tools import CompleteDepth
+from humanoid.types.segmentation import SegmentationResult
+from humanoid.types.tools import (
+    CompleteDepth,
+    DepthCompletionResult,
+    DepthSamples,
+    ReadDepth,
+    SegmentRequest,
+)
 
 
 def run_task(
@@ -45,13 +54,49 @@ def run_task(
         return run_steps(thread, tools, task, update, budget=budget)
 
 
-def run_steps(
+def _perceive(
+    tools: RobotTools, args: ReadDepth | CompleteDepth | SegmentRequest, images: dict[str, str]
+) -> DepthSamples | DepthCompletionResult | SegmentationResult:
+    if isinstance(args, ReadDepth):
+        return tools.depth.read_depth(args)
+    if isinstance(args, CompleteDepth):
+        return tools.depth.complete_depth(args)
+    result, preview = tools.segmentation.segment(args)
+    images["Perception result for " + result.observation_id] = image_url(preview)
+    return result
+
+
+def _move(
+    tools: RobotTools,
+    operation: ControlOperation,
+    args: MotionArguments,
+    budget: TimeBudget,
+    update: Callable[[str], None],
+) -> MotionResult | ToolError:
+    try:
+        feedback = tools.client.execute(
+            operation,
+            args.model_dump(mode="json"),
+            timeout=min(DEFAULT_MOTION_TIMEOUT_SECONDS, budget.remaining()),
+        )
+        update(f"{operation} finished (reached={feedback['reached']}). Observing again.")
+        return feedback
+    except ValueError as error:
+        update(f"{operation} rejected: {error}")
+        return ToolError(operation=operation, error=str(error))
+    except RuntimeError:
+        budget.remaining()
+        raise
+
+
+def run_steps(  # noqa: PLR0913 - the optional review observes the same live decision loop.
     thread: Thread,
     tools: RobotTools,
     task: AgentTask,
     update: Callable[[str], None],
     *,
     budget: TimeBudget,
+    review: ExplorationReview | None = None,
 ) -> str:
     allow_motion = task.mode is Mode.AUTONOMY
     budget.remaining()
@@ -65,6 +110,8 @@ def run_steps(
             seconds_remaining=budget.remaining(),
             limits=AGENT_MOTION_LIMITS,
         )
+        if review:
+            review.observe(budget.elapsed_seconds, context, images)
         decision = decide(
             thread,
             context,
@@ -72,6 +119,8 @@ def run_steps(
             allow_motion=allow_motion,
             timer=budget,
         )
+        if review:
+            review.decided(decision)
         budget.remaining()
         command = decision.command
         if command is None:
@@ -88,33 +137,24 @@ def run_steps(
                 feedback = None
             else:
                 try:
-                    if isinstance(args, CompleteDepth):
-                        feedback = tools.depth.complete_depth(args)
-                    else:
-                        feedback, preview = tools.segmentation.segment(args)
-                        images["Perception result for " + feedback.observation_id] = image_url(
-                            preview
-                        )
+                    feedback = _perceive(tools, args, images)
                 except (ValueError, OSError, RuntimeError, ImportError) as error:
                     feedback = ToolError(operation=name, error=str(error))
+            if review:
+                preview = (
+                    images.get("Perception result for " + feedback.observation_id)
+                    if isinstance(feedback, SegmentationResult)
+                    else None
+                )
+                review.outcome(feedback, preview)
             continue
         if not allow_motion or tools.client.observation().mode is not Mode.AUTONOMY:
             raise RuntimeError("Motion requires an active Autonomy task.")
         operation = ControlOperation(name)
         update(f"{decision.message}\nExecuting {operation}.")
-        try:
-            feedback = tools.client.execute(
-                operation,
-                args.model_dump(mode="json"),
-                timeout=min(DEFAULT_MOTION_TIMEOUT_SECONDS, budget.remaining()),
-            )
-            update(f"{operation} finished (reached={feedback['reached']}). Observing again.")
-        except ValueError as error:
-            feedback = ToolError(operation=name, error=str(error))
-            update(f"{operation} rejected: {error}")
-        except RuntimeError:
-            budget.remaining()
-            raise
+        feedback = _move(tools, operation, args, budget, update)
+        if review:
+            review.outcome(feedback)
         budget.remaining()
         status, images = tools.observe(task.mode)
 

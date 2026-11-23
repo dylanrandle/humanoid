@@ -1,11 +1,24 @@
+import secrets
+import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import ExitStack, closing
+from pathlib import Path
+from threading import Event
 from typing import cast
 from unittest.mock import MagicMock, call
 
+import lcm
 import numpy as np
 import pytest
+from werkzeug.serving import make_server
 
+from humanoid.agent.harness.recording import record_lcm_episode
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.constants import Topic
+from humanoid.middleware.publisher import Publisher
+from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.manager import NodeManager, NodeManagerError
+from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.orchestrator.constants import INPUT_PROCESSES
 from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
@@ -36,6 +49,8 @@ from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Ru
 from humanoid.types.replay import RecordingBundle, RecordingSummary, ReplayOutcome, ReplayStatus
 from humanoid.types.robot import RobotName
 from humanoid.types.simulation import SimulationScene
+from humanoid.ui.server import create_app
+from humanoid.utils.loop import loop_at_rate
 
 
 def _process_status(running: bool = False) -> ProcessStatus:
@@ -443,6 +458,86 @@ def test_logging_controls_require_ready_stack():
         service.set_logging(ProcessAction.START)
 
     client.start_logging.assert_not_called()
+
+
+def test_episode_logging_uses_the_stack_logger_and_only_stops_its_bundle(monkeypatch):
+    service, manager, client, _ = _make_service(stack=True, connected=True)
+    manager.runtime = Runtime.REAL
+    agent = MagicMock(session_id="agent")
+    monkeypatch.setattr("humanoid.orchestrator.service.AgentControlClient", lambda _: agent)
+    snapshot = cast(MagicMock, service.logging_monitor).snapshot
+    path = "/robot/logs/recordings/example/recording.lcm"
+
+    def report(state):
+        snapshot.return_value = LoggingStatus(1, state, path)
+
+    client.start_logging.side_effect = lambda: report(LoggingState.RUNNING)
+    client.stop_logging.side_effect = lambda: report(LoggingState.STOPPED)
+    with pytest.raises(OrchestratorError, match="different Agent APIs"):
+        service.set_episode_logging(ProcessAction.START, "one", "other")
+    client.start_logging.assert_not_called()
+    start = service.set_episode_logging(ProcessAction.START, "one", "agent")
+    assert start == service.set_episode_logging(ProcessAction.START, "one", "agent")
+    assert start.file_name == path
+    client.start_logging.assert_called_once()
+    with pytest.raises(OrchestratorError, match="already in use"):
+        service.set_episode_logging(ProcessAction.START, "two", "agent")
+    with pytest.raises(OrchestratorError, match="does not own"):
+        service.set_episode_logging(ProcessAction.STOP, "two", "agent")
+    client.stop_logging.assert_not_called()
+    stop = service.set_episode_logging(ProcessAction.STOP, "one", "agent")
+    assert stop == service.set_episode_logging(ProcessAction.STOP, "one", "agent")
+    assert stop.file_name == path and stop.state is LoggingState.STOPPED
+    client.stop_logging.assert_called_once()
+
+
+def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
+    tmp_path, monkeypatch
+):
+    service, manager, _, _ = _make_service(stack=True, connected=True)
+    manager.runtime = Runtime.REAL
+    monkeypatch.setattr(
+        "humanoid.orchestrator.service.AgentControlClient", lambda _: MagicMock(session_id="agent")
+    )
+    url = f"udpm://239.192.42.{secrets.randbelow(256)}:{49152 + secrets.randbelow(16384)}?ttl=0"
+    publisher = Publisher(url)
+    service.orchestrator_client = OrchestratorClient(publisher)
+    channels = {
+        "CAMERA/BASE/RGB",
+        "CAMERA/BASE/DEPTH",
+        "CAMERA/WRIST/RGB",
+        "CAMERA/WRIST/DEPTH",
+        Topic.ROBOT_STATE.value,
+    }
+    with ExitStack() as resources:
+        service.logging_monitor = resources.enter_context(
+            closing(LoggingMonitor(Subscriber([Topic.LOGGING_STATUS], url=url)))
+        )
+        logger = resources.enter_context(closing(RobotLoggerNode(log_dir=tmp_path, lcm_url=url)))
+        logger.setup()
+        server = make_server("127.0.0.1", 0, create_app(service))
+        resources.callback(server.server_close)
+        pool = resources.enter_context(ThreadPoolExecutor(max_workers=2))
+        stop = Event()
+        pool.submit(loop_at_rate, logger.step, logger.rate_hz, stop_condition=stop.is_set)
+        resources.callback(stop.set)
+        pool.submit(server.serve_forever, poll_interval=0.01)
+        resources.callback(server.shutdown)
+        console = f"http://127.0.0.1:{server.server_port}"
+        with (
+            pytest.raises(ValueError, match="interrupted"),
+            record_lcm_episode(console, "agent") as name,
+        ):
+            # Publish identifiable payloads on the real camera and state channels.
+            for _ in range(20):
+                for channel in channels:
+                    publisher.lc.publish(channel, b"episode sample")
+                time.sleep(0.01)
+            raise ValueError("episode interrupted")
+        assert logger.process is None
+        assert Path(name).with_name("robot.json").is_file()
+        with closing(lcm.EventLog(name, "r")) as log:
+            assert {event.channel for event in log if event.data == b"episode sample"} == channels
 
 
 def test_logging_request_failure_is_reported_by_monitor():

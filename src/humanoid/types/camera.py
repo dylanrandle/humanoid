@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import cache
-from typing import Literal, NewType, Protocol
+from typing import Literal, NewType, Protocol, assert_never
 
 import numpy as np
 
@@ -17,6 +17,12 @@ MAX_FOV_DEGREES = 180
 class DepthView(StrEnum):
     ALIGNED = "aligned"
     NATIVE = "native"
+    BOTH = "both"
+
+
+class DepthKind(StrEnum):
+    REGISTERED = "registered"
+    RAW = "raw"
 
 
 class CameraEncoding(StrEnum):
@@ -194,6 +200,13 @@ class CameraView:
     rgb: CameraImage
     depth: CameraImage | None
     registered: RegisteredDepth | None = None
+
+    def depth_image(self, kind: DepthKind) -> CameraImage | None:
+        if kind is DepthKind.RAW:
+            return self.depth
+        if kind is DepthKind.REGISTERED:
+            return self.registered.image if self.registered else None
+        assert_never(kind)
 
     def __post_init__(self) -> None:
         if self.registered is not None and (

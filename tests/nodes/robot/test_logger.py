@@ -4,6 +4,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import lcm
+
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.nodes.robot.logger import RobotLoggerNode
@@ -73,7 +75,7 @@ def test_start_logging_creates_bundle_and_uses_exact_filename(tmp_path):
     filename = statuses[-1].file_name
     assert filename is not None
     assert popen.call_args.args[0] == [
-        "lcm-logger",
+        str((Path(lcm.LCM_BIN_DIR) / "lcm-logger").resolve()),
         "-l",
         DEFAULT_LCM_URL,
         "-c",
@@ -210,7 +212,7 @@ def test_robot_logger_reports_missing_binary(tmp_path):
 
     status = _published_statuses(publisher_class.return_value)[-1]
     assert status.state is LoggingState.FAILED
-    assert status.error == "lcm-logger was not found in PATH."
+    assert status.error and "LCM recorder not found" in status.error
     assert node.process is None
 
 

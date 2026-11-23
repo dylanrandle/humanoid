@@ -184,9 +184,18 @@ def create_app(  # noqa: PLR0915 - route definitions form the application factor
 
     @app.post(ApiRoute.LOGGING)
     def update_logging(action: str):
-        _json_payload()
+        payload = _json_payload()
         logging_action = parse_process_action(action)
-        return _success(orchestrator_service.set_logging(logging_action))
+        if not payload:
+            return _success(orchestrator_service.set_logging(logging_action))
+
+        episode_id, session_id = payload.get("episode_id"), payload.get("session_id")
+        if not isinstance(episode_id, str) or not episode_id:
+            raise ApiError("Expected an episode_id string.", HTTPStatus.BAD_REQUEST)
+        if not isinstance(session_id, str) or not session_id:
+            raise ApiError("Expected a session_id string.", HTTPStatus.BAD_REQUEST)
+        status = orchestrator_service.set_episode_logging(logging_action, episode_id, session_id)
+        return _success(status)
 
     @app.post(ApiRoute.REPLAY)
     def update_replay(action: str):

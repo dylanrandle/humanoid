@@ -20,7 +20,9 @@ from humanoid.types.segmentation import SegmentationResult, SegmentOperation
 from humanoid.types.tools import (
     CompleteDepth,
     DepthCompletionResult,
+    DepthSamples,
     PerceptionOperation,
+    ReadDepth,
     RefineMask,
     SegmentAtPoint,
     SegmentEverything,
@@ -160,6 +162,7 @@ class AgentRoute(StrEnum):
     STATE = f"{ROOT}/state"
     CAMERA = f"{ROOT}/camera"
     CAPTURE = f"{ROOT}/capture"
+    RELEASE_AUTONOMY = f"{ROOT}/release_autonomy"
     COMMANDS = f"{ROOT}/commands"
     COMMAND = f"{COMMANDS}/{{command_id}}"
     CANCEL = f"{COMMAND}/cancel"
@@ -300,6 +303,7 @@ type PerceptionCall = (
     | ToolCall[Literal[SegmentOperation.BOX], SegmentInBox]
     | ToolCall[Literal[SegmentOperation.REFINE], RefineMask]
     | ToolCall[Literal[PerceptionOperation.COMPLETE_DEPTH], CompleteDepth]
+    | ToolCall[Literal[PerceptionOperation.READ_DEPTH], ReadDepth]
     | ToolCall[Literal[PerceptionOperation.OBSERVE_AGAIN], ObserveAgain]
 )
 type MotionCall = (
@@ -323,15 +327,19 @@ class PoseRecord(TypedDict):
     quaternion_xyzw: list[float]
 
 
-class CameraStatus(TypedDict):
+class OpticalCalibration(TypedDict):
     optical_frame: str
+    camera_pose: PoseRecord
+    intrinsics: dict[str, object]
+
+
+class CameraStatus(OpticalCalibration):
     model: str | None
     observation_id: ObservationId
     frame_number: int
     device_timestamp: float
     timestamp_domain: str
-    camera_pose: PoseRecord
-    intrinsics: dict[str, object]
+    raw_depth: OpticalCalibration | None
     registered_depth_available: bool
 
 
@@ -357,10 +365,15 @@ class ToolError:
     error: str
 
 
+type AgentFeedback = (
+    MotionResult | DepthSamples | DepthCompletionResult | SegmentationResult | ToolError
+)
+
+
 @dataclass(frozen=True, kw_only=True)
 class DecisionContext:
     instruction: str
     observation: ObservationStatus
-    last_result: MotionResult | DepthCompletionResult | SegmentationResult | ToolError | None
+    last_result: AgentFeedback | None
     seconds_remaining: float
     limits: AgentMotionLimits
