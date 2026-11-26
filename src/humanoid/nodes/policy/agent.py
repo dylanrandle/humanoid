@@ -35,7 +35,7 @@ class AgentPolicyNode(Node):
         )
 
     def setup(self) -> None:
-        self.env.reset(state_timeout_ms=10000)
+        self.env.reset()
         self._ready = True
 
     def step(self) -> None:

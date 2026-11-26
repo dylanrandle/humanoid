@@ -141,7 +141,7 @@ class TestReset:
         assert observation.robot_base_command is None
         assert observation.mode is None
         calls = env.subscriber.receive.call_args_list
-        assert calls[0] == ((Topic.ROBOT_STATE,), {"timeout": env.timeout_ms})
+        assert calls[0] == ((Topic.ROBOT_STATE,), {"timeout": 10_000})
         assert calls[1] == ((Topic.ROBOT_JOINT_COMMAND,), {"timeout": env.timeout_ms})
         assert calls[2] == ((Topic.ROBOT_TOOL_COMMAND,), {"timeout": env.timeout_ms})
         assert calls[3] == ((Topic.ROBOT_BASE_COMMAND,), {"timeout": env.timeout_ms})
@@ -177,6 +177,7 @@ class TestReset:
         observation = env.reset()
 
         assert observation.robot_state is state
+        env.subscriber.receive.assert_any_call(Topic.ROBOT_STATE, timeout=env.timeout_ms)
 
     def test_falls_back_to_cached_commands_when_receive_returns_none(self, env):
         state = _make_state()

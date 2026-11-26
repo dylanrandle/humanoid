@@ -28,6 +28,8 @@ from humanoid.types.transition import Transition, TransitionInfo
 
 logger = get_logger(__name__)
 
+_FIRST_STATE_TIMEOUT_MS = 10_000
+
 
 # Type aliases for callback functions
 RewardFunction = Callable[[Observation | None, Action, Observation], float]
@@ -177,6 +179,9 @@ class RealtimeEnvironment(Environment):
         """
         logger.info("Resetting environment")
 
+        # A new subscriber can take longer to receive its first state than a policy tick.
+        if state_timeout_ms is None and self._last_robot_state is None:
+            state_timeout_ms = _FIRST_STATE_TIMEOUT_MS
         observation = self._build_observation(
             timeout_ms=self.timeout_ms, state_timeout_ms=state_timeout_ms
         )
