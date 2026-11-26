@@ -39,7 +39,7 @@ def test_mobile_robot_requires_root_state_estimation_config():
                 HomingPreset.HOME: np.zeros(1),
                 HomingPreset.REST: np.zeros(1),
             },
-            actuator_control_modes={},
+            joint_drives={},
             base=RobotBaseConfig(
                 frame="root",
                 velocity_limits=CartesianVelocityLimits(linear=0.2, angular=1.0),
@@ -59,6 +59,6 @@ def test_fixed_base_robot_rejects_root_state_estimation_config():
                 HomingPreset.HOME: np.zeros(1),
                 HomingPreset.REST: np.zeros(1),
             },
-            actuator_control_modes={},
+            joint_drives={},
             state_estimation=mobile_estimation,
         )

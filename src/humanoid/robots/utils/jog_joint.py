@@ -41,7 +41,7 @@ def jog_joint(  # noqa: PLR0915
     """
     robot = Robot(robot_config)
     actuator_joint_indices = {
-        robot.joint_name_to_idx(joint_name) for joint_name in robot_config.actuator_control_modes
+        robot.joint_name_to_idx(joint_name) for joint_name in robot_config.joint_drives
     }
     if joint_idx not in actuator_joint_indices:
         valid = sorted(actuator_joint_indices)

@@ -100,17 +100,60 @@ their starting positions. **Empty** is the default scene.
 
 To view the running scene, see [Live 3D viewer](../../../README.md#live-3d-viewer).
 
+## Teleoperated pickup
+
+Approach from above with the pads on either side of the toy. For a car, grasp
+across the narrow width of the chassis. Close with `[` on the keyboard or hold
+**A** with Oculus teleop engaged. Once the pads touch, further closure increases
+the squeeze. Keep that target while lifting, then open with `]` or **B**.
+
+## Joint drives
+
+Each entry in `RobotConfig.joint_drives` selects position or velocity control
+through `control_mode`. MuJoCo takes peak force or torque from the URDF
+`effort` limit. The simulation gains are separate from hardware PID settings.
+
+| Simulation parameter | What it controls |
+| --- | --- |
+| `position_kp` | Effort per unit of position error |
+| `position_damping_ratio` | How strongly the position servo resists motion |
+| `velocity_kv` | Effort per unit of velocity error |
+| `joint_damping` | Passive damping when the URDF omits it |
+
+### Triskel model
+
+- **Servos.** The wheels, arm and gripper use 7.4 V STS3215-C001 servos.
+  URDF limits use stall torque and no-load speed. Friction, damping and
+  output-side inertia (`armature`) come from a bench fit that already includes
+  the 345:1 reduction. Servo gains use simulation defaults pending calibration.
+  [Feetech datasheet](https://files.seeedstudio.com/products/Feetech/108090023_STS3215-C001_Datasheet.pdf) · [BAM bench fit](https://github.com/Rhoban/bam/blob/279c4828c466e7e19b631c45203b0e3582be9869/bam/params/feetech_sts3215_7_4V/m1.json)
+- **Fingers and floor.** Each Fin Ray finger keeps its shape. MuJoCo approximates
+  compliance at the surface of its convex hull with `solref` and `solimp`.
+  Sliding and torsional friction resist slipping and twisting. The cleanup
+  floor’s `solmix` gives its firmer contact settings more weight when a toy
+  touches it. [TRI Fin Ray model](https://github.com/ToyotaResearchInstitute/lbm_eval/releases/tag/1.1.0)
+- **Base.** The planar joint supports the chassis. Wheels can hit toys, walls
+  and the bin, while root actuators drive the base across the floor.
+
+When hardware changes, update joint definitions and link inertias in both
+the [simulation URDF](../robots/assets/triskel/urdf/triskel.urdf) and the
+[planner’s collision URDF](../robots/assets/triskel/urdf/triskel_collision.urdf).
+
 ## Floor pickup test
 
-Panda and Triskel use each toy’s simulated pose to pick up a cube, cylinder,
-ball, and car. Both fingers must support the toy at least 60 mm above its
-starting height for 10 seconds, with less than 2 mm of height variation.
-For Triskel’s cube grasp, finger penetration and upward motion before lift
-must each stay below 1 mm.
+Panda and Triskel pick up a cube, cylinder, ball and car using each toy’s
+simulated pose. Trials cover width-matched grasps and off-center, angled grasps
+with partial or full closure. Both fingers must hold the toy at least 60 mm
+above its starting height for 10 seconds with less than 2 mm of height variation,
+then release it onto a support surface.
+
+For Triskel’s cube grasp, finger penetration and upward motion before lift must
+each stay below 1 mm. Additional trials check floor penetration during pushing
+and slip while carrying a cube or car.
 
 ```bash
 uv run pytest -q tests/simulation/test_privileged_grasp.py
 ```
 
-To save an MP4 and a synchronized 25 Hz CSV for each trial, prefix the command
+To save an MP4 and a synchronized 25 Hz CSV for each floor pickup trial, prefix the command
 with `HUMANOID_GRASP_OUTPUT=logs/privileged-grasp/run-1`.

@@ -21,7 +21,7 @@ from humanoid.constants import (
     SCENE_ENVIRONMENT_VARIABLE,
     Topic,
 )
-from humanoid.logger import get_logger, setup_queue_logging
+from humanoid.logger import get_logger
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
 from humanoid.nodes.groups import (
@@ -190,9 +190,9 @@ class NodeManager:
             ):
                 continue
             process = self._process_context.Process(
-                target=_run_node,
+                target=node.run_managed,
                 name=node.__name__,
-                args=(node, self._log_queue),
+                args=(self._log_queue,),
             )
             with _node_environment(group.runtime, group.robot, self.scene):
                 process.start()
@@ -358,15 +358,6 @@ def _stopped_status() -> ProcessStatus:
         uptime_seconds=None,
         last_output=None,
     )
-
-
-def _run_node(
-    node: type[Node],
-    log_queue: Queue[logging.LogRecord] | None,
-) -> None:
-    if log_queue is not None:
-        setup_queue_logging(log_queue)
-    node.main()
 
 
 @contextlib.contextmanager

@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from humanoid.hardware.actuators.driver import ActuatorDriver
-from humanoid.types.actuator import ActuatorConfig, ActuatorControlMode
+from humanoid.types.actuator import ActuatorControlMode, HardwareActuatorBinding
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,7 @@ class CompositeActuatorSystem(ActuatorSystem):
 
     def __init__(
         self,
-        actuator_configs: dict[str, ActuatorConfig],
+        actuator_configs: dict[str, HardwareActuatorBinding],
         control_modes: dict[str, ActuatorControlMode],
         drivers: dict[str, ActuatorDriver],
     ):

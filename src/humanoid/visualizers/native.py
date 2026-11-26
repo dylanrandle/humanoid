@@ -18,6 +18,24 @@ from humanoid.visualizers.telemetry import LiveTelemetry
 from humanoid.visualizers.world import ViewerWorld
 
 _REFRESH_SECONDS = 1 / 60
+_VIEWER_CLOSE_TIMEOUT_SECONDS = 5.0
+
+
+def _launch_viewer(world: ViewerWorld, *, replacing: bool) -> mujoco.viewer.Handle:
+    # mjpython closes a passive window asynchronously. It exposes no join for
+    # the Cocoa UI thread, and is_running() is false as soon as exit is requested.
+    deadline = time.monotonic() + _VIEWER_CLOSE_TIMEOUT_SECONDS
+    while True:
+        try:
+            return mujoco.viewer.launch_passive(world.model, world.data)
+        except RuntimeError as exc:
+            if (
+                not replacing
+                or str(exc) != "another MuJoCo viewer is already open"
+                or time.monotonic() >= deadline
+            ):
+                raise
+            time.sleep(_REFRESH_SECONDS)
 
 
 def draw_commands(
@@ -73,8 +91,9 @@ def draw_commands(
         np.eye(3).ravel(),
         np.array([1, 0.7, 0.1, 1], dtype=np.float32),
     )
+    # Triskel's arm is mounted at the front, along the base frame's +Y axis.
     mujoco.mjv_connector(
-        arrow, kind, 0.012, base.pose.translation, base.pose.act(np.array([0.16, 0, 0]))
+        arrow, kind, 0.012, base.pose.translation, base.pose.act(np.array([0, 0.16, 0]))
     )
     scene.ngeom += 1
 
@@ -82,6 +101,7 @@ def draw_commands(
 def show(receive: Receive, host: str) -> None:
     live = LiveTelemetry()
     live.update(receive(100))
+    replacing = False
     while True:
         key = live.model_key or (ROBOT_CONFIG.name, Runtime.REAL, SimulationScene.EMPTY)
         name, runtime, scene = key
@@ -92,7 +112,7 @@ def show(receive: Receive, host: str) -> None:
             world.apply(RobotState(0, q, np.zeros(robot.model.nv), np.empty(0)), None, None)
         else:
             world.apply(live.state, live.joint_target, live.tool)
-        with mujoco.viewer.launch_passive(world.model, world.data) as viewer:
+        with _launch_viewer(world, replacing=replacing) as viewer:
             previous_label = None
             while viewer.is_running():
                 deadline = time.monotonic() + _REFRESH_SECONDS
@@ -101,6 +121,7 @@ def show(receive: Receive, host: str) -> None:
                     if live.update(receive(math.ceil(remaining * 1000))):
                         changed = True
                 if live.model_key is not None and live.model_key != key:
+                    replacing = True
                     break  # The native viewer binds its model at launch.
                 with viewer.lock():
                     if changed and live.state is not None:

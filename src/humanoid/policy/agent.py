@@ -85,6 +85,12 @@ class AgentPolicy(Policy):
             except (ValueError, RuntimeError) as error:
                 self._interrupt(error)
                 return Action()
+            if self._gripper_target is None:
+                q = self.robot.hold_configuration(
+                    observation.robot_state, observation.robot_joint_command
+                )
+                self._hold_tool = self.robot.get_tool_command_pose(q).copy()
+                self._gripper_target = q[self.robot.get_gripper_position_indices()]
             self._start_pending_command(observation)
             if self._active_result is None:
                 return self.idle_action(observation)
@@ -153,6 +159,7 @@ class AgentPolicy(Policy):
             or not 0 < duration <= self.config.max_duration
         ):
             raise ValueError(f"duration must be in (0, {self.config.max_duration}] seconds.")
+        assert self._gripper_target is not None
         initial, target, base_target, gripper = self._targets(command, observation)
         self._motion = AgentMotion(
             duration=duration,
@@ -161,7 +168,7 @@ class AgentPolicy(Policy):
             target=target,
             base_target=base_target,
             gripper=gripper,
-            initial_gripper=self._grip_reference(observation),
+            initial_gripper=self._gripper_target.copy(),
         )
 
     def advance_command(self, observation: Observation) -> tuple[Action, MotionResult | None]:
@@ -197,10 +204,9 @@ class AgentPolicy(Policy):
             motion.initial.translation
             + alpha * (motion.target.translation - motion.initial.translation),
         )
-        measured_base = self.robot.get_base_pose(observation.robot_state.joint_positions)
         base = (
-            self._bounded_base_target(measured_base, motion.base_target)
-            if measured_base is not None and motion.base_target is not None
+            self._bounded_base_target(observation, motion.base_target)
+            if motion.base_target is not None
             else None
         )
         return Action(
@@ -209,9 +215,9 @@ class AgentPolicy(Policy):
 
     def idle_action(self, observation: Observation) -> Action:
         if self._hold_pending:
-            return self._hold(observation)
+            return self._hold(observation, tool=self._hold_tool)
         assert self._hold_tool is not None and self._gripper_target is not None
-        # Maintain squeeze while the command producer thinks; let the base source expire.
+        # _hold already sent the base target. Keep publishing the tool pose and squeeze.
         return Action(
             tool_pose=self._hold_tool.copy(), gripper_positions=self._gripper_target.copy()
         )
@@ -222,32 +228,27 @@ class AgentPolicy(Policy):
         self._gripper_target = None
         self._hold_tool = None
 
-    def _grip_reference(self, observation: Observation) -> NDArray[np.float64]:
-        if self._gripper_target is not None:
-            return self._gripper_target.copy()
-        return observation.robot_state.joint_positions[
-            self.robot.get_gripper_position_indices()
-        ].copy()
-
-    def _hold(self, observation: Observation) -> Action:
+    def _hold(self, observation: Observation, *, tool: pin.SE3 | None = None) -> Action:
         self._hold_pending = False
         q = observation.robot_state.joint_positions
-        self._hold_tool = self.robot.get_tool_command_pose(q).copy()
-        self._gripper_target = self._grip_reference(observation)
-        base = self.robot.get_base_pose(q)
+        self._hold_tool = self.robot.get_tool_command_pose(q).copy() if tool is None else tool
+        assert self._gripper_target is not None
+        base = self.robot.get_base_pose(self._base_reference_positions(observation))
         return Action(
             tool_pose=self._hold_tool.copy(),
             base_pose=None if base is None else base.copy(),
             gripper_positions=self._gripper_target.copy(),
         )
 
-    def _bounded_base_target(self, measured: pin.SE3, target: pin.SE3) -> pin.SE3:
+    def _bounded_base_target(self, observation: Observation, target: pin.SE3) -> pin.SE3:
         config = self.robot.config.omniwheel_base_config
         assert config is not None
         base_config = self.robot.config.base
         assert base_config is not None
         velocity = base_config.velocity_limits
-        local = measured.inverse() * target
+        measured = self.robot.get_base_pose(observation.robot_state.joint_positions)
+        assert measured is not None
+        local = measured.actInv(target)
         delta = local.translation.copy()
         distance = np.linalg.norm(delta[:2])
         maximum = velocity.linear * config.dt / config.position_gain
@@ -255,7 +256,11 @@ class AgentPolicy(Policy):
             delta[:2] *= maximum / distance
         yaw = math.atan2(local.rotation[1, 0], local.rotation[0, 0])
         yaw_limit = velocity.angular * config.dt / config.orientation_gain
-        return measured * pin.SE3(
+        # The wheels execute a body-frame correction. Apply it relative to the
+        # controller's commanded pose even when odometry has fallen behind.
+        reference = self.robot.get_base_pose(self._base_reference_positions(observation))
+        assert reference is not None
+        return reference * pin.SE3(
             pin.rpy.rpyToMatrix(0, 0, np.clip(yaw, -yaw_limit, yaw_limit)), delta
         )
 
@@ -298,11 +303,13 @@ class AgentPolicy(Policy):
         self, command: MotionCommand, observation: Observation
     ) -> tuple[pin.SE3, pin.SE3, pin.SE3 | None, NDArray[np.float64]]:
         q = observation.robot_state.joint_positions
-        initial_tool = self.robot.get_tool_command_pose(q).copy()
+        measured_tool = self.robot.get_tool_command_pose(q).copy()
+        initial_tool = self._hold_tool.copy() if self._hold_tool is not None else measured_tool
         base_pose = self.robot.get_base_pose(q)
         base_target = None if base_pose is None else base_pose.copy()
         target = initial_tool.copy()
-        gripper = self._grip_reference(observation)
+        assert self._gripper_target is not None
+        gripper = self._gripper_target.copy()
         if command.tool_pose is not None:
             target = command.tool_pose.copy()
             rotation_valid = np.allclose(
@@ -315,12 +322,12 @@ class AgentPolicy(Policy):
             ):
                 raise ValueError("Tool target is outside the configured workspace.")
             if (
-                np.linalg.norm(target.translation - initial_tool.translation)
+                np.linalg.norm(target.translation - measured_tool.translation)
                 > self.config.max_tool_translation
             ):
                 raise ValueError("Tool displacement exceeds the per-command limit.")
             if (
-                np.linalg.norm(pin.log3(initial_tool.rotation.T @ target.rotation))
+                np.linalg.norm(pin.log3(measured_tool.rotation.T @ target.rotation))
                 > self.config.max_tool_rotation
             ):
                 raise ValueError("Tool rotation exceeds the per-command limit.")

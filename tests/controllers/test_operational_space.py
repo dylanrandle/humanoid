@@ -234,6 +234,21 @@ class TestUpdateState:
 
 
 class TestComputeControl:
+    def test_teleop_entry_hold_keeps_arm_still_until_tool_moves(self, mobile_robot):
+        osc = OperationalSpaceController(mobile_robot, mobile_robot.config.operational_space_config)
+        q = mobile_robot.config.homing_presets[HomingPreset.HOME].copy()
+        osc.update_state(q)
+        target = mobile_robot.get_tool_command_pose(q).copy()
+        osc.reset_motion(hold_pose=target)
+        for _ in range(10):
+            result = osc.compute_control(target)
+            np.testing.assert_allclose(result.q, q, atol=1e-12)
+            np.testing.assert_allclose(result.v, 0, atol=1e-12)
+
+        target.translation[2] += 0.002
+        result = osc.compute_control(target)
+        assert not np.allclose(result.v[osc.controlled_v_indices], 0, atol=1e-6)
+
     @pytest.mark.parametrize("robot_fixture", ["panda_robot", "mobile_robot"])
     def test_holding_tool_pose_increases_manipulability(self, request, robot_fixture):
         minimum_arm_speed = 1e-6

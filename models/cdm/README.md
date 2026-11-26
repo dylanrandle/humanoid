@@ -11,7 +11,7 @@ The model weights and the converted engines are licensed under [CC BY-NC 4.0](ht
 
 ## Inference on Triskel
 
-From a checkout with Git LFS installed, run `git lfs pull --include="models/cdm/*.plan"`. The model directory is distributed separately from the Python wheel. When deploying a wheel, copy the materialized files to `models/cdm` under the deployment data root (normally `/opt/humanoid` on Triskel), or pass their directory as `model_dir`.
+From a checkout with Git LFS installed, run `git lfs pull --include="models/**/*.plan"`. The deploy script syncs the materialized engines to `models/cdm` under the deployment data root (normally `/opt/humanoid` on Triskel). For a manual wheel installation, copy the files there or pass their directory as `model_dir`.
 
 `scripts/deploy` installs the locked dependencies and exposes JetPack's TensorRT bindings. For a separate Python 3.12 environment on Triskel, a `.pth` file in the virtual environment's `lib/python3.12/site-packages` containing the following line exposes the SDK bindings:
 

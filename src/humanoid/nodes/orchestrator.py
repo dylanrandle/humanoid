@@ -98,6 +98,13 @@ class OrchestratorNode(Node):
         logger.info(f"Orchestrator starting in mode: {self.mode}")
 
     def step(self) -> None:
+        previous_mode = self.mode
+        while True:
+            event = self.subscriber.receive(Topic.ORCHESTRATOR_EVENT)
+            if event is None:
+                break
+            self._handle_event(event)
+
         # Broadcast current mode every tick so subscribers stay in sync even if
         # they (re)start mid-session.
         self.publisher.publish(
@@ -105,14 +112,9 @@ class OrchestratorNode(Node):
             topic=Topic.ORCHESTRATOR_MODE,
         )
 
-        # Drain incoming events; each may change self.mode.
-        while True:
-            event = self.subscriber.receive(Topic.ORCHESTRATOR_EVENT)
-            if event is None:
-                break
-            self._handle_event(event)
-
-        forwards = MODE_FORWARDS[self.mode]
+        # Drain pending source commands on the handoff tick. The shared controller
+        # topic in particular can still contain output computed in the previous mode.
+        forwards = MODE_FORWARDS[self.mode] if self.mode is previous_mode else {}
         for source_topic in self._source_topics:
             msg = self.subscriber.receive(source_topic)
             if msg is None:

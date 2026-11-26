@@ -7,8 +7,9 @@ prompts and a previous mask's logits. The decoder profile supports 2 through
 16 coordinate tokens, including padding for a single point. [NVIDIA NanoSAM](https://github.com/NVIDIA-AI-IOT/nanosam)
 
 Fetch the materialized engines with `git lfs pull --include="models/nanosam/*.plan,models/cdm/*.plan"`.
-When deploying the Python wheel, copy both model directories under the dashboard
-host's data root (normally `/opt/humanoid/models`). RGB segmentation uses
+The deploy script syncs both model directories under the dashboard host's data
+root (normally `/opt/humanoid/models` on Triskel). For a manual wheel installation,
+copy the materialized engines there. RGB segmentation uses
 `nanosam/encoder.plan` and `nanosam/decoder.plan`. The optional `complete_depth`
 tool uses the matching `cdm/d435.plan` or `cdm/d405.plan`.
 

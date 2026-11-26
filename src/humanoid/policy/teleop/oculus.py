@@ -1,6 +1,7 @@
 """Oculus VR teleoperation policy for controlling robot end-effector pose."""
 
 import time
+from copy import deepcopy
 
 import numpy as np
 import pinocchio as pin
@@ -22,6 +23,7 @@ from humanoid.types.teleop import OculusInputSnapshot, OculusTeleopPolicyConfig
 logger = get_logger(__name__)
 
 # Oculus controller data keys
+LEFT_CONTROLLER_KEY = "l"
 RIGHT_CONTROLLER_KEY = "r"
 LEFT_GRIP_KEY = "LG"
 RIGHT_GRIP_KEY = "RG"
@@ -95,30 +97,23 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.orchestrator_client = orchestrator_client or OrchestratorClient()
         self.previous_button_states: dict[str, bool] = {}
         self.is_logging = False
-        self.required_transform_keys = [RIGHT_CONTROLLER_KEY]
-        self.required_button_keys = [
-            LEFT_GRIP_KEY,
-            RIGHT_GRIP_KEY,
-            LEFT_JOYSTICK_KEY,
-            RIGHT_JOYSTICK_KEY,
-            A_BUTTON_KEY,
-            B_BUTTON_KEY,
-            X_BUTTON_KEY,
-            Y_BUTTON_KEY,
-        ]
 
         # Oculus reader. An explicit address selects wireless ADB; None keeps
         # the upstream library's USB-device discovery behavior.
         self.reader = OculusReader(ip_address=config.ip_address, port=config.port)
-        self.input_stale = False
-        self._wait_for_initial_input()
+        self._input_issue: str | None = None
+        try:
+            self._wait_for_initial_input()
+        except BaseException:
+            self.reader.stop()
+            raise
 
         # Reference poses (set on first engaged call; cleared whenever the dead-man releases)
-        self.reference_controller_pose: np.ndarray | None = None
+        self._clutched_at: float | None = None
         self.filtered_controller_pose: pin.SE3 | None = None
-        self.reference_tool_pose: pin.SE3 | None = None
         self.commanded_tool_pose: pin.SE3 | None = None
         self.reference_base_pose: pin.SE3 | None = None
+        self._hold_action: Action | None = None
 
         # Integrated gripper command. Seeded from the observation on first
         # tick, then nudged by gripper_step while A or B is held.
@@ -133,7 +128,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         while True:
             now = time.monotonic()
             snapshot = self.reader.get_snapshot()
-            if self._snapshot_is_fresh(snapshot, now):
+            if self._tracking_issue(snapshot, now) is None:
                 return
             if now >= deadline:
                 connection = (
@@ -150,13 +145,42 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
                 last_log = now
             time.sleep(0.1)
 
-    def _snapshot_is_fresh(self, snapshot: OculusInputSnapshot, now: float) -> bool:
-        received_at = snapshot.received_monotonic
-        return bool(
-            received_at is not None
-            and now - received_at <= self.config.input_timeout
-            and self._has_valid_controller_data(snapshot.transforms, snapshot.buttons)
-        )
+    def _tracking_issue(self, snapshot: OculusInputSnapshot, now: float) -> str | None:
+        captured_at = snapshot.captured_monotonic
+        if captured_at is None or now - captured_at > self.config.input_timeout:
+            return "controller stream timed out"
+        for hand, pose_key, grip_key in (
+            ("left", LEFT_CONTROLLER_KEY, LEFT_GRIP_KEY),
+            ("right", RIGHT_CONTROLLER_KEY, RIGHT_GRIP_KEY),
+        ):
+            pose = snapshot.transforms.get(pose_key)
+            if pose is None or pose.shape != (4, 4) or not np.isfinite(pose).all():
+                return f"{hand} controller pose unavailable"
+            if not isinstance(snapshot.buttons.get(grip_key), bool):
+                return f"{hand} controller buttons unavailable"
+        return None
+
+    def _tracking_ready(self, snapshot: OculusInputSnapshot) -> bool:
+        # Invalid or old controller data is always disengaged. This prevents a
+        # dropped ADB stream from replaying the last grip/joystick state.
+        now = time.monotonic()
+        issue = self._tracking_issue(snapshot, now)
+        if issue is not None:
+            if issue != self._input_issue:
+                age = (
+                    "no frame received"
+                    if snapshot.captured_monotonic is None
+                    else f"last frame captured {now - snapshot.captured_monotonic:.2f} s ago"
+                )
+                logger.warning("Oculus %s (%s). Suspending teleop commands.", issue, age)
+            if self._input_issue is None:
+                self.reset()
+            self._input_issue = issue
+            return False
+        if self._input_issue is not None:
+            logger.info("Oculus input recovered")
+            self._input_issue = None
+        return True
 
     def log_configuration(self):
         logger.info(f"OculusTeleopPolicy initialized for {self.robot_config.name}")
@@ -194,38 +218,30 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
     def reset(self) -> None:
         """Reset policy state."""
-        self.reference_controller_pose = None
+        self._hold_action = None
+        self._clutched_at = None
         self.filtered_controller_pose = None
-        self.reference_tool_pose = None
         self.commanded_tool_pose = None
         self.reference_base_pose = None
         self.commanded_gripper_position = None
         self.tool_motion_limiter.reset()
 
-    def _is_rising_edge(self, current_pressed: bool, key: str) -> bool:
-        """Check if button transitioned False -> True. Stores the state for future checks."""
+    def _hold_on_release(self, observation: Observation) -> Action:
+        if self._hold_action is None:
+            self.reset()
+            self._hold_action = self._hold_current_pose_action(observation)
+        return deepcopy(self._hold_action)
+
+    def _is_rising_edge(self, buttons: dict[str, object], key: str) -> bool:
+        # A missing hand cannot confirm that a previously held button was released.
+        if key not in buttons:
+            return False
+        current_pressed = bool(buttons[key])
         previous = self.previous_button_states.get(key, False)
         self.previous_button_states[key] = current_pressed
         return current_pressed and not previous
 
-    def _has_valid_controller_data(self, transforms: dict, buttons: dict) -> bool:
-        """Check if controller data is valid and contains required keys.
-
-        Args:
-            transforms: Dictionary of controller transformations
-            buttons: Dictionary of button states
-
-        Returns:
-            True if data is valid, False otherwise
-        """
-        return bool(
-            transforms
-            and all(key in transforms for key in self.required_transform_keys)
-            and buttons
-            and all(key in buttons for key in self.required_button_keys)
-        )
-
-    def _read_joystick(self, buttons: dict, key: str) -> tuple[float, float]:
+    def _read_joystick(self, buttons: dict[str, object], key: str) -> tuple[float, float]:
         """Read a joystick (x, y) pair with the configured deadzone applied.
 
         Args:
@@ -235,31 +251,20 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         Returns:
             Tuple of (x, y) in [-1, 1], with axes inside the deadzone returned as 0.
         """
-        if key not in buttons:
-            return 0.0, 0.0
-        jx, jy = buttons[key]
-        deadzone = self.config.base_deadzone
-        if abs(jx) < deadzone:
-            jx = 0.0
-        if abs(jy) < deadzone:
-            jy = 0.0
-        return float(jx), float(jy)
+        match buttons.get(key):
+            case (float() as jx, float() as jy) if -1 <= jx <= 1 and -1 <= jy <= 1:
+                deadzone = self.config.base_deadzone
+                return (jx if abs(jx) >= deadzone else 0.0, jy if abs(jy) >= deadzone else 0.0)
+            case _:
+                return 0.0, 0.0
 
     def _compute_gripper_positions(
-        self, buttons: dict, observation: Observation
+        self, buttons: dict[str, object], observation: Observation
     ) -> np.ndarray | None:
         """Compute the gripper command from the A/B buttons.
 
-        The commanded position is integrated across ticks: holding A subtracts
-        the pre-computed ``self.gripper_step`` per tick (close), holding B
-        adds it (open). ``gripper_step`` is set in ``__init__`` to
-        ``(gripper_max - gripper_min) * dt / gripper_close_time``, so a full
-        range traversal takes ``gripper_close_time`` seconds at the
-        configured loop rate. Releasing both holds the last commanded
-        value. On the first call, the commanded position is seeded from
-        the observation so motion starts from where the gripper currently
-        is. The result is clamped to the gripper's joint limits. A takes
-        priority if both are held.
+        A closes the gripper and B opens it by one step per tick. A takes
+        priority when both are held. Releasing both holds the last command.
 
         Returns None when the robot has no gripper joint configured.
         """
@@ -270,16 +275,16 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             current = self._get_current_gripper_positions(observation)
             if current is None or len(current) == 0:
                 return None
-            self.commanded_gripper_position = float(current[0])
+            self.commanded_gripper_position = float(
+                np.clip(current[0], self.gripper_min, self.gripper_max)
+            )
 
-        if bool(buttons.get(A_BUTTON_KEY, False)):
-            self.commanded_gripper_position -= self.gripper_step
-        elif bool(buttons.get(B_BUTTON_KEY, False)):
-            self.commanded_gripper_position += self.gripper_step
+        close = bool(buttons.get(A_BUTTON_KEY, False))
+        if close or buttons.get(B_BUTTON_KEY, False):
+            self.commanded_gripper_position = self._step_gripper(
+                self.commanded_gripper_position, self.gripper_step, close=close
+            )
 
-        self.commanded_gripper_position = float(
-            np.clip(self.commanded_gripper_position, self.gripper_min, self.gripper_max)
-        )
         return np.array([self.commanded_gripper_position])
 
     def _homing_target_preserving_gripper(
@@ -302,77 +307,52 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             right_controller_pose: Current right controller pose (4x4 matrix)
             observation: Current observation from the environment
         """
-        self.reference_controller_pose = right_controller_pose.copy()
         self.filtered_controller_pose = pin.SE3(
             right_controller_pose[:3, :3],
             right_controller_pose[:3, 3],
         )
-        self.reference_tool_pose = self._get_current_tool_pose(observation)
-        self.commanded_tool_pose = self.reference_tool_pose.copy()
+        self.commanded_tool_pose = self._get_current_tool_pose(observation)
         self.tool_motion_limiter.reset()
         if self.robot_config.base is not None:
-            base_pose = self._get_current_base_pose(observation)
-            assert base_pose is not None, "Mobile base configured but FK returned None"
-            self.reference_base_pose = pin.SE3(
-                base_pose.rotation.copy(), base_pose.translation.copy()
+            self.reference_base_pose = self._get_current_base_pose(observation)
+            assert self.reference_base_pose is not None, (
+                "Mobile base configured but FK returned None"
             )
-
-        if self.verbose:
-            logger.info("\nReference poses initialized:")
-            logger.info(f"  Tool position: {self.reference_tool_pose.translation}")
-            rpy = pin.rpy.matrixToRpy(self.reference_tool_pose.rotation)
-            logger.info(f"  Tool orientation (RPY): {np.rad2deg(rpy)} deg")
-            if self.reference_base_pose is not None:
-                logger.info(f"  Base position: {self.reference_base_pose.translation}")
-            logger.info("\nReady! Move the right controller to control the robot.\n")
 
     def _compute_tool_pose(self, right_controller_pose: np.ndarray) -> pin.SE3:
         """Map the controller pose to a velocity-limited tool target."""
-        assert self.reference_controller_pose is not None, "Missing reference controller pose!"
-        assert self.reference_tool_pose is not None, "Missing reference tool pose!"
-        assert self.commanded_tool_pose is not None, "Missing commanded tool pose!"
-
-        reference_controller = pin.SE3(
-            self.reference_controller_pose[:3, :3],
-            self.reference_controller_pose[:3, 3],
-        )
+        assert self.filtered_controller_pose is not None, "Missing controller reference"
+        assert self.commanded_tool_pose is not None, "Missing tool reference"
+        previous_controller = self.filtered_controller_pose
         current_controller = pin.SE3(
             right_controller_pose[:3, :3],
             right_controller_pose[:3, 3],
         )
-        if self.filtered_controller_pose is None:
-            self.filtered_controller_pose = current_controller.copy()
-        else:
-            self.filtered_controller_pose = low_pass_pose(
-                self.filtered_controller_pose,
-                current_controller,
-                self.config.dt,
-                self.config.controller_pose_filter_time_constant,
-            )
-        current_controller = self.filtered_controller_pose
+        current_controller = low_pass_pose(
+            previous_controller,
+            current_controller,
+            self.config.dt,
+            self.config.controller_pose_filter_time_constant,
+        )
+        self.filtered_controller_pose = current_controller
+        # Consume this hand displacement once. Any motion the robot could not follow
+        # at its speed limit must not keep advancing the target after the hand stops.
         command_rotation = self.oculus_to_tool_command_rotation
 
         # translation
         controller_translation_delta = (
-            current_controller.translation - reference_controller.translation
+            current_controller.translation - previous_controller.translation
         )
         command_translation_delta = command_rotation @ controller_translation_delta
         scaled_translation_delta = command_translation_delta * self.tool_translation_scale
 
         # rotation
-        controller_rotation_delta = current_controller.rotation @ reference_controller.rotation.T
+        controller_rotation_delta = current_controller.rotation @ previous_controller.rotation.T
         command_rotation_delta = command_rotation @ controller_rotation_delta @ command_rotation.T
-        scaled_rotation_delta = pin.exp3(
-            pin.log3(command_rotation_delta) * self.tool_rotation_scale
-        )
-
-        desired_pose = pin.SE3(
-            scaled_rotation_delta @ self.reference_tool_pose.rotation,
-            scaled_translation_delta + self.reference_tool_pose.translation,
-        )
-        target_pose = self.tool_motion_limiter.step(
+        target_pose = self.tool_motion_limiter.follow_displacement(
             self.commanded_tool_pose,
-            desired_pose,
+            scaled_translation_delta,
+            pin.log3(command_rotation_delta) * self.tool_rotation_scale,
             self.config.dt,
         )
         self.commanded_tool_pose = target_pose.copy()
@@ -383,11 +363,10 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
 
         On the first call (with a grip-trigger dead-man held), initializes the reference
         poses from the current robot state and controller pose. While neither grip is
-        held, the policy clears its reference poses and holds the current robot position;
+        held, the policy republishes the targets captured on the first disengaged tick;
         new reference poses are re-established the next time a grip is pressed.
 
-        Subsequently returns the target pose based on the controller's pose relative to
-        the reference pose, with configurable scaling for translation and rotation.
+        Subsequent calls map each filtered hand displacement into a bounded tool step.
 
         Args:
             observation: Current observation from the environment
@@ -397,30 +376,20 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         """
         # Get current controller data
         snapshot = self.reader.get_snapshot()
-        transforms = snapshot.transforms
         buttons = snapshot.buttons
 
-        # Invalid or old controller data is always disengaged. This prevents a
-        # dropped ADB stream from replaying the last grip/joystick state.
-        if not self._snapshot_is_fresh(snapshot, time.monotonic()):
-            if not self.input_stale:
-                logger.warning("Oculus input is stale; holding the current robot pose")
-            self.input_stale = True
-            self.reset()
-            return self._hold_current_pose_action(observation)
-        if self.input_stale:
-            logger.info("Oculus input recovered; controller references will re-anchor")
-            self.input_stale = False
+        if not self._tracking_ready(snapshot):
+            return Action()
 
         # Handle X button homing (edge-triggered)
-        if self._is_rising_edge(bool(buttons.get(X_BUTTON_KEY, False)), X_BUTTON_KEY):
+        if self._is_rising_edge(buttons, X_BUTTON_KEY):
             target = self._homing_target_preserving_gripper(
                 self.robot_config.homing_presets[HomingPreset.HOME], observation
             )
             self.orchestrator_client.request_homing(target)
 
         # Handle Y button logging toggle (edge-triggered)
-        if self._is_rising_edge(bool(buttons.get(Y_BUTTON_KEY, False)), Y_BUTTON_KEY):
+        if self._is_rising_edge(buttons, Y_BUTTON_KEY):
             if self.is_logging:
                 logger.info("Y button pressed: Stopping data logging")
                 self.orchestrator_client.stop_logging()
@@ -434,15 +403,20 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         # motion. Releasing both clears the reference poses so they re-anchor
         # on re-engage.
         if not (buttons[LEFT_GRIP_KEY] or buttons[RIGHT_GRIP_KEY]):
-            self.reset()
-            return self._hold_current_pose_action(observation)
+            return self._hold_on_release(observation)
 
         # Extract right controller pose (4x4 transformation matrix)
-        right_controller_pose = transforms[RIGHT_CONTROLLER_KEY]
+        right_controller_pose = snapshot.transforms[RIGHT_CONTROLLER_KEY]
 
-        # Initialize reference poses on first call
-        if self.reference_controller_pose is None or self.reference_tool_pose is None:
+        # The reader can observe a release and a new press between policy ticks.
+        if self._clutched_at is None or (
+            snapshot.last_disengaged_monotonic is not None
+            and snapshot.last_disengaged_monotonic >= self._clutched_at
+        ):
+            self._hold_action = None
             self._initialize_reference_poses(right_controller_pose, observation)
+            self.commanded_gripper_position = None
+            self._clutched_at = snapshot.captured_monotonic
 
         target_pose = self._compute_tool_pose(right_controller_pose)
         target_velocity = self.tool_motion_limiter.command_velocity(target_pose)

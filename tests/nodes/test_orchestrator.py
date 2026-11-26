@@ -144,6 +144,33 @@ class TestTransitions:
 
 
 class TestStepIntegration:
+    @pytest.mark.parametrize(
+        ("event", "mode", "base_topic"),
+        [
+            (EventKind.REQUEST_OCULUS, Mode.OCULUS, Topic.OCULUS_BASE_COMMAND),
+            (EventKind.REQUEST_KEYBOARD, Mode.KEYBOARD, Topic.KEYBOARD_BASE_COMMAND),
+        ],
+    )
+    def test_teleop_entry_announces_new_mode_and_discards_queued_commands(
+        self, node, event, mode, base_topic
+    ):
+        pending = {
+            Topic.ORCHESTRATOR_EVENT: _event(event),
+            Topic.CONTROLLER_JOINT_COMMAND: Mock(),
+            base_topic: Mock(),
+        }
+        node.subscriber.receive = Mock(side_effect=lambda topic: pending.pop(topic, None))
+        node.step()
+        node.publisher.publish.assert_called_once()
+        assert node.publisher.publish.call_args.kwargs["topic"] is Topic.ORCHESTRATOR_MODE
+        assert node.publisher.publish.call_args.args[0].mode is mode
+        assert not pending
+
+        current = Mock()
+        pending[base_topic] = current
+        node.step()
+        node.publisher.publish.assert_called_with(current, topic=Topic.ROBOT_BASE_COMMAND)
+
     def test_step_drains_event_queue_and_transitions(self, node):
         events = [_event(EventKind.REQUEST_HOMING)]
         node.subscriber.receive = Mock(side_effect=_events_then_none(events))

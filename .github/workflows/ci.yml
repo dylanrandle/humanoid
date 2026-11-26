@@ -39,5 +39,15 @@ jobs:
       - name: Install the project
         run: uv sync --locked --all-extras --dev
 
+      - name: Install headless MuJoCo renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libosmesa6
+
+      - name: Configure LCM receive buffers
+        run: sudo sysctl -p deploy/90-humanoid-lcm.conf
+
       - name: Run checks (includes tests)
+        env:
+          MUJOCO_GL: osmesa
         run: uv run check

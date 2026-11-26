@@ -7,7 +7,7 @@ from humanoid.hardware.actuators.feetech.config import (
     FeetechActuatorControllerConfig,
 )
 from humanoid.hardware.config import RobotHardwareConfig
-from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
+from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig, JointDriveConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     RobotConfig,
@@ -37,7 +37,7 @@ HOMING_PRESETS = {
     HomingPreset.REST: REST_POSITION,
 }
 
-ACTUATOR_CONTROL_MODES = dict.fromkeys(JOINT_IDS, ActuatorControlMode.POSITION)
+JOINT_DRIVES = dict.fromkeys(JOINT_IDS, JointDriveConfig(control_mode=ActuatorControlMode.POSITION))
 ACTUATOR_CONFIGS = {
     joint_id: FeetechActuatorConfig(
         controller=MAIN_CONTROLLER,
@@ -56,7 +56,7 @@ SO101_CONFIG = RobotConfig(
     name=RobotName.SO101,
     tool=TOOL_CONFIG,
     homing_presets=HOMING_PRESETS,
-    actuator_control_modes=ACTUATOR_CONTROL_MODES,
+    joint_drives=JOINT_DRIVES,
     hardware=HARDWARE_CONFIG,
     gripper=GRIPPER_CONFIG,
 )

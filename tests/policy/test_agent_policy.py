@@ -13,7 +13,7 @@ from humanoid.types.agent import MotionCommand
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
-from humanoid.types.robot import CartesianVelocityLimits, RobotState
+from humanoid.types.robot import CartesianVelocityLimits, RobotJointCommand, RobotState
 
 
 @pytest.fixture
@@ -70,6 +70,30 @@ def test_motion_advances_only_on_policy_steps_and_reports_measured_failure(contr
     assert policy(obs).base_pose is None  # Does not keep publishing between agent commands.
 
 
+@pytest.mark.parametrize("immediate_request", [False, True])
+def test_autonomy_takes_over_arm_and_squeeze_from_routed_command(control, immediate_request):
+    policy, obs, _ = control
+    robot = policy.robot
+    commanded = obs.robot_state.joint_positions.copy()
+    commanded[:2] += 0.1
+    commanded[robot.position_controlled_q_indices[0]] += 0.15
+    grip = robot.get_gripper_position_indices()
+    commanded[grip] = 1.3
+    obs.robot_joint_command = RobotJointCommand(9.0, commanded)
+    if immediate_request:
+        policy.submit(MotionCommand(duration=1.0))
+    action = policy(obs)
+    np.testing.assert_allclose(
+        action.tool_pose.homogeneous, robot.get_tool_command_pose(commanded).homogeneous, atol=1e-12
+    )
+    np.testing.assert_allclose(action.gripper_positions, commanded[grip])
+    np.testing.assert_allclose(
+        action.base_pose.homogeneous,
+        robot.get_base_pose(obs.robot_state.joint_positions).homogeneous,
+        atol=1e-12,
+    )
+
+
 def test_mode_change_interrupts_and_requires_new_command(control):
     policy, obs, _ = control
     result = policy.submit(MotionCommand(base_delta=np.array([0.04, 0, 0])))
@@ -84,9 +108,11 @@ def test_mode_change_interrupts_and_requires_new_command(control):
 
 def test_stale_feedback_interrupts_without_action(control):
     policy, obs, clock = control
-    result = policy.submit(MotionCommand())
+    result = policy.submit(MotionCommand(base_delta=np.array([0.04, 0, 0])))
+    assert policy(obs).base_pose is not None
     clock.return_value = 11.0
-    assert policy(obs).tool_pose is None
+    interrupted = policy(obs)
+    assert interrupted.base_pose is None and interrupted.tool_pose is None
     with pytest.raises(RuntimeError, match="stale"):
         result.result()
 
@@ -211,6 +237,36 @@ def test_base_target_uses_selected_robot_velocity_limits(control):
     assert np.linalg.norm(pin.log3(delta.rotation)) == pytest.approx(
         velocity.angular * controller.dt / controller.orientation_gain
     )
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_agent_corrects_base_slip_in_body_frame_and_stops_at_commanded_pose(control, cancel):
+    policy, obs, clock = control
+    policy(obs)
+    # Odometry faces +Y while the integrated command faces +X.
+    measured = obs.robot_state.joint_positions
+    measured[:4] = [0, 0, 0, 1]
+    commanded = measured.copy()
+    commanded[:4] = [0.2, -0.1, 1, 0]
+    obs.robot_joint_command = RobotJointCommand(clock(), commanded)
+    reference = policy.robot.get_base_pose(commanded).copy()
+    # A small forward step and turn are below the per-tick limits.
+    step = 0.0001
+    result = policy.submit(MotionCommand(duration=0.1, base_delta=np.array([step, 0, step])))
+    expected = pin.SE3(pin.rpy.rpyToMatrix(0, 0, step), np.array([step, 0, 0]))
+    delta = reference.actInv(policy(obs).base_pose)
+    np.testing.assert_allclose(delta.homogeneous, expected.homogeneous, atol=1e-12)
+
+    measured[1] += step / 2
+    delta = reference.actInv(policy(obs).base_pose)
+    np.testing.assert_allclose(delta.translation, [step / 2, 0, 0], atol=1e-12)
+    if cancel:
+        policy.cancel()
+    else:
+        clock.return_value = obs.robot_state.timestamp = 10.11
+    hold = policy(obs)
+    assert result.done()
+    np.testing.assert_allclose(hold.base_pose.homogeneous, reference.homogeneous, atol=1e-12)
 
 
 def test_submission_from_another_thread_uses_next_observation_and_copies_arguments(control):

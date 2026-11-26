@@ -1,4 +1,3 @@
-import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, closing
@@ -14,7 +13,7 @@ from werkzeug.serving import make_server
 
 from humanoid.agent.harness.recording import record_lcm_episode
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.constants import Topic
+from humanoid.constants import Topic, private_lcm_url
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.manager import NodeManager, NodeManagerError
@@ -499,7 +498,7 @@ def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
     monkeypatch.setattr(
         "humanoid.orchestrator.service.AgentControlClient", lambda _: MagicMock(session_id="agent")
     )
-    url = f"udpm://239.192.42.{secrets.randbelow(256)}:{49152 + secrets.randbelow(16384)}?ttl=0"
+    url = private_lcm_url()
     publisher = Publisher(url)
     service.orchestrator_client = OrchestratorClient(publisher)
     channels = {

@@ -90,8 +90,8 @@ class OculusTeleopPolicyConfig:
         ip_address: Quest IPv4 address for wireless ADB. ``None`` preserves
             the upstream reader's USB-device behavior.
         port: Quest wireless ADB port.
-        input_timeout: Maximum age in seconds of the most recently received
-            controller frame. Older input is treated as disengaged.
+        input_timeout: Maximum age in seconds since capture of the latest
+            controller frame. Older input suppresses Oculus commands until fresh tracking returns.
         startup_timeout: Maximum time in seconds to wait for the first valid
             controller frame before failing with a setup error.
         tool_linear_acceleration_limit: Optional tool translation acceleration
@@ -172,8 +172,10 @@ def _validate_motion_config(
 
 @dataclass(frozen=True)
 class OculusInputSnapshot:
-    """One atomically sampled controller frame and its receipt time."""
+    """One controller frame and its capture time on the host monotonic clock."""
 
     transforms: dict[str, np.ndarray]
     buttons: dict[str, object]
-    received_monotonic: float | None
+    captured_monotonic: float | None
+    # A release can fall between policy ticks when the reader delivers a burst.
+    last_disengaged_monotonic: float | None = None

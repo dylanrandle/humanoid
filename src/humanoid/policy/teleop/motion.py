@@ -42,6 +42,31 @@ class CartesianPoseLimiter:
             angular=pose.rotation @ self.angular_velocity,
         )
 
+    def follow_displacement(
+        self, current: pin.SE3, translation: np.ndarray, rotation: np.ndarray, dt: float
+    ) -> pin.SE3:
+        """Follow one moving input sample; both displacement vectors use the command frame."""
+        if not math.isfinite(dt) or dt <= 0.0:
+            raise ValueError("Cartesian limiter timestep must be positive and finite.")
+        self.linear_velocity = _bounded_velocity(
+            translation / dt,
+            self.linear_velocity,
+            self.velocity_limits.linear,
+            self.linear_acceleration_limit,
+            dt,
+        )
+        self.angular_velocity = _bounded_velocity(
+            current.rotation.T @ rotation / dt,
+            self.angular_velocity,
+            self.velocity_limits.angular,
+            self.angular_acceleration_limit,
+            dt,
+        )
+        return pin.SE3(
+            current.rotation @ pin.exp3(self.angular_velocity * dt),
+            current.translation + self.linear_velocity * dt,
+        )
+
     def step(self, current: pin.SE3, target: pin.SE3, dt: float) -> pin.SE3:
         """Advance ``current`` toward ``target`` within configured limits."""
         if not math.isfinite(dt) or dt <= 0.0:
@@ -112,14 +137,33 @@ def _next_velocity(
             desired_speed = min(desired_speed, math.sqrt(2.0 * acceleration_limit * distance))
         desired_velocity = error * (desired_speed / distance)
 
+    return _limit_acceleration(desired_velocity, previous_velocity, acceleration_limit, dt)
+
+
+def _bounded_velocity(
+    desired: np.ndarray,
+    previous: np.ndarray,
+    speed_limit: float,
+    acceleration_limit: float | None,
+    dt: float,
+) -> np.ndarray:
+    speed = float(np.linalg.norm(desired))
+    if speed > speed_limit:
+        desired = desired * (speed_limit / speed)
+    return _limit_acceleration(desired, previous, acceleration_limit, dt)
+
+
+def _limit_acceleration(
+    desired: np.ndarray, previous: np.ndarray, acceleration_limit: float | None, dt: float
+) -> np.ndarray:
     if acceleration_limit is None:
-        return desired_velocity
-    velocity_delta = desired_velocity - previous_velocity
+        return desired
+    velocity_delta = desired - previous
     delta_norm = float(np.linalg.norm(velocity_delta))
     max_delta = acceleration_limit * dt
     if delta_norm > max_delta:
         velocity_delta *= max_delta / delta_norm
-    return previous_velocity + velocity_delta
+    return previous + velocity_delta
 
 
 def _reaches_target(error: np.ndarray, step: np.ndarray) -> bool:

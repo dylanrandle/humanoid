@@ -6,7 +6,7 @@ import pytest
 from scservo_sdk import sms_sts
 from vassar_feetech_servo_sdk import ServoController
 
-from humanoid.config.actuator import STS3215_12V_CURRENT_CALIBRATION
+from humanoid.config.actuator import STS3215_7V4_CURRENT_CALIBRATION
 from humanoid.hardware.actuators.feetech.config import (
     FEETECH_ACCELERATION_MAX,
     FEETECH_ACCELERATION_MIN,
@@ -390,7 +390,7 @@ def test_velocity_reads_use_sdk_signed_value(raw_velocity, inverted, expected_un
 
 @pytest.mark.parametrize("include_current", [False, True])
 def test_feedback_uses_one_group_read_for_all_actuators_and_fields(include_current):
-    calibration = STS3215_12V_CURRENT_CALIBRATION if include_current else None
+    calibration = STS3215_7V4_CURRENT_CALIBRATION if include_current else None
     driver = _driver(
         [
             replace(_actuator(1), current_calibration=calibration),
@@ -450,7 +450,7 @@ def test_feedback_uses_one_group_read_for_all_actuators_and_fields(include_curre
     }
     assert temperatures == {1: 31.0, 2: 32.0}
     assert feedback.efforts == (
-        {1: pytest.approx(0.701175475), 2: pytest.approx(-1.40235095)} if include_current else {}
+        {1: pytest.approx(0.497197155), 2: pytest.approx(-0.99439431)} if include_current else {}
     )
     assert driver._last_positions == positions
     group_read.clearParam.assert_called_once_with()
@@ -461,12 +461,12 @@ def test_feedback_uses_one_group_read_for_all_actuators_and_fields(include_curre
     [
         (0x0000, False, 0.0),
         (0x8000, False, 0.0),
-        (0x0064, False, 0.701175475),
-        (0x8064, False, -0.701175475),
+        (0x0064, False, 0.497197155),
+        (0x8064, False, -0.497197155),
         (0x0000, True, 0.0),
         (0x8000, True, 0.0),
-        (0x0064, True, -0.701175475),
-        (0x8064, True, 0.701175475),
+        (0x0064, True, -0.497197155),
+        (0x8064, True, 0.497197155),
     ],
 )
 def test_effort_feedback_decodes_signed_current_in_joint_coordinates(
@@ -476,7 +476,7 @@ def test_effort_feedback_decodes_signed_current_in_joint_coordinates(
         [
             replace(
                 _actuator(inverted=inverted),
-                current_calibration=STS3215_12V_CURRENT_CALIBRATION,
+                current_calibration=STS3215_7V4_CURRENT_CALIBRATION,
             )
         ]
     )
@@ -494,7 +494,7 @@ def test_effort_feedback_decodes_signed_current_in_joint_coordinates(
 def test_effort_feedback_omits_uncalibrated_and_missing_actuators():
     driver = _driver(
         [
-            replace(_actuator(1), current_calibration=STS3215_12V_CURRENT_CALIBRATION),
+            replace(_actuator(1), current_calibration=STS3215_7V4_CURRENT_CALIBRATION),
             _actuator(2),
         ]
     )
@@ -511,7 +511,7 @@ def test_effort_feedback_omits_uncalibrated_and_missing_actuators():
     with patch.object(driver, "_sync_read", return_value={2: (MID_POSITION, 0, 32, 200)}):
         missing = driver.read_all_feedback()
 
-    assert first.efforts == {1: pytest.approx(0.701175475)}
+    assert first.efforts == {1: pytest.approx(0.497197155)}
     assert missing.efforts == {}
 
 

@@ -47,3 +47,20 @@ test("failed operations surface their error, unlock controls, and refresh", asyn
   assert.equal(state.busy.size, 0);
   assert.equal(refreshes, 1);
 });
+
+test("completed operation unlocks its button during a slow background poll", async () => {
+  let finishPoll;
+  const state = {
+    snapshot: null,
+    busy: new Set(),
+    refreshPromise: new Promise((resolve) => { finishPoll = resolve; }),
+  };
+  const options = operationOptions(state, async () => ({ mode: "idle" }));
+  const renders = [];
+  options.renderSnapshot = () => renders.push([state.snapshot?.mode, state.busy.has("stack")]);
+  const result = performOperation(options);
+  await Promise.resolve();
+  assert.deepEqual(renders, [[undefined, true], ["idle", false]]);
+  finishPoll();
+  await result;
+});

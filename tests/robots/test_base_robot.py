@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import numpy as np
 import pinocchio as pin
@@ -74,6 +75,17 @@ class TestConstruction:
         """panda has a `panda_collision.urdf` next to `panda.urdf` and should pick it up."""
         # The collision model should still be populated.
         assert panda_robot.collision_model.ngeoms > 0
+
+    def test_triskel_loads_collision_urdf_shapes_on_their_links(self, mobile_robot):
+        path = mobile_robot.urdf_path.with_name("triskel_collision.urdf")
+        expected = sorted(
+            link.attrib["name"]
+            for link in ET.parse(path).getroot().findall("link")
+            for _ in link.findall("collision")
+        )
+        frames = mobile_robot.model.frames
+        actual = [frames[g.parentFrame].name for g in mobile_robot.collision_model.geometryObjects]
+        assert sorted(actual) == expected
 
     def test_data_structures_created(self, panda_robot):
         assert panda_robot.data is not None

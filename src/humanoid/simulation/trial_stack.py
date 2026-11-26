@@ -1,6 +1,5 @@
 """Trial-owned digital twin, controller, orchestrator and HTTP Agent API."""
 
-import secrets
 import time
 from contextlib import ExitStack, closing
 from dataclasses import replace
@@ -13,6 +12,7 @@ from pathlib import Path
 from humanoid.agent.client import AgentControlClient
 from humanoid.config.selection import ROBOT_CONFIG
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
+from humanoid.constants import private_lcm_url
 from humanoid.middleware.publisher import Publisher
 from humanoid.nodes.base import Node
 from humanoid.nodes.orchestrator import OrchestratorNode
@@ -105,8 +105,7 @@ class TrialStack:
             raise ValueError("The trial requires a configured RGB-D camera.")
         # All nodes in this run share a private multicast group. Never connect
         # trial control traffic to the operator's hardware or another trial.
-        group = f"239.192.{secrets.randbelow(256)}.{secrets.randbelow(256)}"
-        url = f"udpm://{group}:{49152 + secrets.randbelow(16384)}?ttl=0"
+        url = private_lcm_url()
         ctx = get_context("spawn")
         self._stop = ctx.Event()
         self._children: list[BaseProcess] = []

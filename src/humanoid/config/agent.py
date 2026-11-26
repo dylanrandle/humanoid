@@ -31,7 +31,7 @@ DEFAULT_AGENT_ENDPOINT = AgentControlEndpoint(f"http://{AGENT_HOST}:{DEFAULT_AGE
 def get_agent_policy_config(robot_config: RobotConfig = ROBOT_CONFIG) -> AgentPolicyConfig:
     return AgentPolicyConfig(
         subscriptions=ObservationSubscriptions(
-            topics=(Topic.ROBOT_STATE, Topic.ORCHESTRATOR_MODE),
+            topics=(Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND, Topic.ORCHESTRATOR_MODE),
             camera_names=tuple(robot_config.cameras),
         ),
     )

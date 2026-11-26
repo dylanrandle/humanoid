@@ -1,4 +1,5 @@
 import os
+import secrets
 from enum import Enum
 
 from humanoid.types.actuator import ActuatorHealthReport
@@ -17,7 +18,21 @@ from humanoid.types.robot import (
 )
 from humanoid.types.simulation import SimulationState
 
-DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", "udpm://239.255.76.67:7667?ttl=0")
+LCM_RECEIVE_BUFFER_BYTES = 8 * 1024 * 1024
+
+
+def local_lcm_url(group: str, port: int) -> str:
+    return f"mpudpm://{group}:{port}?ttl=0&recv_buf_size={LCM_RECEIVE_BUFFER_BYTES}"
+
+
+def private_lcm_url() -> str:
+    """Allocate a random local bus independently of the operator's LCM_DEFAULT_URL."""
+    group = f"239.192.{secrets.randbelow(256)}.{secrets.randbelow(256)}"
+    # Multiport LCM uses 500 consecutive ports starting at the supplied port.
+    return local_lcm_url(group, 49152 + secrets.randbelow(16384 - 500 + 1))
+
+
+DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", local_lcm_url("239.255.76.67", 7667))
 RUNTIME_ENVIRONMENT_VARIABLE = "HUMANOID_RUNTIME"
 SCENE_ENVIRONMENT_VARIABLE = "HUMANOID_SCENE"
 ROBOT_ENVIRONMENT_VARIABLE = "HUMANOID_ROBOT"

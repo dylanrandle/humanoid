@@ -21,7 +21,7 @@ from humanoid.types.simulation import MujocoSimulationConfig
 
 SPAWNED_SIMULATION_TIMEOUT_SECONDS = 15.0
 EXPECTED_SIMULATION_RATE_HZ = 200.0
-EXPECTED_SIMULATION_SUBSTEPS = 1
+EXPECTED_SIMULATION_SUBSTEPS = 4
 
 
 def _run_spawned_simulation(result_queue) -> None:

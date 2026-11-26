@@ -27,7 +27,7 @@ class MujocoSimulationConfig:
     """Physics and actuator defaults shared by every generated robot model."""
 
     scene: SimulationScene = SimulationScene.EMPTY
-    physics_timestep: float = 0.005
+    physics_timestep: float = 0.00125
     publish_rate_hz: float = 200.0
     position_kp: float = 1000.0
     position_damping_ratio: float = 1.0

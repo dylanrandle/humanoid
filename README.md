@@ -76,8 +76,9 @@ LCM network.
 
 Run `uv run viz` on your Mac to open the native MuJoCo viewer for a local stack.
 Use `uv run viz --host triskel` for the stack on Triskel over SSH.
-The viewer follows hardware, simulation, and replay. Amber shows commanded
-joints, blue shows the commanded tool, and an arrow shows the base target.
+The viewer follows hardware, simulation, and replay. Amber shows commanded joints
+at the measured base pose. Blue shows the tool target. The arrow shows the base
+target and its forward heading (Triskel’s arm side).
 
 Simulation shows the selected scene and its moving objects. Hardware feedback
 positions the robot on a reference floor. Before the first state arrives, the
@@ -89,32 +90,25 @@ Close the viewer window to disconnect.
 
 ### LCM networking
 
-Hardware and simulation use host-local multicast (`ttl=0`) by default.
-The viewer reads `SIMULATION/STATE` for the physics scene or `ROBOT/STATE` for
-hardware feedback. Command overlays appear when the viewer receives the existing
-`ROBOT/JOINT_COMMAND`, `ROBOT/TOOL_COMMAND`, and `ROBOT/BASE_COMMAND` messages.
-With `--host`, SSH carries those topics. The dashboard serves camera previews
-separately over HTTP. Use matching model code and robot assets on both machines.
-Set `HUMANOID_ROBOT_DIR` to select the installation directory on the SSH host.
+LCM uses host-local multiport UDP (`mpudpm`, `ttl=0`). Each socket requests an
+8 MiB receive buffer through `recv_buf_size`.
 
-For direct LCM communication between hosts on the same subnet, set the same
-multicast group and port on each participating process before launch. Use
-`ttl=1` on each publisher that needs to reach another host. For manual launches,
-run the following on the participating hosts before starting the nodes.
+- **Jetson** deployment applies the buffer settings automatically.
+- On **other Linux hosts**, copy the buffer configuration into `/etc/sysctl.d/`
+  and run `sudo sysctl -p /etc/sysctl.d/90-humanoid-lcm.conf`. [Configuration file](deploy/90-humanoid-lcm.conf)
+- On **macOS**, if `sysctl -n kern.ipc.maxsockbuf` is below 8388608, run
+  `sudo sysctl -w kern.ipc.maxsockbuf=8388608` for the current boot.
+
+`uv run viz --host triskel` streams state and commands over SSH. Use matching robot
+assets on both hosts. Set `HUMANOID_ROBOT_DIR` for a custom remote installation.
+If you override `LCM_DEFAULT_URL` for the robot service,
+set the same URL in the robot's SSH environment.
+
+For direct multicast across a subnet, set this on each host before launch.
 
 ```bash
-export LCM_DEFAULT_URL='udpm://239.255.76.67:7667?ttl=1'
+export LCM_DEFAULT_URL='mpudpm://239.255.76.67:7667?ttl=1&recv_buf_size=8388608'
 ```
-
-The override applies to every LCM topic the process publishes. Prefer wired
-Ethernet when sending raw RGB-D images between hosts.
-
-The deployed `humanoid.service` sets `LCM_DEFAULT_URL` to
-`udpm://239.255.76.67:7667?ttl=0&recv_buf_size=8388608` for an 8 MiB receive
-buffer. Deployment applies the matching kernel settings from
-`/etc/sysctl.d/90-humanoid-lcm.conf`. Manual launches on the robot can use the
-same URL. Restart the affected processes after changing the buffer settings so
-they open new sockets.
 
 ### Agent control API
 
@@ -186,7 +180,9 @@ Package the current local code and deploy it to `/opt/humanoid`:
 ./scripts/deploy
 ```
 
-This installs locked dependencies, enables `humanoid.service`, and restarts the web console.
+Deployment installs locked dependencies, syncs TensorRT engines from `models/` via
+`rsync`, enables `humanoid.service`, and restarts the console. If the engines are
+Git LFS pointers, run `git lfs pull --include='models/**/*.plan'` first.
 The robot needs no source checkout. The stack remains stopped until started from the UI.
 Deployment may prompt for `sudo`; use `--dry-run` to build without deploying. Override the
 defaults with `HUMANOID_ROBOT_HOST` and `HUMANOID_ROBOT_DIR`.
@@ -241,8 +237,9 @@ Environment=HUMANOID_OCULUS_IP=192.168.1.42
 sudo systemctl restart humanoid.service
 ```
 
-Without the override, Oculus uses USB discovery. Wireless ADB may need re-enabling after a
-headset reboot; stale input automatically disengages control.
+Oculus uses USB discovery by default. After a headset reboot, you may need to
+re-enable wireless ADB. Each clutch starts from the current tool target. Commands
+pause if either controller loses tracking or the latest frame is older than `input_timeout`.
 
 ## Project Structure
 
@@ -307,16 +304,10 @@ The Python and UI test suites both verify that the generated module is current.
 
 ### LCM Types
 
-LCM message types are auto-generated from `.lcm` definitions in `src/humanoid/types/lcm/`. To regenerate:
+Regenerate the Python bindings after editing a `.lcm` definition in `src/humanoid/types/lcm/`.
 
 ```bash
 ./scripts/generate-lcm-types
-```
-
-To inspect LCM messages:
-
-```bash
-./scripts/run-lcm-spy
 ```
 
 ## Configuration

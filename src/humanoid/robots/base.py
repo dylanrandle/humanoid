@@ -7,7 +7,9 @@ import numpy as np
 import pinocchio as pin
 
 from humanoid.logger import get_logger
-from humanoid.types.robot import RobotConfig
+from humanoid.robots.command import normalize_robot_joint_command
+from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.robot import RobotConfig, RobotJointCommand, RobotState
 
 COLLISION_URDF_SUFFIX = "_collision.urdf"
 
@@ -50,9 +52,8 @@ class Robot:
         Args:
             config: Robot configuration containing name and other parameters
             urdf_filename: Name of the URDF file for visual model. Default: "{config.name}.urdf"
-            collision_urdf_filename: Optional separate URDF for collision model.
-                                    If None, automatically checks one
-                                    and falls back to urdf_filename if not found.
+            collision_urdf_filename: Override the planner's collision URDF. By default,
+                use "{config.name}_collision.urdf" if present, otherwise the primary URDF.
             package_dirs: Additional package directories for mesh loading.
                          The assets directory is automatically included.
         """
@@ -77,8 +78,6 @@ class Robot:
         self._urdf_path = urdf_path
         self._srdf_path = srdf_path
         self._robot_dir = robot_dir
-        self._package_dirs = package_dirs
-
         # Validate paths
         if not robot_dir.exists():
             raise FileNotFoundError(
@@ -92,12 +91,10 @@ class Robot:
                 f"Available URDF files: {list((robot_dir / 'urdf').glob('*.urdf'))}"
             )
 
-        # Auto-detect collision URDF if not specified
         if collision_urdf_filename is None:
-            # Check if a collision URDF variant exists
             collision_candidate = robot_dir / "urdf" / f"{config.name}{COLLISION_URDF_SUFFIX}"
             if collision_candidate.exists():
-                collision_urdf_filename = f"{config.name}{COLLISION_URDF_SUFFIX}"
+                collision_urdf_filename = collision_candidate.name
                 logger.info(f"Using separate collision URDF: {collision_urdf_filename}")
 
         # Setup package directories for mesh loading
@@ -121,26 +118,23 @@ class Robot:
             mimic=True,
         )
 
-        # Load collision model from separate URDF if available, otherwise use main URDF
         if collision_urdf_filename is not None:
-            collision_urdf_path = robot_dir / "urdf" / collision_urdf_filename
-            if not collision_urdf_path.exists():
-                raise FileNotFoundError(f"Collision URDF file not found: {collision_urdf_path}")
+            collision_path = robot_dir / "urdf" / collision_urdf_filename
+            if not collision_path.exists():
+                raise FileNotFoundError(f"Collision URDF file not found: {collision_path}")
             _, self.collision_model = pin.buildModelsFromUrdf(
-                str(collision_urdf_path),
+                str(collision_path),
                 package_dirs=package_dirs_str,
                 geometry_types=[pin.GeometryType.COLLISION],
                 root_joint=root_joint,
                 mimic=True,
             )
         else:
-            # Use the same URDF for collision
-            _, self.collision_model = pin.buildModelsFromUrdf(
+            self.collision_model = pin.buildGeomFromUrdf(
+                self.model,
                 str(urdf_path),
+                pin.GeometryType.COLLISION,
                 package_dirs=package_dirs_str,
-                geometry_types=[pin.GeometryType.COLLISION],
-                root_joint=root_joint,
-                mimic=True,
             )
 
         # Store final package directories
@@ -154,7 +148,7 @@ class Robot:
             str(self.model.names[model_idx]): model_idx - 1
             for model_idx in range(1, self.model.njoints)
         }
-        self._validate_actuator_configuration()
+        self._configure_actuated_joints()
 
     @cached_property
     def visual_model(self) -> pin.GeometryModel:
@@ -169,12 +163,10 @@ class Robot:
     def visual_data(self) -> pin.GeometryData:
         return pin.GeometryData(self.visual_model)
 
-    def _validate_actuator_configuration(self) -> None:
-        """Validate logical controlled joints and optional physical bindings."""
+    def _configure_actuated_joints(self) -> None:
+        """Bind the configured servos to model joints and apply reflected inertia."""
         config = self.config
-        missing_actuator_joints = (
-            set(config.actuator_control_modes) - self._joint_name_to_idx.keys()
-        )
+        missing_actuator_joints = config.joint_drives.keys() - self._joint_name_to_idx.keys()
         if missing_actuator_joints:
             missing = ", ".join(sorted(missing_actuator_joints))
             raise ValueError(f"Actuator joints not found in the robot model: {missing}")
@@ -185,6 +177,10 @@ class Robot:
                 raise ValueError(
                     f"Gripper joint {joint_name!r} must have one position and velocity coordinate."
                 )
+        for name, drive in config.joint_drives.items():
+            if drive.armature is not None:
+                joint = self.model.joints[self.model.getJointId(name)]
+                self.model.armature[joint.idx_v] = drive.armature
 
     @property
     def config(self) -> RobotConfig:
@@ -244,9 +240,39 @@ class Robot:
     def actuator_joint_names(self) -> list[str]:
         """Configured actuator joints in model order."""
         return sorted(
-            self.config.actuator_control_modes,
+            self.config.joint_drives,
             key=self.joint_name_to_idx,
         )
+
+    @cached_property
+    def position_controlled_q_indices(self) -> list[int]:
+        return self.get_joint_position_indices(
+            [
+                self.joint_name_to_idx(name)
+                for name, drive in self.config.joint_drives.items()
+                if drive.control_mode is ActuatorControlMode.POSITION
+            ]
+        )
+
+    def hold_configuration(
+        self, state: RobotState, command: RobotJointCommand | None
+    ) -> np.ndarray:
+        """Hold the last routed position targets and anchor the base to measured odometry."""
+        q = state.joint_positions.copy()
+        if command is not None:
+            try:
+                applied = normalize_robot_joint_command(
+                    command,
+                    self.model.lowerPositionLimit,
+                    self.model.upperPositionLimit,
+                    self.model.velocityLimit,
+                )
+            except ValueError:
+                # The driver also rejects malformed commands.
+                return q
+            indices = self.position_controlled_q_indices
+            q[indices] = applied.joint_positions[indices]
+        return q
 
     def print_info(self) -> None:
         """Print information about the robot model."""

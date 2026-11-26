@@ -2,15 +2,15 @@
 
 from humanoid.hardware.actuators.system import ActuatorState, ActuatorSystem
 from humanoid.types.actuator import (
-    ActuatorConfig,
     ActuatorControlMode,
     ActuatorHardwareConfig,
+    HardwareActuatorBinding,
 )
 
 __all__ = [
-    "ActuatorConfig",
     "ActuatorControlMode",
     "ActuatorHardwareConfig",
     "ActuatorState",
     "ActuatorSystem",
+    "HardwareActuatorBinding",
 ]

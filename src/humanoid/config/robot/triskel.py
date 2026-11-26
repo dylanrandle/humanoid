@@ -5,8 +5,9 @@ from dataclasses import replace
 import numpy as np
 
 from humanoid.config.actuator import (
-    STS3215_12V_CURRENT_CALIBRATION,
-    STS3215_12V_EFFORT_LIMITS,
+    STS3215_7V4_CURRENT_CALIBRATION,
+    STS3215_7V4_RATED_TORQUE,
+    STS3215_345_OUTPUT_ARMATURE,
 )
 from humanoid.config.camera import (
     REALSENSE_CAMERA_CONFIG,
@@ -23,14 +24,14 @@ from humanoid.state_estimation.config import RobotStateEstimationConfig
 from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
-from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig
+from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig, JointDriveConfig
 from humanoid.types.camera import RobotCameraConfig
 from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
 from humanoid.types.depth import DepthCamera
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     CartesianVelocityLimits,
-    MeshContactConfig,
+    GeomContactConfig,
     RobotBaseConfig,
     RobotConfig,
     RobotGripperConfig,
@@ -46,6 +47,7 @@ CONTROLLER_DT = 1 / CONTROLLER_RATE_HZ
 WHEEL_IDS = [f"wheel_{index}" for index in range(1, 4)]
 JOINT_IDS = [f"arm_{index}" for index in range(1, 8)]
 GRIPPER_ID = "gripper_1"
+GRIPPER_ACTUATOR_ID = 8
 MAX_POSITION_VELOCITY_RAD_S = 2.0
 POSITION_PID_GAINS_BY_ACTUATOR_ID: dict[int, FeetechPIDGains] = {
     1: FeetechPIDGains(p=16, i=0, d=32),
@@ -55,7 +57,7 @@ POSITION_PID_GAINS_BY_ACTUATOR_ID: dict[int, FeetechPIDGains] = {
     5: FeetechPIDGains(p=16, i=0, d=32),
     6: FeetechPIDGains(p=16, i=0, d=32),
     7: FeetechPIDGains(p=16, i=0, d=32),
-    8: FeetechPIDGains(p=16, i=0, d=32),
+    GRIPPER_ACTUATOR_ID: FeetechPIDGains(p=16, i=0, d=32),
 }
 
 
@@ -137,15 +139,27 @@ WHEEL_CONFIGS = [
     )
     for wheel_id in WHEEL_IDS
 ]
-ACTUATOR_CONTROL_MODES = {
-    **dict.fromkeys(WHEEL_IDS, ActuatorControlMode.VELOCITY),
-    **dict.fromkeys([*JOINT_IDS, GRIPPER_ID], ActuatorControlMode.POSITION),
+JOINT_DRIVES = {
+    **dict.fromkeys(
+        WHEEL_IDS,
+        JointDriveConfig(
+            control_mode=ActuatorControlMode.VELOCITY, armature=STS3215_345_OUTPUT_ARMATURE
+        ),
+    ),
+    **dict.fromkeys(
+        [*JOINT_IDS, GRIPPER_ID],
+        JointDriveConfig(
+            control_mode=ActuatorControlMode.POSITION, armature=STS3215_345_OUTPUT_ARMATURE
+        ),
+    ),
 }
 ACTUATOR_CONFIGS = {
     **{
         wheel_id: FeetechActuatorConfig(
             controller=MAIN_CONTROLLER,
             actuator_id=actuator_id,
+            rated_effort=STS3215_7V4_RATED_TORQUE,
+            current_calibration=STS3215_7V4_CURRENT_CALIBRATION,
         )
         for actuator_id, wheel_id in enumerate(WHEEL_IDS, start=250)
     },
@@ -155,19 +169,19 @@ ACTUATOR_CONFIGS = {
             actuator_id=actuator_id,
             max_position_velocity=MAX_POSITION_VELOCITY_RAD_S,
             position_pid=POSITION_PID_GAINS_BY_ACTUATOR_ID[actuator_id],
-            effort_limits=STS3215_12V_EFFORT_LIMITS,
-            current_calibration=STS3215_12V_CURRENT_CALIBRATION,
+            rated_effort=STS3215_7V4_RATED_TORQUE,
+            current_calibration=STS3215_7V4_CURRENT_CALIBRATION,
         )
         for actuator_id, joint_id in enumerate(JOINT_IDS, start=1)
     },
     GRIPPER_ID: FeetechActuatorConfig(
         controller=MAIN_CONTROLLER,
-        actuator_id=8,
+        actuator_id=GRIPPER_ACTUATOR_ID,
         inverted=True,
         max_position_velocity=MAX_POSITION_VELOCITY_RAD_S,
-        position_pid=POSITION_PID_GAINS_BY_ACTUATOR_ID[8],
-        effort_limits=STS3215_12V_EFFORT_LIMITS,
-        current_calibration=STS3215_12V_CURRENT_CALIBRATION,
+        position_pid=POSITION_PID_GAINS_BY_ACTUATOR_ID[GRIPPER_ACTUATOR_ID],
+        rated_effort=STS3215_7V4_RATED_TORQUE,
+        current_calibration=STS3215_7V4_CURRENT_CALIBRATION,
     ),
 }
 HARDWARE_CONFIG = RobotHardwareConfig(
@@ -180,14 +194,19 @@ STATE_ESTIMATION_CONFIG = RobotStateEstimationConfig(
     root=WheelDeadReckoningRootStateEstimatorConfig(),
 )
 TOOL_CONFIG = RobotToolConfig(frame="gripper_base_link")
-GRIPPER_CONFIG = RobotGripperConfig(joint_names=(GRIPPER_ID,), units=("rad",))
-# A simplified hull keeps the near-coplanar fin facets stable against flat toys.
-# The short contact response limits penetration under the rack-driven jaws.
-FIN_CONTACT = MeshContactConfig(
-    max_hull_vertices=16,
+GRIPPER_CONFIG = RobotGripperConfig(
+    joint_names=(GRIPPER_ID,),
+    units=("rad",),
+    closes_at_upper_limit=True,
+)
+# Fin Ray body friction from TRI's LBM Eval 1.1.0 mesh-mimic hand. This is a
+# reference value until measured against Triskel's actual toy surfaces.
+TPU_PAD_CONTACT = GeomContactConfig(
     priority=1,
-    solref=(0.01, 1),
-    solimp=(0.95, 0.99, 0.001, 0.5, 2),
+    solref=(0.0025, 1),
+    sliding_friction=3.0,
+    torsional_friction=0.005,
+    solimp=(0.995, 0.9999, 0.001, 0.5, 2),
 )
 BASE_CONFIG = RobotBaseConfig(
     frame="root_joint",
@@ -241,11 +260,14 @@ TRISKEL_CONFIG = RobotConfig(
     base=BASE_CONFIG,
     wheels=WHEEL_CONFIGS,
     homing_presets=HOMING_PRESETS,
-    actuator_control_modes=ACTUATOR_CONTROL_MODES,
+    joint_drives=JOINT_DRIVES,
     hardware=HARDWARE_CONFIG,
     state_estimation=STATE_ESTIMATION_CONFIG,
     gripper=GRIPPER_CONFIG,
-    mesh_contacts={"finger_1_fin_contact": FIN_CONTACT, "finger_2_fin_contact": FIN_CONTACT},
+    geom_contacts={
+        "finger_1_fin_contact": TPU_PAD_CONTACT,
+        "finger_2_fin_contact": TPU_PAD_CONTACT,
+    },
     operational_space_config=OPERATIONAL_SPACE_CONFIG,
     omniwheel_base_config=OMNIWHEEL_BASE_CONFIG,
 )

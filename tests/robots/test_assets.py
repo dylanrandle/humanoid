@@ -46,6 +46,26 @@ def test_triskel_camera_frames_match_confirmed_mount(filename, frame, expected_t
     )
 
 
+def test_triskel_urdfs_share_joints_and_link_inertias():
+    def dynamics(filename: str) -> tuple[dict[str, str], dict[str, str | None]]:
+        root = ET.parse(ASSETS_DIR / "triskel" / "urdf" / filename).getroot()
+        joints = {
+            joint.attrib["name"]: ET.canonicalize(ET.tostring(joint), strip_text=True)
+            for joint in root.findall("joint")
+        }
+        inertias = {}
+        for link in root.findall("link"):
+            inertial = link.find("inertial")
+            inertias[link.attrib["name"]] = (
+                ET.canonicalize(ET.tostring(inertial), strip_text=True)
+                if inertial is not None
+                else None
+            )
+        return joints, inertias
+
+    assert dynamics("triskel_collision.urdf") == dynamics("triskel.urdf")
+
+
 def test_asset_file_names_are_simple_and_version_free():
     for path in ASSETS_DIR.rglob("*"):
         if not path.is_file() or path.name.startswith("."):

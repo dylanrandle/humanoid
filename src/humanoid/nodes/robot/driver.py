@@ -23,11 +23,11 @@ from humanoid.state_estimation.root.base import (
 )
 from humanoid.state_estimation.root.factory import create_root_state_estimator
 from humanoid.types.actuator import (
-    ActuatorConfig,
     ActuatorControlMode,
     ActuatorEffortSource,
     ActuatorHealth,
     ActuatorHealthReport,
+    HardwareActuatorBinding,
 )
 from humanoid.types.robot import RobotConfig, RobotState
 
@@ -85,7 +85,7 @@ class RobotDriverNode(Node):
         actuator_hardware = (
             robot_config.hardware.actuators if robot_config.hardware is not None else None
         )
-        self._actuator_configs: dict[str, ActuatorConfig] = (
+        self._actuator_configs: dict[str, HardwareActuatorBinding] = (
             dict(actuator_hardware.joints) if actuator_hardware is not None else {}
         )
         self._latest_actuator_states: dict[str, ActuatorState] = {}

@@ -8,41 +8,38 @@ import numpy as np
 from humanoid.robots.base import Robot
 from humanoid.types.actuator import ActuatorEffortLimits, ActuatorEffortSource, ActuatorEffortUnit
 from humanoid.types.controller_tracking import ActuatorEffortTrace, NativeJointSample
-from humanoid.types.robot import RobotConfig
 
 
-def actuator_effort_limits(robot_config: RobotConfig) -> dict[str, ActuatorEffortLimits]:
-    """Return explicitly configured output ratings, without inferring continuous limits."""
-    if robot_config.hardware is None or robot_config.hardware.actuators is None:
+def _effort_unit(robot: Robot, name: str) -> ActuatorEffortUnit:
+    joint = robot.model.joints[robot.model.getJointId(name)]
+    return "N" if joint.shortname().startswith("JointModelP") else "N·m"
+
+
+def actuator_effort_limits(robot: Robot) -> dict[str, ActuatorEffortLimits]:
+    """Pair each configured continuous rating with the peak effort from its URDF joint."""
+    hardware = robot.config.hardware
+    if hardware is None or hardware.actuators is None:
         return {}
-    return {
-        name: actuator.effort_limits
-        for name, actuator in robot_config.hardware.actuators.joints.items()
-        if actuator.effort_limits is not None
-    }
+    limits = {}
+    for name, actuator in hardware.actuators.joints.items():
+        if actuator.rated_effort is not None:
+            joint = robot.model.joints[robot.model.getJointId(name)]
+            limits[name] = ActuatorEffortLimits(
+                stall=float(robot.model.effortLimit[joint.idx_v]),
+                rated=actuator.rated_effort,
+                unit=_effort_unit(robot, name),
+            )
+    return limits
 
 
 def build_effort_traces(
-    samples: list[NativeJointSample], robot_config: RobotConfig
+    samples: list[NativeJointSample], robot: Robot
 ) -> dict[str, ActuatorEffortTrace]:
     """Preserve every state sample, including missing effort and settle intervals."""
     groups: dict[str, list[NativeJointSample]] = defaultdict(list)
     for sample in samples:
         if sample.stream == "state":
             groups[sample.setting].append(sample)
-    if not groups:
-        return {}
-    robot = Robot(robot_config)
-    units: dict[str, ActuatorEffortUnit] = {
-        name: (
-            "N"
-            if robot.model.joints[robot.model.getJointId(name)]
-            .shortname()
-            .startswith("JointModelP")
-            else "N·m"
-        )
-        for name in robot_config.actuator_control_modes
-    }
     traces = {}
     for setting, group in groups.items():
         ordered = sorted(group, key=lambda sample: sample.received_timestamp_s)
@@ -65,7 +62,7 @@ def build_effort_traces(
             joint_names=names,
             times_s=np.array([sample.received_timestamp_s for sample in ordered]),
             efforts=np.vstack(efforts),
-            units=tuple(units[name] for name in names),
+            units=tuple(_effort_unit(robot, name) for name in names),
             source="; ".join(labels) or "Actuator effort feedback",
             segment_boundaries_s=tuple(
                 sample.received_timestamp_s

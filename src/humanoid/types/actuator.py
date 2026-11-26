@@ -1,4 +1,4 @@
-"""Configuration types shared by actuator hardware implementations."""
+"""Joint drive configuration and hardware actuator types."""
 
 import math
 from dataclasses import dataclass, field
@@ -62,18 +62,36 @@ class ActuatorControlMode(StrEnum):
 
 
 @dataclass(frozen=True, kw_only=True)
+class JointDriveConfig:
+    """Command mode and optional actuator inertia reflected to the driven joint."""
+
+    control_mode: ActuatorControlMode
+    armature: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.armature is not None and (not math.isfinite(self.armature) or self.armature < 0):
+            raise ValueError("Joint drive armature must be finite and nonnegative.")
+
+
+@dataclass(frozen=True, kw_only=True)
 class ActuatorControllerConfig:
     """Shared configuration for one actuator controller or bus."""
 
 
 @dataclass(frozen=True, kw_only=True)
-class ActuatorConfig:
-    """Configuration owned by one physical actuator."""
+class HardwareActuatorBinding:
+    """Address, direction, and optional rated effort of the motor driving a joint."""
 
     actuator_id: int
     controller: str
     inverted: bool = False
-    effort_limits: ActuatorEffortLimits | None = None
+    rated_effort: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.rated_effort is not None and (
+            not math.isfinite(self.rated_effort) or self.rated_effort <= 0
+        ):
+            raise ValueError("Rated output effort must be positive and finite.")
 
 
 @dataclass
@@ -81,7 +99,7 @@ class ActuatorHardwareConfig:
     """Physical actuator controllers and their joint bindings."""
 
     controllers: dict[str, ActuatorControllerConfig]
-    joints: dict[str, ActuatorConfig]
+    joints: dict[str, HardwareActuatorBinding]
 
     def __post_init__(self) -> None:
         seen_addresses: set[tuple[str, int]] = set()

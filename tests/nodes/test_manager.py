@@ -15,11 +15,7 @@ from humanoid.constants import (
 )
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.groups import NODE_GROUPS, PROCESS_STOP_ORDER
-from humanoid.nodes.manager import (
-    NodeManager,
-    NodeManagerError,
-    _run_node,
-)
+from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.nodes.orchestrator import OrchestratorNode
 from humanoid.nodes.policy.agent import AgentControlServerNode
 from humanoid.nodes.policy.homing import HomingNode
@@ -133,9 +129,8 @@ def test_replay_group_starts_runtime_sensors_and_driver(monkeypatch, runtime):
         [SimulationNode] if runtime is Runtime.SIM else [RobotDriverNode, CameraDriverNode]
     )
     assert [entry.kwargs["target"] for entry in context.Process.call_args_list] == [
-        _run_node
-    ] * len(expected_nodes)
-    assert [entry.kwargs["args"][0] for entry in context.Process.call_args_list] == expected_nodes
+        node.run_managed for node in expected_nodes
+    ]
 
 
 def test_node_processes_receive_the_parent_log_queue(monkeypatch):
@@ -147,7 +142,8 @@ def test_node_processes_receive_the_parent_log_queue(monkeypatch):
 
     manager.start(ProcessName.KEYBOARD)
 
-    assert context.Process.call_args.kwargs["args"] == (KeyboardTeleopNode, log_queue)
+    assert context.Process.call_args.kwargs["target"] == KeyboardTeleopNode.run_managed
+    assert context.Process.call_args.kwargs["args"] == (log_queue,)
 
 
 def test_spawned_node_routes_logging_before_running(monkeypatch):
@@ -155,9 +151,9 @@ def test_spawned_node_routes_logging_before_running(monkeypatch):
     node_main = MagicMock()
     setup_queue_logging = MagicMock()
     monkeypatch.setattr(KeyboardTeleopNode, "main", node_main)
-    monkeypatch.setattr("humanoid.nodes.manager.setup_queue_logging", setup_queue_logging)
+    monkeypatch.setattr("humanoid.nodes.base.setup_queue_logging", setup_queue_logging)
 
-    _run_node(KeyboardTeleopNode, log_queue)
+    KeyboardTeleopNode.run_managed(log_queue)
 
     setup_queue_logging.assert_called_once_with(log_queue)
     node_main.assert_called_once_with()
@@ -198,10 +194,9 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
         *NODE_GROUPS[ProcessName.STACK].nodes,
         HomingNode,
     )
-    assert all(entry.kwargs["target"] is _run_node for entry in context.Process.call_args_list)
-    assert [entry.kwargs["args"][0] for entry in context.Process.call_args_list] == list(
-        expected_nodes
-    )
+    assert [entry.kwargs["target"] for entry in context.Process.call_args_list] == [
+        node.run_managed for node in expected_nodes
+    ]
     assert observed_configurations == [(Runtime.REAL, RobotName.PANDA)] * len(expected_nodes)
     assert os.getenv(RUNTIME_ENVIRONMENT_VARIABLE) == Runtime.SIM
     assert os.getenv(ROBOT_ENVIRONMENT_VARIABLE) == RobotName.TRISKEL

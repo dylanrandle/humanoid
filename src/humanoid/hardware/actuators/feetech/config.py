@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from humanoid.types.actuator import (
-    ActuatorConfig,
     ActuatorControllerConfig,
     ActuatorCurrentCalibration,
+    HardwareActuatorBinding,
 )
 
 # The register uses 8.7 degrees/s^2 per unit. A conservative value of 15
@@ -99,7 +99,7 @@ class FeetechActuatorControllerConfig(ActuatorControllerConfig):
 
 
 @dataclass(frozen=True, kw_only=True)
-class FeetechActuatorConfig(ActuatorConfig):
+class FeetechActuatorConfig(HardwareActuatorBinding):
     """Configuration for one Feetech actuator."""
 
     max_acceleration: int = DEFAULT_MAX_ACCELERATION
@@ -109,6 +109,7 @@ class FeetechActuatorConfig(ActuatorConfig):
     current_calibration: ActuatorCurrentCalibration | None = None
 
     def __post_init__(self) -> None:
+        super().__post_init__()
         if not FEETECH_ACTUATOR_ID_MIN <= self.actuator_id <= FEETECH_ACTUATOR_ID_MAX:
             raise ValueError(
                 "Feetech actuator ID must be between "

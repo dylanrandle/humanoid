@@ -1,8 +1,10 @@
 import functools
+import logging
 import sys
 from abc import ABC, abstractmethod
+from multiprocessing.queues import Queue
 
-from humanoid.logger import get_logger
+from humanoid.logger import get_logger, setup_queue_logging
 from humanoid.nodes.rate import NodeRateReporter
 from humanoid.utils.loop import loop_at_rate
 
@@ -38,6 +40,13 @@ class Node(ABC):
     @classmethod
     def main(cls, *args, **kwargs) -> None:
         cls(*args, **kwargs).run()
+
+    @classmethod
+    def run_managed(cls, log_queue: Queue[logging.LogRecord] | None) -> None:
+        """Spawn entry point that imports only the selected node's dependencies."""
+        if log_queue is not None:
+            setup_queue_logging(log_queue)
+        cls.main()
 
     def stop_condition(self) -> bool:
         return False

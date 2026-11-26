@@ -61,7 +61,7 @@ def test_native_effort_survives_transport_joint_mapping_and_csv(config, tmp_path
     missing = replace(sample, received_timestamp_s=11.0, joint_efforts=None)
     settled = replace(sample, received_timestamp_s=12.0, segment="figure_eight_settle")
     command = replace(sample, stream="controller", joint_efforts=np.full(len(indices), 999.0))
-    traces = build_effort_traces([settled, command, missing, sample], config)
+    traces = build_effort_traces([settled, command, missing, sample], robot)
     trace = traces["xz_1x"]
     np.testing.assert_allclose(trace.times_s, [10.0, 11.0, 12.0])
     np.testing.assert_allclose(trace.efforts[0], efforts[indices])
@@ -132,11 +132,11 @@ def test_effort_plot_displays_ratings_and_overruns_without_joining_missing_data(
 
 
 def test_effort_limits_are_per_actuator_and_do_not_invent_unconfigured_ratings():
-    assert actuator_effort_limits(PANDA_CONFIG) == {}
+    assert actuator_effort_limits(Robot(PANDA_CONFIG)) == {}
     assert TRISKEL_CONFIG.hardware is not None
     assert TRISKEL_CONFIG.hardware.actuators is not None
     hardware = TRISKEL_CONFIG.hardware.actuators
-    limits = ActuatorEffortLimits(stall=1.5, rated=0.4)
+    limits = ActuatorEffortLimits(stall=1.91229675, rated=0.4)
     config = replace(
         TRISKEL_CONFIG,
         hardware=replace(
@@ -145,12 +145,12 @@ def test_effort_limits_are_per_actuator_and_do_not_invent_unconfigured_ratings()
                 hardware,
                 joints={
                     **hardware.joints,
-                    "arm_2": replace(hardware.joints["arm_2"], effort_limits=limits),
-                    "gripper_1": replace(hardware.joints["gripper_1"], effort_limits=None),
+                    "arm_2": replace(hardware.joints["arm_2"], rated_effort=limits.rated),
+                    "gripper_1": replace(hardware.joints["gripper_1"], rated_effort=None),
                 },
             ),
         ),
     )
-    reported = actuator_effort_limits(config)
+    reported = actuator_effort_limits(Robot(config))
     assert reported["arm_2"] == limits
     assert "gripper_1" not in reported

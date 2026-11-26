@@ -7,7 +7,7 @@ import pytest
 
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.constants import DEFAULT_HUMANOID_ROBOT, ROBOT_ENVIRONMENT_VARIABLE
-from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.actuator import ActuatorControlMode, JointDriveConfig
 from humanoid.types.controllers import OmniwheelBaseConfig
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
@@ -141,7 +141,7 @@ def test_robot_config_requires_position_controlled_gripper_actuators():
             name=RobotName.PANDA,
             tool=RobotToolConfig(frame="tool"),
             homing_presets=presets,
-            actuator_control_modes={},
+            joint_drives={},
             gripper=gripper,
         )
 
@@ -150,7 +150,7 @@ def test_robot_config_requires_position_controlled_gripper_actuators():
             name=RobotName.PANDA,
             tool=RobotToolConfig(frame="tool"),
             homing_presets=presets,
-            actuator_control_modes={"gripper": ActuatorControlMode.VELOCITY},
+            joint_drives={"gripper": JointDriveConfig(control_mode=ActuatorControlMode.VELOCITY)},
             gripper=gripper,
         )
 
@@ -162,7 +162,7 @@ def _robot_config_with_presets(
         name=RobotName.PANDA,
         tool=RobotToolConfig(frame="tool"),
         homing_presets=presets,
-        actuator_control_modes={},
+        joint_drives={},
     )
 
 

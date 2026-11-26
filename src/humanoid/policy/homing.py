@@ -6,7 +6,6 @@ from humanoid.config import ROBOT_CONFIG
 from humanoid.policy.base import Policy
 from humanoid.robots.base import Robot
 from humanoid.types.action import Action
-from humanoid.types.actuator import ActuatorControlMode
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotConfig
@@ -41,7 +40,7 @@ class HomingPolicy(Policy):
         self.dt = dt
         self._trajectory: list[np.ndarray] = []
         self._step = 0
-        self._position_controlled_indices = _position_controlled_position_indices(robot_config)
+        self.robot = Robot(robot_config)
 
     def set_target(self, target_position: np.ndarray) -> None:
         """Set or replace the homing target; regenerates the trajectory on next call."""
@@ -64,17 +63,14 @@ class HomingPolicy(Policy):
             return Action()
 
         if not self._trajectory:
-            if observation.robot_joint_command:
-                q_start = observation.robot_joint_command.joint_positions
-            else:
-                q_start = observation.robot_state.joint_positions
-
+            q_start = self.robot.hold_configuration(
+                observation.robot_state, observation.robot_joint_command
+            )
             # Hold every joint at q_start except for position-controlled ones,
             # which move to the configured home target.
             q_end = q_start.copy()
-            q_end[self._position_controlled_indices] = self._target_position[
-                self._position_controlled_indices
-            ]
+            indices = self.robot.position_controlled_q_indices
+            q_end[indices] = self._target_position[indices]
 
             self._trajectory = _generate_trajectory(q_start, q_end, self.speed, self.dt)
             self._step = 0
@@ -106,15 +102,3 @@ def _generate_trajectory(
         (1 - _smooth_step(i / num_steps)) * q_start + _smooth_step(i / num_steps) * q_goal
         for i in range(num_steps + 1)
     ]
-
-
-def _position_controlled_position_indices(robot_config: RobotConfig) -> list[int]:
-    """Return position-vector indices for joints that are position-controlled."""
-    robot = Robot(robot_config)
-    indices: list[int] = []
-    for joint_name, control_mode in robot_config.actuator_control_modes.items():
-        if control_mode is not ActuatorControlMode.POSITION:
-            continue
-        joint_idx = robot.joint_name_to_idx(joint_name)
-        indices.append(robot.joint_idx_to_position_idx(joint_idx))
-    return indices

@@ -18,7 +18,10 @@
   <worldbody>
     <!-- Elevations in this frame are relative to the room floor. -->
     <frame pos="0 0 -0.032" childclass="cleanup">
-      <geom name="task_floor" type="plane" size="2 2 0.01" rgba="0.45 0.45 0.45 1"/>
+      <!-- Floor (4) accepts scene objects (2). Robot geoms opt in to floor contact. -->
+      <!-- Weight rigid floor response heavily while preserving per-toy friction. -->
+      <geom name="task_floor" type="plane" contype="4" conaffinity="2" size="2 2 0.01" rgba="0.45 0.45 0.45 1"
+            solref="0.0025 1" solimp="0.995 0.9999 0.0005" solmix="100"/>
       <light pos="0 0.7 2" dir="0 0 -1" ambient="0.3 0.3 0.3"/>
       <geom name="wall_left" class="wall" pos="-0.8 0.6 0.2" size="0.015 1 0.2"/>
       <geom name="wall_right" class="wall" pos="0.8 0.6 0.2" size="0.015 1 0.2"/>

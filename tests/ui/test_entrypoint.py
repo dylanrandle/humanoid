@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 from unittest.mock import MagicMock
 
@@ -9,8 +10,19 @@ from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE
 from humanoid.ui import server
 
 
-def test_start_command_launches_operator_console():
-    assert start.main is server.main
+def test_spawned_oculus_worker_can_import_entrypoint_without_loading_console():
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys\n"
+            "from humanoid.start import main\n"
+            "from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode\n"
+            "assert 'humanoid.ui.server' not in sys.modules\n"
+            "assert 'humanoid.nodes.manager' not in sys.modules",
+        ],
+        check=True,
+    )
 
 
 def test_server_main_closes_service_and_web_server(monkeypatch):
@@ -23,7 +35,7 @@ def test_server_main_closes_service_and_web_server(monkeypatch):
     monkeypatch.setattr(server.signal, "signal", MagicMock())
     monkeypatch.setattr(sys, "argv", ["start", "--no-open", "--port", "0"])
 
-    server.main()
+    start.main()
 
     assert make_server.call_args.args[:2] == ("127.0.0.1", 0)
     assert make_server.call_args.kwargs == {"threaded": True}

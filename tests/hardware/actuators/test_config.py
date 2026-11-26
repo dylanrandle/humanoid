@@ -16,6 +16,7 @@ from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.types.actuator import (
     ActuatorControlMode,
     ActuatorHardwareConfig,
+    JointDriveConfig,
 )
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
@@ -207,6 +208,6 @@ def test_robot_config_owns_physical_binding_equality_validation():
                 HomingPreset.HOME: np.zeros(1),
                 HomingPreset.REST: np.zeros(1),
             },
-            actuator_control_modes={"joint": ActuatorControlMode.POSITION},
+            joint_drives={"joint": JointDriveConfig(control_mode=ActuatorControlMode.POSITION)},
             hardware=RobotHardwareConfig(actuators=hardware),
         )

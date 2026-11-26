@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import lcm
 
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.constants import DEFAULT_LCM_URL, Topic
+from humanoid.constants import DEFAULT_LCM_URL, Topic, local_lcm_url
 from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.recording import RECORDING_MANIFEST_FILENAME
 from humanoid.types.logging import LoggingState, LoggingStatus
@@ -26,6 +26,7 @@ def _published_statuses(publisher: MagicMock) -> list[LoggingStatus]:
 
 
 def test_robot_logger_init(tmp_path):
+    url = local_lcm_url("239.192.42.1", 32000)
     with (
         patch("humanoid.nodes.robot.logger.Publisher"),
         patch("humanoid.nodes.robot.logger.Subscriber") as subscriber_class,
@@ -33,18 +34,18 @@ def test_robot_logger_init(tmp_path):
         node = _node(
             tmp_path,
             channel_regex=".*STATE.*",
-            lcm_url="udpm://239.255.76.67:7667",
+            lcm_url=url,
             rate_hz=TEST_RATE_HZ,
         )
 
     assert node.log_dir == str(tmp_path)
     assert node.channel_regex == ".*STATE.*"
-    assert node.lcm_url == "udpm://239.255.76.67:7667"
+    assert node.lcm_url == url
     assert node.rate_hz == TEST_RATE_HZ
     assert node.process is None
     subscriber_class.assert_called_once_with(
         topics=[Topic.ORCHESTRATOR_EVENT],
-        url="udpm://239.255.76.67:7667",
+        url=url,
     )
 
 

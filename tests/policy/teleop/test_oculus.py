@@ -22,9 +22,11 @@ from humanoid.policy.teleop.oculus import (
     OculusTeleopPolicy,
     OculusTeleopPolicyConfig,
 )
+from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
-from humanoid.types.robot import RobotState
+from humanoid.types.orchestrator import Mode
+from humanoid.types.robot import RobotJointCommand, RobotState
 from humanoid.types.teleop import OculusInputSnapshot
 
 ONE_CALL = 1
@@ -44,8 +46,9 @@ class StubOculusReader:
         self.ip_address = ip_address
         self.port = port
         self.input_fresh = True
-        self.received_monotonic: float | None = None
-        self.transforms: dict = {"r": np.eye(4)}
+        self.captured_monotonic: float | None = None
+        self.last_disengaged_monotonic: float | None = None
+        self.transforms: dict = {"l": np.eye(4), "r": np.eye(4)}
         self.buttons: dict = {
             "A": False,
             "B": False,
@@ -58,11 +61,12 @@ class StubOculusReader:
         }
 
     def get_snapshot(self):
-        received_monotonic = time.monotonic() if self.input_fresh else self.received_monotonic
+        captured_monotonic = time.monotonic() if self.input_fresh else self.captured_monotonic
         return OculusInputSnapshot(
             transforms=self.transforms,
             buttons=self.buttons,
-            received_monotonic=received_monotonic,
+            captured_monotonic=captured_monotonic,
+            last_disengaged_monotonic=self.last_disengaged_monotonic,
         )
 
 
@@ -189,49 +193,84 @@ class TestConstruction:
         assert robot_config.base is not None
         assert policy.base_config is robot_config.base
 
-    def test_invalid_data_returns_hold_action(self, panda_policy_and_reader):
-        """When OculusReader gives empty data the policy must hold position."""
-        policy, reader = panda_policy_and_reader
-        reader.transforms = {}
-        reader.buttons = {}
-        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
-
-        action = policy(obs)
-
-        expected_tool = policy.robot.get_tool_pose(
-            policy.robot_config.homing_presets[HomingPreset.HOME]
-        )
-        np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
-
 
 class TestInputDropout:
-    def test_stale_frame_holds_and_clears_motion_state(self, mobile_policy_and_reader):
+    @pytest.mark.parametrize("missing", ["l", "r", "LG", "RG", "both"])
+    def test_missing_controller_suppresses_all_commands(self, mobile_policy_and_reader, missing):
+        policy, reader = mobile_policy_and_reader
+        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        reader.buttons.update(RG=True, LG=True, leftJS=(1.0, 0.0), A=True)
+        assert policy(obs).tool_pose is not None
+        if missing == "both":
+            reader.transforms.clear()
+        elif missing in reader.transforms:
+            del reader.transforms[missing]
+        else:
+            del reader.buttons[missing]
+
+        client = StubOrchestratorClient()
+        client.start_logging = MagicMock()
+        policy.orchestrator_client = client
+        reader.buttons.update(X=True, Y=True)
+        for _ in range(2):
+            assert policy(obs) == Action()
+        assert not client.homing_calls
+        client.start_logging.assert_not_called()
+        assert policy.filtered_controller_pose is None
+
+    def test_homing_return_with_missing_left_hand_does_not_repeat_held_button(
+        self, mobile_policy_and_reader
+    ):
+        policy, reader = mobile_policy_and_reader
+        client = StubOrchestratorClient()
+        policy.orchestrator_client = client
+        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        obs.mode = Mode.OCULUS
+        reader.buttons.update(X=True, LG=True)
+        policy(obs)
+        obs.mode = Mode.HOMING
+        assert policy(obs).tool_pose is None
+
+        obs.mode = Mode.OCULUS
+        left_pose = reader.transforms.pop("l")
+        assert policy(obs) == Action()
+        reader.transforms["r"][0, 3] += 0.15
+        reader.transforms["l"] = left_pose
+        reader.buttons["RG"] = True
+        _assert_se3_equal(
+            policy(obs).tool_pose,
+            policy.robot.get_tool_command_pose(obs.robot_state.joint_positions),
+        )
+        assert len(client.homing_calls) == ONE_CALL
+
+        reader.buttons["X"] = False
+        policy(obs)
+        reader.buttons["X"] = True
+        policy(obs)
+        assert len(client.homing_calls) == TWO_CALLS
+
+    def test_stale_frame_suppresses_commands_and_clears_motion_state(
+        self, mobile_policy_and_reader, caplog
+    ):
         policy, reader = mobile_policy_and_reader
         reader.buttons["RG"] = True
         reader.buttons["leftJS"] = (1.0, 0.0)
         observation = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
         policy(observation)
-        assert policy.reference_controller_pose is not None
+        assert policy.filtered_controller_pose is not None
 
         reader.input_fresh = False
-        reader.received_monotonic = time.monotonic() - policy.config.input_timeout - 0.1
+        reader.captured_monotonic = time.monotonic() - policy.config.input_timeout - 0.1
         action = policy(observation)
 
-        assert policy.input_stale is True
-        assert policy.reference_controller_pose is None
-        _assert_se3_equal(
-            action.tool_pose,
-            policy.robot.get_tool_command_pose(observation.robot_state.joint_positions),
-        )
-        _assert_se3_equal(
-            action.base_pose,
-            policy.robot.get_base_pose(observation.robot_state.joint_positions),
-        )
+        assert "controller stream timed out" in caplog.text
+        assert policy.filtered_controller_pose is None
+        assert action == Action()
 
     def test_fresh_input_after_stale_frame_reanchors(self, mobile_policy_and_reader):
         policy, reader = mobile_policy_and_reader
         reader.input_fresh = False
-        reader.received_monotonic = time.monotonic() - policy.config.input_timeout - 0.1
+        reader.captured_monotonic = time.monotonic() - policy.config.input_timeout - 0.1
         observation = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
         policy(observation)
 
@@ -239,8 +278,7 @@ class TestInputDropout:
         reader.buttons["RG"] = True
         action = policy(observation)
 
-        assert policy.input_stale is False
-        assert policy.reference_controller_pose is not None
+        assert policy.filtered_controller_pose is not None
         _assert_se3_equal(
             action.tool_pose,
             policy.robot.get_tool_command_pose(observation.robot_state.joint_positions),
@@ -255,9 +293,9 @@ class TestInputDropout:
         initial_q = policy.robot_config.homing_presets[HomingPreset.HOME]
         policy(_observation_from_q(initial_q))
 
-        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.004, 0.0, 0.0])))}
+        reader.transforms["r"] = _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.004, 0.0, 0.0])))
         policy(_observation_from_q(initial_q))
-        assert policy.reference_controller_pose is not None
+        assert policy.filtered_controller_pose is not None
         assert policy.commanded_tool_pose is not None
         assert policy.reference_base_pose is not None
         assert policy.commanded_gripper_position is not None
@@ -274,16 +312,11 @@ class TestInputDropout:
         reader.buttons = {}
         hold_action = policy(recovery_observation)
 
-        assert policy.reference_controller_pose is None
-        assert policy.reference_tool_pose is None
+        assert policy.filtered_controller_pose is None
         assert policy.commanded_tool_pose is None
         assert policy.reference_base_pose is None
         assert policy.commanded_gripper_position is None
-        _assert_se3_equal(
-            hold_action.tool_pose,
-            policy.robot.get_tool_command_pose(recovery_q),
-        )
-        _assert_se3_equal(hold_action.base_pose, policy.robot.get_base_pose(recovery_q))
+        assert hold_action == Action()
 
         recovered_reader_state = StubOculusReader()
         reader.transforms = recovered_reader_state.transforms
@@ -301,17 +334,75 @@ class TestInputDropout:
 
 
 class TestDeadManSwitch:
+    @pytest.mark.parametrize("engaged", [False, True])
+    def test_mode_entry_holds_commanded_arm_and_measured_base(
+        self, mobile_policy_and_reader, engaged
+    ):
+        policy, reader = mobile_policy_and_reader
+        measured = policy.robot_config.homing_presets[HomingPreset.HOME].copy()
+        measured[:4] = [0.2, -0.1, np.cos(0.3), np.sin(0.3)]
+        previous = policy.robot_config.homing_presets[HomingPreset.REST].copy()
+        obs = _observation_from_q(measured)
+        obs.robot_joint_command = RobotJointCommand(1.0, previous)
+        obs.mode = Mode.KEYBOARD
+        assert policy(obs).base_pose is None
+        obs.mode = Mode.OCULUS
+        expected_base = policy.robot.get_base_pose(measured).copy()
+        expected_tool = policy.robot.get_tool_command_pose(previous).copy()
+        gripper = policy.robot.get_gripper_position_indices()
+        for grip in (engaged, False, True):
+            reader.buttons["RG"] = grip
+            action = policy(obs)
+            _assert_se3_equal(action.base_pose, expected_base)
+            _assert_se3_equal(action.tool_pose, expected_tool)
+            np.testing.assert_array_equal(action.gripper_positions, previous[gripper])
+
+        obs.robot_joint_command = RobotJointCommand(2.0, previous)
+        reader.buttons["RG"] = False
+        _assert_se3_equal(policy(obs).base_pose, policy.robot.get_base_pose(previous))
+
+    def test_release_latches_targets_until_next_grip(self, mobile_policy_and_reader):
+        policy, reader = mobile_policy_and_reader
+        home = policy.robot_config.homing_presets[HomingPreset.HOME]
+        obs = _observation_from_q(home)
+        reader.buttons["RG"] = True
+        policy(obs)
+
+        release_q = policy.robot_config.homing_presets[HomingPreset.REST].copy()
+        release_q[:4] = [0.2, -0.1, 0, 1]
+        obs.robot_joint_command = RobotJointCommand(0, release_q.copy())
+        reader.buttons["RG"] = False
+        policy(obs)
+        expected_tool = policy.robot.get_tool_command_pose(release_q).copy()
+        expected_base = policy.robot.get_base_pose(release_q).copy()
+        expected_gripper = release_q[policy.robot.get_gripper_position_indices()]
+
+        # Incoming joint commands and subsequent FK calls must not move the hold.
+        obs.robot_joint_command.joint_positions[:] = home
+        policy.robot.forward_kinematics(home)
+        for _ in range(3):
+            held = policy(obs)
+            _assert_se3_equal(held.tool_pose, expected_tool)
+            _assert_se3_equal(held.base_pose, expected_base)
+            np.testing.assert_array_equal(held.gripper_positions, expected_gripper)
+            assert held.tool_velocity is None
+
+        reader.buttons["LG"] = True
+        _assert_se3_equal(policy(obs).tool_pose, policy.robot.get_tool_command_pose(home))
+        reader.buttons["LG"] = False
+        _assert_se3_equal(policy(obs).tool_pose, policy.robot.get_tool_command_pose(home))
+
     def test_grip_released_returns_hold_action_and_clears_references(self, panda_policy_and_reader):
         policy, _ = panda_policy_and_reader
         # Pre-populate references to make sure release wipes them.
-        policy.reference_controller_pose = np.eye(4)
-        policy.reference_tool_pose = pin.SE3.Identity()
+        policy.filtered_controller_pose = pin.SE3.Identity()
+        policy.commanded_tool_pose = pin.SE3.Identity()
 
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
         action = policy(obs)
 
-        assert policy.reference_controller_pose is None
-        assert policy.reference_tool_pose is None
+        assert policy.filtered_controller_pose is None
+        assert policy.commanded_tool_pose is None
 
         expected_tool = policy.robot.get_tool_pose(
             policy.robot_config.homing_presets[HomingPreset.HOME]
@@ -327,23 +418,45 @@ class TestDeadManSwitch:
         reader.buttons.update(grip_buttons)
         # The command-frame remap is identity here, so the controller-frame
         # delta is unchanged.
-        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.1, 0.0, 0.0])))}
+        reader.transforms["r"] = _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.1, 0.0, 0.0])))
 
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
         action = policy(obs)
 
         # References must be set after a single engaged tick.
-        assert policy.reference_controller_pose is not None
-        assert policy.reference_tool_pose is not None
+        assert policy.filtered_controller_pose is not None
+        assert policy.commanded_tool_pose is not None
         assert action.tool_pose is not None
 
 
 class TestControllerDeltaApplied:
+    def test_release_between_policy_ticks_reanchors_at_new_hand_pose(self, panda_policy_and_reader):
+        policy, reader = panda_policy_and_reader
+        reader.buttons["RG"] = True
+        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        initial = policy(obs)
+        reader.last_disengaged_monotonic = time.monotonic()
+        reader.transforms["r"][0, 3] += 0.3
+        for _ in range(3):
+            _assert_se3_equal(policy(obs).tool_pose, initial.tool_pose)
+
+    def test_large_hand_step_does_not_queue_motion_while_stationary(self, panda_policy_and_reader):
+        policy, reader = panda_policy_and_reader
+        reader.buttons["RG"] = True
+        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        policy(obs)
+        reader.transforms["r"] = _se3_to_matrix(
+            pin.SE3(pin.utils.rotate("z", np.pi / 2), np.array([0.5, 0.0, 0.0]))
+        )
+        moved = policy(obs)
+        for _ in range(10):
+            _assert_se3_equal(policy(obs).tool_pose, moved.tool_pose)
+
     def test_no_motion_yields_reference_tool_pose(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
         # Initial controller pose at identity.
-        reader.transforms = {"r": np.eye(4)}
+        reader.transforms["r"] = np.eye(4)
 
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
         action = policy(obs)
@@ -355,15 +468,16 @@ class TestControllerDeltaApplied:
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
         # First tick captures the reference (identity).
-        policy(_observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME]))
+        ref = policy(
+            _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        ).tool_pose
 
         # Keep the delta below the robot's per-tick tool velocity limit.
         delta = np.array([0.001, 0.0, 0.0])
-        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), delta))}
+        reader.transforms["r"] = _se3_to_matrix(pin.SE3(np.eye(3), delta))
 
         action = policy(_observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME]))
 
-        ref = policy.reference_tool_pose
         expected_translation = ref.translation + delta
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)
 
@@ -378,13 +492,12 @@ class TestControllerDeltaApplied:
         )
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
-        policy(obs)  # capture reference
+        ref = policy(obs).tool_pose  # capture reference
 
         delta = np.array([0.001, 0.0, 0.0])
-        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), delta))}
+        reader.transforms["r"] = _se3_to_matrix(pin.SE3(np.eye(3), delta))
         action = policy(obs)
 
-        ref = policy.reference_tool_pose
         expected_translation = ref.translation + delta * 3.0  # ty:ignore[unresolved-attribute]
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)  # ty:ignore[unresolved-attribute]
 
@@ -400,13 +513,12 @@ class TestControllerDeltaApplied:
         )
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
-        policy(obs)
+        ref = policy(obs).tool_pose
 
         # +x in the Oculus frame should appear as +y after the remap.
-        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.001, 0.0, 0.0])))}
+        reader.transforms["r"] = _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.001, 0.0, 0.0])))
         action = policy(obs)
 
-        ref = policy.reference_tool_pose
         remapped_delta = rotation_about_z_90 @ np.array([0.001, 0.0, 0.0])
         expected_translation = ref.translation + remapped_delta  # ty:ignore[unresolved-attribute]
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)  # ty:ignore[unresolved-attribute]
@@ -422,8 +534,7 @@ class TestControllerDeltaApplied:
         policy, _ = _make_policy(
             config=OculusTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS, verbose=False)
         )
-        policy.reference_controller_pose = np.eye(4)
-        policy.reference_tool_pose = pin.SE3.Identity()
+        policy.filtered_controller_pose = pin.SE3.Identity()
         policy.commanded_tool_pose = pin.SE3.Identity()
 
         target = policy._compute_tool_pose(_se3_to_matrix(pin.SE3(np.eye(3), oculus_delta)))
@@ -446,8 +557,7 @@ class TestControllerDeltaApplied:
             controller_reference.rotation,
             controller_reference.translation + tracking_delta,
         )
-        policy.reference_controller_pose = _se3_to_matrix(controller_reference)
-        policy.reference_tool_pose = tool_reference
+        policy.filtered_controller_pose = controller_reference
         policy.commanded_tool_pose = tool_reference.copy()
 
         target = policy._compute_tool_pose(_se3_to_matrix(current_controller))
@@ -473,8 +583,7 @@ class TestControllerDeltaApplied:
             tracking_rotation_delta @ controller_reference.rotation,
             controller_reference.translation,
         )
-        policy.reference_controller_pose = _se3_to_matrix(controller_reference)
-        policy.reference_tool_pose = tool_reference
+        policy.filtered_controller_pose = controller_reference
         policy.commanded_tool_pose = tool_reference.copy()
 
         target = policy._compute_tool_pose(_se3_to_matrix(current_controller))
@@ -496,8 +605,7 @@ class TestControllerDeltaApplied:
         )
         tool_reference = pin.SE3.Identity()
         tracking_rotation_delta = pin.utils.rotate("x", 0.01)
-        policy.reference_controller_pose = np.eye(4)
-        policy.reference_tool_pose = tool_reference
+        policy.filtered_controller_pose = pin.SE3.Identity()
         policy.commanded_tool_pose = tool_reference.copy()
 
         target = policy._compute_tool_pose(
@@ -516,13 +624,11 @@ class TestControllerDeltaApplied:
         tracking_delta = np.array([0.001, 0.0, 0.0])
 
         first_reference = pin.SE3.Identity()
-        reader.transforms = {"r": _se3_to_matrix(first_reference)}
+        reader.transforms["r"] = _se3_to_matrix(first_reference)
         first_anchor = policy(obs).tool_pose
-        reader.transforms = {
-            "r": _se3_to_matrix(
-                pin.SE3(first_reference.rotation, first_reference.translation + tracking_delta)
-            )
-        }
+        reader.transforms["r"] = _se3_to_matrix(
+            pin.SE3(first_reference.rotation, first_reference.translation + tracking_delta)
+        )
         first_target = policy(obs).tool_pose
 
         reader.buttons["RG"] = False
@@ -530,13 +636,11 @@ class TestControllerDeltaApplied:
 
         second_reference = pin.SE3(pin.utils.rotate("z", np.pi / 2), np.zeros(3))
         reader.buttons["RG"] = True
-        reader.transforms = {"r": _se3_to_matrix(second_reference)}
+        reader.transforms["r"] = _se3_to_matrix(second_reference)
         second_anchor = policy(obs).tool_pose
-        reader.transforms = {
-            "r": _se3_to_matrix(
-                pin.SE3(second_reference.rotation, second_reference.translation + tracking_delta)
-            )
-        }
+        reader.transforms["r"] = _se3_to_matrix(
+            pin.SE3(second_reference.rotation, second_reference.translation + tracking_delta)
+        )
         second_target = policy(obs).tool_pose
 
         assert first_anchor is not None
@@ -558,13 +662,13 @@ class TestControllerDeltaApplied:
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
-        policy(obs)
+        ref = policy(obs).tool_pose
 
-        reader.transforms = {"r": _se3_to_matrix(pin.SE3(np.eye(3), np.array([1.0, 0.0, 0.0])))}
+        reader.transforms["r"] = _se3_to_matrix(pin.SE3(np.eye(3), np.array([1.0, 0.0, 0.0])))
         action = policy(obs)
 
-        assert policy.reference_tool_pose is not None
-        translation_delta = action.tool_pose.translation - policy.reference_tool_pose.translation
+        assert ref is not None
+        translation_delta = action.tool_pose.translation - ref.translation
         max_translation = policy.robot_config.tool.velocity_limits.linear * policy.config.dt
         np.testing.assert_allclose(
             translation_delta,
@@ -576,15 +680,15 @@ class TestControllerDeltaApplied:
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
-        policy(obs)
+        ref = policy(obs).tool_pose
 
-        reader.transforms = {
-            "r": _se3_to_matrix(pin.SE3(pin.utils.rotate("z", np.pi / 2), np.zeros(3)))
-        }
+        reader.transforms["r"] = _se3_to_matrix(
+            pin.SE3(pin.utils.rotate("z", np.pi / 2), np.zeros(3))
+        )
         action = policy(obs)
 
-        assert policy.reference_tool_pose is not None
-        rotation_delta = action.tool_pose.rotation @ policy.reference_tool_pose.rotation.T
+        assert ref is not None
+        rotation_delta = action.tool_pose.rotation @ ref.rotation.T
         rotation_vector = pin.log3(rotation_delta)
         max_rotation = policy.robot_config.tool.velocity_limits.angular * policy.config.dt
         np.testing.assert_allclose(
@@ -646,6 +750,14 @@ class TestGripper:
         expected = seeded_gripper + step
         assert action.gripper_positions[0] == pytest.approx(expected)
 
+    def test_triskel_close_and_open_from_home(self, mobile_policy_and_reader):
+        policy, reader = mobile_policy_and_reader
+        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        reader.buttons.update(RG=True, A=True)
+        assert policy(obs).gripper_positions[0] == pytest.approx(policy.gripper_step)
+        reader.buttons.update(A=False, B=True)
+        assert policy(obs).gripper_positions[0] == pytest.approx(0)
+
     def test_repeated_a_holds_accumulate(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
@@ -691,10 +803,11 @@ class TestGripper:
         reader.buttons["RG"] = True
         # Seed near the lower limit so a single step would overshoot.
         step = policy.gripper_step
-        policy.commanded_gripper_position = policy.gripper_min + 0.5 * step
+        q = policy.robot_config.homing_presets[HomingPreset.HOME].copy()
+        q[policy.robot.get_gripper_position_indices()] = policy.gripper_min + 0.5 * step
 
         reader.buttons["A"] = True
-        action = policy(_observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME]))
+        action = policy(_observation_from_q(q))
 
         assert action.gripper_positions[0] == pytest.approx(policy.gripper_min)
 
@@ -703,10 +816,11 @@ class TestGripper:
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
         step = policy.gripper_step
-        policy.commanded_gripper_position = policy.gripper_max - 0.5 * step
+        q = policy.robot_config.homing_presets[HomingPreset.HOME].copy()
+        q[policy.robot.get_gripper_position_indices()] = policy.gripper_max - 0.5 * step
 
         reader.buttons["B"] = True
-        action = policy(_observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME]))
+        action = policy(_observation_from_q(q))
 
         assert action.gripper_positions[0] == pytest.approx(policy.gripper_max)
 
@@ -793,6 +907,15 @@ class TestGripper:
 
 
 class TestBasePoseFromJoysticks:
+    @pytest.mark.parametrize("axes", [(0.5,), (float("nan"), 0.0)])
+    def test_invalid_joystick_sample_holds_base(self, mobile_policy_and_reader, axes):
+        policy, reader = mobile_policy_and_reader
+        obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
+        reader.buttons.update(RG=True, leftJS=axes, rightJS=axes)
+        _assert_se3_equal(
+            policy(obs).base_pose, policy.robot.get_base_pose(obs.robot_state.joint_positions)
+        )
+
     def test_no_base_config_yields_no_base_pose(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         reader.buttons["RG"] = True
@@ -1055,14 +1178,13 @@ class TestReset:
         policy, reader = mobile_policy_and_reader
         reader.buttons["RG"] = True
         policy(_observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME]))
-        assert policy.reference_controller_pose is not None
+        assert policy.filtered_controller_pose is not None
         assert policy.reference_base_pose is not None
         assert policy.commanded_gripper_position is not None
 
         policy.reset()
 
-        assert policy.reference_controller_pose is None
-        assert policy.reference_tool_pose is None
+        assert policy.filtered_controller_pose is None
         assert policy.commanded_tool_pose is None
         assert policy.reference_base_pose is None
         assert policy.commanded_gripper_position is None

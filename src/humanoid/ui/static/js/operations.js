@@ -11,11 +11,11 @@ export async function performOperation({
   renderSnapshot();
   try {
     state.snapshot = await action();
-    renderSnapshot();
   } catch (error) {
     showError(errorMessage(error));
   } finally {
     state.busy.delete(key);
+    if (state.connected !== false) renderSnapshot();
     if (state.refreshPromise) await state.refreshPromise;
     await refresh();
   }

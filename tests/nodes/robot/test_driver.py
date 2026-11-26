@@ -18,6 +18,7 @@ from humanoid.types.actuator import (
     ActuatorControlMode,
     ActuatorEffortSource,
     ActuatorHealthReport,
+    JointDriveConfig,
 )
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
@@ -91,7 +92,10 @@ def _robot_config(
             HomingPreset.HOME: np.zeros(len(modes)),
             HomingPreset.REST: np.ones(len(modes)),
         },
-        actuator_control_modes={f"joint_{index}": mode for index, mode in enumerate(modes)},
+        joint_drives={
+            f"joint_{index}": JointDriveConfig(control_mode=mode)
+            for index, mode in enumerate(modes)
+        },
         hardware=None,
         gripper=(
             RobotGripperConfig(

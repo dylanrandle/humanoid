@@ -48,6 +48,21 @@ def test_rotation_acceleration_is_bounded_across_ticks():
     np.testing.assert_allclose(limiter.angular_velocity, [0.0, 0.0, 0.2], atol=1e-12)
 
 
+def test_displacement_tracking_reaches_steady_speed_and_brakes_when_input_stops():
+    limiter = _limiter()
+    pose = pin.SE3.Identity()
+    dt = 0.1
+    for expected_speed in [0.05, 0.10, 0.15, 0.20, 0.20, 0.20]:
+        previous = pose
+        pose = limiter.follow_displacement(previous, np.array([0.02, 0.0, 0.0]), np.zeros(3), dt)
+        assert pose.translation[0] - previous.translation[0] == pytest.approx(expected_speed * dt)
+
+    for expected_speed in [0.15, 0.10, 0.05, 0.0, 0.0]:
+        previous = pose
+        pose = limiter.follow_displacement(previous, np.zeros(3), np.zeros(3), dt)
+        assert pose.translation[0] - previous.translation[0] == pytest.approx(expected_speed * dt)
+
+
 def test_command_velocity_is_expressed_in_pose_frame():
     limiter = _limiter()
     limiter.linear_velocity = np.array([0.1, 0.2, 0.3])

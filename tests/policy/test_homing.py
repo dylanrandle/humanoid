@@ -90,18 +90,27 @@ class TestWithTarget:
     def test_velocity_controlled_joints_held_at_q_start(self, panda_config):
         """Velocity-controlled joints must not be moved by homing."""
         # Build a config where one joint is velocity-controlled.
-        control_modes = dict(panda_config.actuator_control_modes)
-        first_joint = next(iter(control_modes))
-        control_modes[first_joint] = ActuatorControlMode.VELOCITY
-        mixed = replace(panda_config, actuator_control_modes=control_modes)
+        joint_drives = panda_config.joint_drives.copy()
+        first_joint = next(iter(joint_drives))
+        joint_drives[first_joint] = replace(
+            joint_drives[first_joint], control_mode=ActuatorControlMode.VELOCITY
+        )
+        mixed = replace(panda_config, joint_drives=joint_drives)
 
         policy = HomingPolicy(speed=1.0, dt=0.01, robot_config=mixed)
         q_start = panda_config.homing_presets[HomingPreset.HOME].copy()
         q_start[0] = 0.42  # arbitrary start position
+        previous = q_start.copy()
+        previous[:2] += 0.1
+        obs = _observation(q_start, previous)
         policy.set_target(panda_config.homing_presets[HomingPreset.REST])
 
+        first = policy.step(obs).joint_positions
+        assert first is not None
+        assert first[0] == pytest.approx(q_start[0])
+        np.testing.assert_allclose(first[1:], previous[1:])
         for _ in range(2000):
-            action = policy.step(_observation(q_start))
+            action = policy.step(obs)
             if policy.is_done:
                 final = action.joint_positions
                 break

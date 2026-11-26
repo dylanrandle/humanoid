@@ -17,6 +17,10 @@ class _RecordingPolicy(Policy):
     def __init__(self) -> None:
         self.step_calls = 0
         self.reset_calls = 0
+        self.entries: list[Observation] = []
+
+    def on_enter(self, observation: Observation) -> None:
+        self.entries.append(observation)
 
     def step(self, observation: Observation) -> Action:
         self.step_calls += 1
@@ -66,6 +70,16 @@ def test_none_mode_treated_as_active():
     assert policy.step_calls == 1
     assert policy.reset_calls == 0
     assert action.joint_positions is not None
+
+
+def test_on_enter_runs_once_per_activation():
+    policy = _RecordingPolicy()
+    first = _obs(Mode.HOMING)
+    second = _obs(Mode.HOMING)
+    for obs in (first, first, _obs(Mode.KEYBOARD), second, second):
+        policy(obs)
+    first_entry, second_entry = policy.entries
+    assert first_entry is first and second_entry is second
 
 
 def test_inactive_resets_every_call_for_clean_reactivation():

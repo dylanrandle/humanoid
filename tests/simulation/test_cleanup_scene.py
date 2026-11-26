@@ -3,10 +3,12 @@ from dataclasses import replace
 
 import mujoco
 import numpy as np
+import pinocchio as pin
 import pytest
 
 from humanoid.config import DEFAULT_MUJOCO_SIMULATION_CONFIG, ROBOT_CONFIGS
 from humanoid.config.robot import PANDA_CONFIG, TRISKEL_CONFIG
+from humanoid.controllers.omniwheel_base import OmniwheelBaseController
 from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.simulation.mirror import SimulationMirror
 from humanoid.simulation.model import ROBOT_CONTACT_TYPE
@@ -18,6 +20,7 @@ from humanoid.simulation.tasks.toy_cleanup import (
 )
 from humanoid.types.lcm import simulation_state_t
 from humanoid.types.lcm.converter import LCMConverter
+from humanoid.types.robot import RobotJointCommand
 from humanoid.types.simulation import SimulationScene
 
 
@@ -44,6 +47,35 @@ def test_cleanup_toys_and_viewer_state_round_trip(robot_config):
     engine.close()
 
 
+@pytest.mark.parametrize(
+    ("x", "y", "yaw"), [(0, 0.1, 0), (0.1, 0, 0), (0, 0, 0.5)], ids=["forward", "strafe", "yaw"]
+)
+def test_triskel_can_drive_on_the_cleanup_floor(x: float, y: float, yaw: float):
+    config = replace(DEFAULT_MUJOCO_SIMULATION_CONFIG, scene=SimulationScene.TOY_CLEANUP)
+    with closing(NativeMujocoEngine(TRISKEL_CONFIG, config)) as engine:
+        robot = engine.robot
+        controller = OmniwheelBaseController(robot, TRISKEL_CONFIG.omniwheel_base_config)
+        controller.update_state(engine.read_robot_state(0).joint_positions)
+        target = pin.SE3(pin.utils.rotate("z", yaw), np.array([x, y, 0.0]))
+
+        # Run the pose controller from its own commands, as it runs during teleop.
+        substeps = round(controller.config.dt / engine.physics_timestep)
+        dt = substeps * engine.physics_timestep
+        for tick in range(round(1 / dt)):
+            result = controller.compute_control(target, dt=dt)
+            engine.apply_joint_command(
+                RobotJointCommand(
+                    timestamp=tick * dt, joint_positions=result.q, joint_velocities=result.v
+                )
+            )
+            engine.step(substeps)
+
+        measured = robot.get_base_pose(engine.read_robot_state(1).joint_positions)
+        assert measured is not None
+        np.testing.assert_allclose(measured.translation, target.translation, atol=0.01)
+        np.testing.assert_allclose(measured.rotation, target.rotation, atol=0.02)
+
+
 def test_randomized_cleanup_reset_and_scoring():
     config = replace(DEFAULT_MUJOCO_SIMULATION_CONFIG, scene=SimulationScene.TOY_CLEANUP)
 
@@ -61,7 +93,7 @@ def test_randomized_cleanup_reset_and_scoring():
             body = engine.model.body("cube_0")
             address = engine.model.jnt_qposadr[body.jntadr[0]]
             data.qpos[address : address + 3] = data.geom("bin_floor").xpos + np.array([0, 0, 0.03])
-            engine.step(20)
+            engine.step(round(0.1 / engine.physics_timestep))
             assert deposited_toys(data) == ["cube_0"]
             engine.reset()
             np.testing.assert_array_equal(data.body("cube_0").xpos, positions[TOYS.index("cube_0")])
@@ -102,7 +134,7 @@ def test_single_item_episode_compiles_only_the_cube_and_scores_its_deposit():
         engine.data.qpos[address : address + 3] = engine.data.geom("bin_floor").xpos + np.array(
             [0, 0, 0.03]
         )
-        engine.step(25)
+        engine.step(round(0.125 / engine.physics_timestep))
         assert deposited_toys(engine.data, toys) == list(toys)
     finally:
         engine.close()
@@ -129,7 +161,7 @@ def test_deposit_requires_release_and_support_including_stacked_toys():
             data.qpos[address : address + 3] = floor + offset
         mujoco.mj_forward(model, data)
         assert task.score(data).metrics["deposited"] == []
-        engine.step(120)
+        engine.step(round(0.6 / engine.physics_timestep))
         assert task.score(data).success
 
         # The upper cube still has support from below while the finger presses on it.
@@ -138,7 +170,7 @@ def test_deposit_requires_release_and_support_including_stacked_toys():
         mujoco.mj_forward(model, data)
         assert task.score(data).metrics["deposited"] == ["cube_0", "car_0"]
         data.mocap_pos[mocap, 2] += 0.1
-        engine.step(120)
+        engine.step(round(0.6 / engine.physics_timestep))
         assert task.score(data).success
 
 

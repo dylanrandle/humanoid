@@ -78,6 +78,20 @@ fi
 
 cd "$PROJECT_ROOT"
 
+MODEL_ENGINES=(
+    models/cdm/d405.plan
+    models/cdm/d435.plan
+    models/nanosam/encoder.plan
+    models/nanosam/decoder.plan
+)
+for engine in "${MODEL_ENGINES[@]}"; do
+    if [[ ! -f "$engine" || ! -s "$engine" || ! -r "$engine" ]] ||
+        head -c 42 "$engine" | LC_ALL=C grep -aq '^version https://git-lfs'; then
+        echo "Missing or unmaterialized TensorRT engine: $engine. Run git lfs pull --include='models/**/*.plan'." >&2
+        exit 1
+    fi
+done
+
 echo "Building Humanoid wheel and locked runtime requirements"
 uv build --wheel --out-dir "$BUILD_DIR"
 uv export \
@@ -109,6 +123,9 @@ COPYFILE_DISABLE=1 tar --no-xattrs -C "$BUILD_DIR" -czf "$BUNDLE_PATH" \
 if [[ "$DRY_RUN" == true ]]; then
     echo "Would upload the deployment bundle to $REMOTE_HOST"
     echo "Would install Humanoid into $INSTALL_DIR"
+    for engine in "${MODEL_ENGINES[@]}"; do
+        echo "Would sync $engine to $REMOTE_HOST:$INSTALL_DIR/$engine"
+    done
     echo "Would configure persistent 8 MiB LCM receive buffers"
     echo "Would install EGL/Mesa libraries for headless simulation cameras"
     echo "Would install, enable, and restart humanoid.service"
@@ -147,6 +164,10 @@ else
     ssh -t "$REMOTE_HOST" \
         "sudo install -d -m 0755 -o \$(id -u) -g \$(id -g) '$INSTALL_DIR'"
 fi
+
+echo "Syncing TensorRT engines to $REMOTE_HOST:$INSTALL_DIR/models"
+# Preserve runtime paths and skip engines whose contents are already installed.
+rsync -rtR --checksum --delay-updates -- "${MODEL_ENGINES[@]}" "$REMOTE_HOST:$INSTALL_DIR/"
 
 echo "Installing Humanoid into $REMOTE_HOST:$INSTALL_DIR"
 ssh "$REMOTE_HOST" bash -s -- "$INSTALL_DIR" "$REMOTE_BUNDLE" "$WHEEL_NAME" <<'REMOTE_SCRIPT'

@@ -8,7 +8,7 @@ import pinocchio as pin
 
 from humanoid.hardware.config import RobotHardwareConfig
 from humanoid.state_estimation.config import RobotStateEstimationConfig
-from humanoid.types.actuator import ActuatorControlMode, ActuatorEffortSource
+from humanoid.types.actuator import ActuatorControlMode, ActuatorEffortSource, JointDriveConfig
 from humanoid.types.camera import RobotCameraConfig, camera_topics
 from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
 from humanoid.types.homing import HomingPreset
@@ -116,6 +116,7 @@ class RobotGripperConfig:
 
     joint_names: tuple[str, ...]
     units: tuple[Literal["m", "rad"], ...]
+    closes_at_upper_limit: bool = False
 
     def __post_init__(self) -> None:
         if not self.joint_names:
@@ -173,13 +174,24 @@ class RobotBaseCommand:
 
 
 @dataclass(frozen=True, kw_only=True)
-class MeshContactConfig:
-    """Collision hull and contact solver settings for a named mesh geom."""
+class GeomContactConfig:
+    """Solver settings and surface friction for a collision geometry."""
 
-    max_hull_vertices: int
     priority: int
     solref: tuple[float, float]
     solimp: tuple[float, float, float, float, float]
+    sliding_friction: float | None = None
+    torsional_friction: float | None = None  # m, torque per unit normal force
+
+    def __post_init__(self) -> None:
+        if self.sliding_friction is not None and (
+            not np.isfinite(self.sliding_friction) or self.sliding_friction < 0
+        ):
+            raise ValueError("Sliding friction must be nonnegative and finite.")
+        if self.torsional_friction is not None and (
+            not np.isfinite(self.torsional_friction) or self.torsional_friction <= 0
+        ):
+            raise ValueError("Torsional friction length must be positive and finite.")
 
 
 @dataclass
@@ -187,7 +199,7 @@ class RobotConfig:
     name: RobotName
     tool: RobotToolConfig
     homing_presets: dict[HomingPreset, np.ndarray]
-    actuator_control_modes: dict[str, ActuatorControlMode]
+    joint_drives: dict[str, JointDriveConfig]
     base: RobotBaseConfig | None = None
     wheels: list[WheelConfig] | None = None
     gripper: RobotGripperConfig | None = None
@@ -196,7 +208,7 @@ class RobotConfig:
     operational_space_config: OperationalSpaceConfig | None = None
     omniwheel_base_config: OmniwheelBaseConfig | None = None
     cameras: dict[str, RobotCameraConfig] = field(default_factory=dict)
-    mesh_contacts: dict[str, MeshContactConfig] = field(default_factory=dict)
+    geom_contacts: dict[str, GeomContactConfig] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Own invariants spanning logical controls and physical bindings."""
@@ -227,18 +239,23 @@ class RobotConfig:
         self._validate_gripper()
         if self.hardware is None or self.hardware.actuators is None:
             return
-        if self.hardware.actuators.joints.keys() != self.actuator_control_modes.keys():
+        if self.hardware.actuators.joints.keys() != self.joint_drives.keys():
             raise ValueError("Physical actuator bindings must match the robot's controlled joints.")
+
+    @property
+    def actuator_control_modes(self) -> dict[str, ActuatorControlMode]:
+        """Command modes for the hardware actuator system."""
+        return {name: drive.control_mode for name, drive in self.joint_drives.items()}
 
     def _validate_gripper(self) -> None:
         if self.gripper is None:
             return
-        missing_gripper_joints = set(self.gripper.joint_names) - self.actuator_control_modes.keys()
+        missing_gripper_joints = set(self.gripper.joint_names) - self.joint_drives.keys()
         if missing_gripper_joints:
             missing = ", ".join(sorted(missing_gripper_joints))
             raise ValueError(f"Gripper joints must be configured actuators: {missing}.")
         if any(
-            self.actuator_control_modes[joint_name] is not ActuatorControlMode.POSITION
+            self.joint_drives[joint_name].control_mode is not ActuatorControlMode.POSITION
             for joint_name in self.gripper.joint_names
         ):
             raise ValueError("Gripper joints must use position control.")

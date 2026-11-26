@@ -42,8 +42,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         - J/L: Yaw left/right
         - U/O: Pitch down/up
         - [/]: Close/open gripper
-        - Arrow Up/Down: Move base forward/backward (X axis)
-        - Arrow Left/Right: Strafe base left/right (Y axis)
+        - Arrow Up/Down: Move the base along world +X/-X
+        - Arrow Left/Right: Move the base along world +Y/-Y
         - ,/. : Yaw base left/right (Z axis)
         - ESC or 'x': Quit (sets running flag to False)
 
@@ -141,8 +141,8 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
         logger.info("    ] - Open gripper")
         if self.robot_config.base is not None:
             logger.info("  Base:")
-            logger.info("    Up/Down arrow - Move base forward/backward (X axis)")
-            logger.info("    Left/Right arrow - Strafe base left/right (Y axis)")
+            logger.info("    Up/Down arrow - Move base along world +X/-X")
+            logger.info("    Left/Right arrow - Move base along world +Y/-Y")
             logger.info("    , / . - Yaw base left/right")
         logger.info("  ESC or 'x' - Quit")
         logger.info("\nNote: Keyboard input works globally (terminal doesn't need focus)")
@@ -305,27 +305,13 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                     if self.verbose:
                         logger.info(f"⤴ Pitch up (+{np.rad2deg(self.tool_rotation_step):.2f}°)")
                         self._log_pose()
-            elif key_char == "[":
-                # Close gripper (decrease gripper position)
+            elif key_char in ("[", "]"):
                 with self.lock:
                     if self.gripper_positions is not None:
-                        # Decrease gripper position with URDF-based limits
-                        self.gripper_positions[0] = max(
-                            self.gripper_min, self.gripper_positions[0] - self.gripper_step
+                        self.gripper_positions[0] = self._step_gripper(
+                            self.gripper_positions[0], self.gripper_step, close=key_char == "["
                         )
                         if self.verbose:
-                            logger.info(f"⊏ Close gripper (-{self.gripper_step:.4f})")
-                            logger.info(f"Gripper position: {self.gripper_positions[0]:.4f}")
-            elif key_char == "]":
-                # Open gripper (increase gripper position)
-                with self.lock:
-                    if self.gripper_positions is not None:
-                        # Increase gripper position with URDF-based limits
-                        self.gripper_positions[0] = min(
-                            self.gripper_max, self.gripper_positions[0] + self.gripper_step
-                        )
-                        if self.verbose:
-                            logger.info(f"⊐ Open gripper (+{self.gripper_step:.4f})")
                             logger.info(f"Gripper position: {self.gripper_positions[0]:.4f}")
             # Base controls (only active for mobile robots).
             elif key == keyboard.Key.up:
@@ -333,30 +319,28 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                     if self.current_base_pose is not None:
                         self.current_base_pose.translation[0] += self.base_translation_step
                         if self.verbose:
-                            logger.info(f"⇧ Base forward (X+{self.base_translation_step:.4f}m)")
+                            logger.info(f"⇧ Base world X+{self.base_translation_step:.4f}m")
                             self._log_base_pose()
             elif key == keyboard.Key.down:
                 with self.lock:
                     if self.current_base_pose is not None:
                         self.current_base_pose.translation[0] -= self.base_translation_step
                         if self.verbose:
-                            logger.info(f"⇩ Base backward (X-{self.base_translation_step:.4f}m)")
+                            logger.info(f"⇩ Base world X-{self.base_translation_step:.4f}m")
                             self._log_base_pose()
             elif key == keyboard.Key.left:
                 with self.lock:
                     if self.current_base_pose is not None:
                         self.current_base_pose.translation[1] += self.base_translation_step
                         if self.verbose:
-                            logger.info(f"⇦ Base strafe left (Y+{self.base_translation_step:.4f}m)")
+                            logger.info(f"⇦ Base world Y+{self.base_translation_step:.4f}m")
                             self._log_base_pose()
             elif key == keyboard.Key.right:
                 with self.lock:
                     if self.current_base_pose is not None:
                         self.current_base_pose.translation[1] -= self.base_translation_step
                         if self.verbose:
-                            logger.info(
-                                f"⇨ Base strafe right (Y-{self.base_translation_step:.4f}m)"
-                            )
+                            logger.info(f"⇨ Base world Y-{self.base_translation_step:.4f}m")
                             self._log_base_pose()
             elif key_char == ",":
                 # Yaw base left (positive rotation around Z)
@@ -415,10 +399,7 @@ class KeyboardTeleopPolicy(BaseTeleopPolicy):
                 self.gripper_positions = self._get_current_gripper_positions(observation)
 
                 # Initialize base pose from current state for mobile robots.
-                base_pose = self._get_current_base_pose(observation)
-                if base_pose is not None:
-                    # Copy so subsequent FK calls don't mutate our target
-                    self.current_base_pose = pin.SE3(base_pose.rotation, base_pose.translation)
+                self.current_base_pose = self._get_current_base_pose(observation)
 
             if self.verbose:
                 logger.info("\nInitial end-effector pose:")

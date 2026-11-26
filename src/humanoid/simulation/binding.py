@@ -53,7 +53,7 @@ def _resolve_joint(model: mujoco.MjModel, robot: Robot, name: str) -> MujocoJoin
         raise ValueError(f"MuJoCo actuator {name!r} does not target its matching joint.")
     return MujocoJointBinding(
         name=name,
-        control_mode=robot.config.actuator_control_modes[name],
+        control_mode=robot.config.joint_drives[name].control_mode,
         joint_id=joint_id,
         actuator_id=actuator_id,
         qpos_address=int(model.jnt_qposadr[joint_id]),

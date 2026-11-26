@@ -26,7 +26,8 @@ from humanoid.policy.teleop.keyboard import (
 )
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
-from humanoid.types.robot import RobotState
+from humanoid.types.orchestrator import Mode
+from humanoid.types.robot import RobotJointCommand, RobotState
 
 
 class _FakeCharKey:
@@ -116,6 +117,57 @@ class TestConstruction:
 
 
 class TestFirstCallInitialization:
+    def test_mode_entry_holds_commanded_arm_and_measured_base_until_first_jog(self, mobile_policy):
+        policy = mobile_policy
+        measured = policy.robot_config.homing_presets[HomingPreset.HOME].copy()
+        measured[:4] = [0.2, -0.1, np.cos(0.3), np.sin(0.3)]
+        previous = policy.robot_config.homing_presets[HomingPreset.REST].copy()
+        gripper = policy.robot.get_gripper_position_indices()
+        previous[gripper] = policy.gripper_max
+        obs = _observation_from_q(measured)
+        obs.robot_joint_command = RobotJointCommand(1.0, previous)
+        obs.mode = Mode.OCULUS
+        assert policy(obs).base_pose is None
+
+        obs.mode = Mode.KEYBOARD
+        base = policy.robot.get_base_pose(measured).copy()
+        tool = policy.robot.get_tool_command_pose(previous).copy()
+        for _ in range(2):
+            action = policy(obs)
+            np.testing.assert_allclose(action.base_pose.homogeneous, base.homogeneous, atol=1e-12)
+            np.testing.assert_allclose(action.tool_pose.homogeneous, tool.homogeneous, atol=1e-12)
+            np.testing.assert_array_equal(action.gripper_positions, previous[gripper])
+            obs.robot_state.joint_positions = previous.copy()
+
+        policy._on_press(pynput_keyboard.Key.up)
+        expected = base.translation + np.array([policy.base_translation_step, 0, 0])
+        np.testing.assert_allclose(policy(obs).base_pose.translation, expected, atol=1e-12)
+
+    @pytest.mark.parametrize("fixture", ["panda_policy", "mobile_policy"])
+    def test_idle_holds_jog_target_across_feedback_updates(self, fixture, request):
+        policy = request.getfixturevalue(fixture)
+        home = policy.robot_config.homing_presets[HomingPreset.HOME]
+        rest = policy.robot_config.homing_presets[HomingPreset.REST]
+        obs = _observation_from_q(home)
+        policy(obs)
+        for key in ("d", "j", "["):
+            policy._on_press(_FakeCharKey(key))
+        policy._on_press(pynput_keyboard.Key.up)
+        tool = policy.current_tool_pose.copy()
+        base = policy.current_base_pose.copy() if policy.current_base_pose is not None else None
+        gripper = policy.gripper_positions.copy()
+        for _ in range(30):
+            policy(obs)  # Allow the rate-limited jog to reach its target.
+
+        policy.robot.forward_kinematics(rest)
+        idle = policy(_observation_from_q(rest))
+        np.testing.assert_allclose(idle.tool_pose.homogeneous, tool.homogeneous, atol=1e-12)
+        np.testing.assert_allclose(idle.tool_velocity.linear, 0, atol=1e-12)
+        np.testing.assert_allclose(idle.tool_velocity.angular, 0, atol=1e-12)
+        np.testing.assert_array_equal(idle.gripper_positions, gripper)
+        if base is not None:
+            np.testing.assert_allclose(idle.base_pose.homogeneous, base.homogeneous, atol=1e-12)
+
     def test_first_call_initializes_pose_gripper_and_starts_listener(
         self, panda_policy, monkeypatch
     ):
@@ -205,6 +257,14 @@ class TestRotationKeys:
 
 
 class TestGripperKeys:
+    def test_triskel_close_and_open_from_home(self, mobile_policy):
+        obs = _observation_from_q(mobile_policy.robot_config.homing_presets[HomingPreset.HOME])
+        mobile_policy(obs)
+        mobile_policy._on_press(_FakeCharKey("["))
+        assert mobile_policy(obs).gripper_positions[0] == pytest.approx(mobile_policy.gripper_step)
+        mobile_policy._on_press(_FakeCharKey("]"))
+        assert mobile_policy(obs).gripper_positions[0] == pytest.approx(0)
+
     def test_close_clamps_at_lower_limit(self, panda_policy):
         panda_policy(
             _observation_from_q(panda_policy.robot_config.homing_presets[HomingPreset.HOME])

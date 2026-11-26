@@ -82,6 +82,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
         self.robot = robot
         self._data = robot.model.createData()
         self._previous_velocity = np.zeros(robot.model.nv)
+        self._hold_pose: pin.SE3 | None = None
 
         # Defer configuration initialization until first state update
         self.configuration: pink.Configuration | None = None
@@ -329,6 +330,15 @@ class OperationalSpaceController(Controller[pin.SE3]):
 
         # Set the target for the end-effector task
         self.tasks[TaskName.TOOL].set_target(target)
+        tasks = self.tasks
+        if self._hold_pose is not None:
+            if target.isApprox(self._hold_pose, 1e-9):
+                # Posture optimization alone can move a stationary tool on takeover.
+                tasks = {
+                    name: task for name, task in tasks.items() if name != TaskName.MANIPULABILITY
+                }
+            else:
+                self._hold_pose = None
 
         # Solve inverse kinematics using Pink
         # Pink stores a previous displacement and interprets it using this solve's
@@ -339,7 +349,7 @@ class OperationalSpaceController(Controller[pin.SE3]):
         try:
             solved_velocity = pink.solve_ik(
                 self.configuration,
-                self.tasks.values(),
+                tasks.values(),
                 dt,
                 solver=self.config.solver,
                 limits=self._limits,
@@ -356,8 +366,9 @@ class OperationalSpaceController(Controller[pin.SE3]):
 
         return ControlResult(q=self.configuration.q.copy(), v=velocity)
 
-    def reset_motion(self) -> None:
-        """Reset stateful velocity smoothing when control is disengaged."""
+    def reset_motion(self, *, hold_pose: pin.SE3 | None = None) -> None:
+        """Reset smoothing and optionally defer posture optimization until the tool target moves."""
+        self._hold_pose = hold_pose.copy() if hold_pose is not None else None
         self._set_previous_velocity(np.zeros(self.robot.model.nv), self.config.dt)
 
     def _set_previous_velocity(self, velocity: np.ndarray, dt: float) -> None:

@@ -70,11 +70,23 @@ Use the session ID from `/v1/state` and a unique client-generated command ID.
 | `move_tool` | Absolute `position` in metres and unit `quaternion` in x, y, z, w order. Tool targets use the configured base frame for a mobile robot and the world frame for a fixed-base arm. |
 | `move_base` | `delta` as forward x (m), lateral y (m), and yaw (rad), relative to the mobile base at command start. |
 | `set_gripper` | `positions` in configured gripper-joint order, using each joint's native units (rad for Triskel). |
-| `hold` | Interrupt the active motion and hold the measured pose while retaining the gripper target. |
+| `hold` | Interrupt the active motion, hold the measured tool pose, stop the base and retain the gripper target. |
 
 All operations accept `duration` in seconds, default 1 and maximum 2. One command can be pending or running at a time. Overlapping motion gets HTTP 409. Other 409 responses include stale feedback, missing fresh camera frames and an inactive control mode. Cross-origin browser requests return 403 and malformed commands return 400. The policy also checks workspace, displacement and joint limits against feedback on the execution tick.
 
 Poll the command ID until its state leaves `queued` or `running`. Terminal states are `completed`, `rejected`, `cancelled`, `expired` and `failed`. A completed command reports `reached` and the measured position, orientation and gripper errors. The duration can elapse before the robot reaches its target. Leaving Autonomy interrupts outstanding commands.
+
+During a motion the agent policy uses measured odometry to calculate the remaining
+base displacement. It applies a speed-bounded correction to the last routed base
+pose in `ROBOT/JOINT_COMMAND`. If measured feedback exceeds `feedback_timeout`,
+the policy interrupts the motion and stops issuing targets. The robot controller
+continues tracking its last targets if the policy or feedback stream goes quiet.
+
+On a mode handoff the controller holds the position-controlled joints at their last routed
+`ROBOT/JOINT_COMMAND` targets, including targets sent during homing. It uses the
+measured joints when it has no usable command. The base starts at measured
+odometry with zero commanded velocity. Operational-space policies use the same
+arm and gripper reference for their first action.
 
 If a submission response is lost, resend the **same JSON body**, including the session ID, command ID and deadline. The service returns the existing status and measured result for that ID. A retry neither repeats the movement nor extends its start deadline. Reusing the ID for different arguments fails. After a service restart, read the new state and reconcile the robot's position before deciding on another movement. Each call to the Python client's `execute()` creates a new command ID. Use the HTTP contract directly when the caller needs to retain its own IDs.
 

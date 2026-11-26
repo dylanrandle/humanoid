@@ -70,7 +70,10 @@ class OculusTeleopNode(Node):
         self.observation = self.env.reset()
 
     def on_close(self) -> None:
-        self.env.close()
+        try:
+            self.policy.reader.stop()
+        finally:
+            self.env.close()
 
 
 def main():

@@ -314,7 +314,8 @@ def run_controller_tracking_diagnostic(
     metadata_path = run_directory / "metadata.json"
     controller_config = robot_config.operational_space_config or OperationalSpaceConfig()
     target_controller_rate_hz = 1.0 / controller_config.dt
-    acceleration_limits = _joint_acceleration_limits(robot_config)
+    robot = Robot(robot_config)
+    acceleration_limits = _joint_acceleration_limits(robot)
     analyses = build_smoothness_analyses(
         run.native_joint_samples,
         settings,
@@ -342,8 +343,8 @@ def run_controller_tracking_diagnostic(
         robot_config.name.value,
         native_joint_samples=run.native_joint_samples,
         acceleration_limits_rad_s2=acceleration_limits,
-        effort_traces=build_effort_traces(run.native_joint_samples, robot_config),
-        effort_limits=actuator_effort_limits(robot_config),
+        effort_traces=build_effort_traces(run.native_joint_samples, robot),
+        effort_limits=actuator_effort_limits(robot),
         completed=run.completed,
         failure_reason=run.failure_reason,
     )
@@ -394,12 +395,11 @@ def main() -> None:
         sys.exit(1)
 
 
-def _joint_acceleration_limits(robot_config: RobotConfig) -> dict[str, float]:
+def _joint_acceleration_limits(robot: Robot) -> dict[str, float]:
     """Expand the configured OSC arm acceleration limit to named joints."""
-    config = robot_config.operational_space_config
+    config = robot.config.operational_space_config
     if config is None or config.joint_acceleration_limit is None:
         return {}
-    robot = Robot(robot_config)
     names = tuple(robot.joint_idx_to_name(index) for index in robot.get_arm_joint_indices())
     limits = np.asarray(config.joint_acceleration_limit, dtype=float)
     if limits.ndim == 0:

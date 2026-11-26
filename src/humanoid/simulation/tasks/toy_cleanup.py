@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import mujoco
 import numpy as np
 
+from humanoid.config.robot import ROBOT_CONFIGS
 from humanoid.simulation.model import ROBOT_CONTACT_TYPE
 from humanoid.types.robot import RobotName
 from humanoid.types.simulation import SimulationScene
@@ -141,10 +142,14 @@ class ToyCleanupTask(SimulationTask):
             objective += (
                 " Triskel has a bottom-plate D435 and a wrist-mounted D405. Use both RGB-D views."
             )
+        gripper = ROBOT_CONFIGS[self.robot].gripper
+        if gripper is not None:
+            direction = "Increasing" if gripper.closes_at_upper_limit else "Decreasing"
+            objective += f" {direction} the gripper joint target closes the fingers."
         return (
             f"{objective} "
-            "Top-down picks worked in our cube tests. Try approaching the cube from above. "
-            "Closing too tightly can destabilize the grasp. Close gradually. "
+            "Approach from above with the toy between the open fingers. "
+            "Close around the toy and keep the squeeze while lifting. "
             "Search the whole room and verify deposits after release."
         )
 
