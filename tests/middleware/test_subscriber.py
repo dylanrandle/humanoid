@@ -1,12 +1,14 @@
 import threading
 import time
+from collections.abc import Callable, Sequence
+from contextlib import ExitStack, closing
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pinocchio as pin
 import pytest
 
-from humanoid.constants import Topic
+from humanoid.constants import Channel, Topic
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
 from humanoid.types.lcm.converter import LCMConverter
@@ -23,8 +25,28 @@ from humanoid.types.robot import (
 def mock_lcm():
     """Patch lcm.LCM so no actual broker is needed."""
     mock_instance = MagicMock()
+    # A real receive waits for input. An immediate mock return would busy-spin
+    # and record unbounded mock calls on the subscriber's background thread.
+    mock_instance.handle_timeout.side_effect = lambda milliseconds: time.sleep(milliseconds / 1000)
     with patch("humanoid.middleware.subscriber.lcm.LCM", return_value=mock_instance):
         yield mock_instance
+
+
+@pytest.fixture
+def subscriber(mock_lcm):
+    with ExitStack() as resources:
+
+        def create(
+            topics: Sequence[Channel],
+            *,
+            queue_size: int | None = 1,
+            clock: Callable[[], float] = time.perf_counter,
+        ) -> Subscriber:
+            return resources.enter_context(
+                closing(Subscriber(topics=topics, queue_size=queue_size, clock=clock))
+            )
+
+        yield create
 
 
 def _make_joint_command():
@@ -53,36 +75,36 @@ def _make_base_command():
 
 
 class TestSubscriber:
-    def test_subscribes_to_each_topic(self, mock_lcm):
+    def test_subscribes_to_each_topic(self, mock_lcm, subscriber):
         topics = [Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND]
-        Subscriber(topics=topics)
+        subscriber(topics=topics)
 
         subscribed_channels = [call.args[0] for call in mock_lcm.subscribe.call_args_list]
         assert subscribed_channels == [t.value for t in topics]
 
-    def test_sets_queue_capacity_when_provided(self, mock_lcm):
+    def test_sets_queue_capacity_when_provided(self, mock_lcm, subscriber):
         mock_subscription = MagicMock()
         mock_lcm.subscribe.return_value = mock_subscription
 
-        Subscriber(topics=[Topic.ROBOT_STATE], queue_size=5)
+        subscriber(topics=[Topic.ROBOT_STATE], queue_size=5)
 
         mock_subscription.set_queue_capacity.assert_called_once_with(5)
 
-    def test_skips_queue_capacity_when_none(self, mock_lcm):
+    def test_skips_queue_capacity_when_none(self, mock_lcm, subscriber):
         mock_subscription = MagicMock()
         mock_lcm.subscribe.return_value = mock_subscription
 
-        Subscriber(topics=[Topic.ROBOT_STATE], queue_size=None)
+        subscriber(topics=[Topic.ROBOT_STATE], queue_size=None)
 
         mock_subscription.set_queue_capacity.assert_not_called()
 
-    def test_receive_with_no_message_returns_none(self, mock_lcm):
-        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+    def test_receive_with_no_message_returns_none(self, mock_lcm, subscriber):
+        sub = subscriber(topics=[Topic.ROBOT_STATE])
         result = sub.receive(Topic.ROBOT_STATE, timeout=10)
         assert result is None
 
-    def test_blocking_receive_returns_when_message_arrives(self, mock_lcm):
-        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+    def test_blocking_receive_returns_when_message_arrives(self, mock_lcm, subscriber):
+        sub = subscriber(topics=[Topic.ROBOT_STATE])
         state = _make_state()
         encoded = LCMConverter.robot_state_to_lcm(state).encode()
 
@@ -96,8 +118,8 @@ class TestSubscriber:
         assert isinstance(result, RobotState)
         np.testing.assert_allclose(result.joint_positions, state.joint_positions)
 
-    def test_handle_message_decodes_and_queues_state(self, mock_lcm):
-        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+    def test_handle_message_decodes_and_queues_state(self, mock_lcm, subscriber):
+        sub = subscriber(topics=[Topic.ROBOT_STATE])
         state = _make_state()
         encoded = LCMConverter.robot_state_to_lcm(state).encode()
 
@@ -108,8 +130,8 @@ class TestSubscriber:
         np.testing.assert_allclose(result.joint_positions, state.joint_positions)
         np.testing.assert_allclose(result.actuator_temperatures, state.actuator_temperatures)
 
-    def test_receive_with_timestamp_returns_local_receipt_time(self, mock_lcm):
-        sub = Subscriber(topics=[Topic.ROBOT_STATE], clock=lambda: 12.5)
+    def test_receive_with_timestamp_returns_local_receipt_time(self, mock_lcm, subscriber):
+        sub = subscriber(topics=[Topic.ROBOT_STATE], clock=lambda: 12.5)
         state = _make_state()
 
         sub._handle_message(
@@ -124,8 +146,8 @@ class TestSubscriber:
         assert received_at_s == pytest.approx(12.5)
         assert message.timestamp == pytest.approx(state.timestamp)
 
-    def test_handle_message_decodes_each_supported_type(self, mock_lcm):
-        sub = Subscriber(
+    def test_handle_message_decodes_each_supported_type(self, mock_lcm, subscriber):
+        sub = subscriber(
             topics=[
                 Topic.ROBOT_JOINT_COMMAND,
                 Topic.ROBOT_STATE,
@@ -195,8 +217,8 @@ class TestSubscriber:
             result = sub.receive(topic, timeout=10)
             assert isinstance(result, expected_type), f"Expected {expected_type} for {topic}"
 
-    def test_queues_are_isolated_per_topic(self, mock_lcm):
-        sub = Subscriber(topics=[Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND])
+    def test_queues_are_isolated_per_topic(self, mock_lcm, subscriber):
+        sub = subscriber(topics=[Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND])
 
         state_bytes = LCMConverter.robot_state_to_lcm(_make_state()).encode()
         sub._handle_message(Topic.ROBOT_STATE.value, state_bytes)
@@ -206,8 +228,8 @@ class TestSubscriber:
         # State message is still available.
         assert isinstance(sub.receive(Topic.ROBOT_STATE, timeout=10), RobotState)
 
-    def test_queue_capacity_drops_oldest(self, mock_lcm):
-        sub = Subscriber(topics=[Topic.ROBOT_STATE], queue_size=1)
+    def test_queue_capacity_drops_oldest(self, mock_lcm, subscriber):
+        sub = subscriber(topics=[Topic.ROBOT_STATE], queue_size=1)
 
         first = _make_state()
         second = RobotState(
@@ -230,17 +252,17 @@ class TestSubscriber:
         # Queue should now be empty.
         assert sub.receive(Topic.ROBOT_STATE, timeout=10) is None
 
-    def test_handle_message_swallows_decode_errors(self, mock_lcm):
-        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+    def test_handle_message_swallows_decode_errors(self, mock_lcm, subscriber):
+        sub = subscriber(topics=[Topic.ROBOT_STATE])
 
         # Garbage bytes should not raise — just get logged and dropped.
         sub._handle_message(Topic.ROBOT_STATE.value, b"not a valid lcm message")
 
         assert sub.receive(Topic.ROBOT_STATE, timeout=10) is None
 
-    def test_receive_returns_queued_message_immediately(self, mock_lcm):
+    def test_receive_returns_queued_message_immediately(self, mock_lcm, subscriber):
         """A pre-queued message is returned without waiting."""
-        sub = Subscriber(topics=[Topic.ROBOT_STATE])
+        sub = subscriber(topics=[Topic.ROBOT_STATE])
         sub._handle_message(
             Topic.ROBOT_STATE.value, LCMConverter.robot_state_to_lcm(_make_state()).encode()
         )
@@ -249,11 +271,11 @@ class TestSubscriber:
 
         assert isinstance(result, RobotState)
 
-    def test_close_unsubscribes_all(self, mock_lcm):
+    def test_close_unsubscribes_all(self, mock_lcm, subscriber):
         subs = [MagicMock(), MagicMock()]
         mock_lcm.subscribe.side_effect = subs
 
-        sub = Subscriber(topics=[Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND])
+        sub = subscriber(topics=[Topic.ROBOT_STATE, Topic.ROBOT_JOINT_COMMAND])
         sub.close()
 
         assert mock_lcm.unsubscribe.call_count == len(subs)

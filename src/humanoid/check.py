@@ -9,7 +9,7 @@ CHECK_COMMANDS = (
     ("npm", "run", "format:check"),
     ("ruff", "check"),
     ("ty", "check"),
-    ("pytest",),
+    ("pytest", "-n", "auto", "--maxprocesses=4", "--dist=worksteal", "--durations=20"),
 )
 
 

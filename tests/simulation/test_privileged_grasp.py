@@ -94,14 +94,14 @@ class GraspRig:
         forces = np.zeros(3)
         penetration = 0.0
         wrench = np.zeros(6)
-        for index, contact in enumerate(data.contact):
-            first, second = model.geom_bodyid[contact.geom]
-            if model.body_rootid[first] == toy_id:
-                other = second
-            elif model.body_rootid[second] == toy_id:
-                other = first
-            else:
-                continue
+        # Most contacts belong to the other toys resting on the floor. Select
+        # this toy's contacts in bulk before inspecting their forces in Python.
+        bodies = model.geom_bodyid[data.contact.geom]
+        roots = model.body_rootid[bodies]
+        for index in np.flatnonzero(np.any(roots == toy_id, axis=1)):
+            contact = data.contact[index]
+            first, second = bodies[index]
+            other = second if roots[index, 0] == toy_id else first
             mujoco.mj_contactForce(model, data, index, wrench)
             slot = self.finger_slots.get(other)
             if slot is None:

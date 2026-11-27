@@ -23,8 +23,9 @@ uv run check
 ```
 
 This runs the same formatting, linting, type-checking, and test suite as CI. The
-Pytest suite includes the Node.js UI tests. To run only Python and UI tests, use
-`uv run pytest`; to run only the UI tests, use `npm test`.
+Pytest suite includes the Node.js UI tests. The check command runs tests in parallel
+and reports the slowest test phases. For a serial run or a focused test, use
+`uv run pytest` with an optional test path. To run only the UI tests, use `npm test`.
 
 ## Browser constants
 

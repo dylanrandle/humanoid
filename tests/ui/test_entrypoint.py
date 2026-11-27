@@ -45,7 +45,8 @@ def test_server_main_closes_service_and_web_server(monkeypatch):
 
 
 def test_server_main_configures_wireless_oculus(monkeypatch):
-    monkeypatch.delenv(EnvironmentVariable.OCULUS_IP, raising=False)
+    # Register an undo even when the variable was absent: main() writes it directly.
+    monkeypatch.setenv(EnvironmentVariable.OCULUS_IP, "")
     service = MagicMock()
     web_server = MagicMock(server_port=4321)
     web_server.serve_forever.side_effect = KeyboardInterrupt
@@ -64,6 +65,7 @@ def test_server_main_configures_wireless_oculus(monkeypatch):
 
 
 def test_server_main_rejects_invalid_oculus_ip(monkeypatch):
+    monkeypatch.setenv(EnvironmentVariable.OCULUS_IP, "")
     monkeypatch.setattr(sys, "argv", ["start", "--oculus-ip", "not-an-ip"])
 
     with pytest.raises(SystemExit):
