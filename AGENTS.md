@@ -37,5 +37,29 @@ uv run ruff check --fix
 
 # Documentation Rules
 
+- Keep the root `README.md` lightweight: a concise project description and a link
+  to the documentation index. Keep project documentation in `docs/`; do not add
+  component READMEs under source, model, or script directories. `AGENTS.md` stays
+  at the root for contributor instructions. Store documentation images and
+  animations in `docs/assets/` and embed them using relative paths.
+- Write for humans. Focus on high-level structure, responsibilities, and common
+  workflows. Use short paragraphs and only the examples needed to get started.
+  Keep low-level contracts, exhaustive options, and implementation details in
+  code, types, docstrings, and CLI help; link to those sources instead of copying them.
+- Follow a consistent Markdown format: one sentence-case H1, a short purpose
+  paragraph, focused sentence-case H2 sections as needed, and a final `See also`
+  section linking to the docs index and relevant guides or source. Use descriptive,
+  relative links and fenced code blocks with a language. Commands assume the
+  repository root unless stated otherwise.
+- Use a single source of truth: give each topic one authoritative home. Link to
+  that page from related docs rather than repeating setup steps, explanations,
+  or configuration reference.
+  Keep `docs/README.md` as the navigation index and group related specialized
+  guides in subdirectories.
+- Update the relevant documentation in the same change whenever user workflows,
+  setup, configuration, interfaces, or architectural responsibilities change.
+  Keep updates proportional to the change; internal refactors with no documented
+  impact do not need prose churn. Update the index when adding or moving pages,
+  fix incoming links, and check relative links and heading anchors before finishing.
 - Describe configurable behavior using the parameter name and what it controls.
   Quote its current value only when the instruction or example depends on it.

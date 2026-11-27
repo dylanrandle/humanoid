@@ -53,7 +53,7 @@ class RealSenseCamera:
             except ImportError as error:
                 raise RuntimeError(
                     "RealSense SDK unavailable. Run `uv sync`; on Raspberry Pi/ARM, "
-                    "install a matching SDK wheel as described in README.md."
+                    "install a matching SDK wheel as described in docs/hardware/cameras.md."
                 ) from error
         # The SDK exposes native extension attributes that its Python package does not type.
         sdk = cast(Any, self._sdk)

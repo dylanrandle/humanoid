@@ -1,4 +1,4 @@
-# RealSense Camera Depth Models
+# Camera depth models
 
 These FP16 TensorRT engines complete sparse, RGB-aligned depth using ByteDance's camera-specific CDM checkpoints. Select the engine for the camera that produced the depth frame. Both engines were built on Triskel's Jetson Orin Nano (SM 8.7), L4T R39.2.2, with TensorRT 11.4.1.31. Rebuild for a different GPU or incompatible TensorRT version.
 
@@ -11,7 +11,9 @@ The model weights and the converted engines are licensed under [CC BY-NC 4.0](ht
 
 ## Inference on Triskel
 
-From a checkout with Git LFS installed, run `git lfs pull --include="models/**/*.plan"`. The deploy script syncs the materialized engines to `models/cdm` under the deployment data root (normally `/opt/humanoid` on Triskel). For a manual wheel installation, copy the files there or pass their directory as `model_dir`.
+Follow [Deployment](../deployment.md#deploy-the-stack) to fetch and deploy the model
+engines. For a manual wheel installation, copy the materialized files to `models/cdm`
+under the deployment data root, or pass their directory as `model_dir`.
 
 `scripts/deploy` installs the locked dependencies and exposes JetPack's TensorRT bindings. For a separate Python 3.12 environment on Triskel, a `.pth` file in the virtual environment's `lib/python3.12/site-packages` containing the following line exposes the SDK bindings:
 
@@ -27,7 +29,10 @@ with DepthCompleter("d405") as model:
     metres = model.infer(rgb, depth_in_rgb, metres_per_unit=sensor_depth_scale)
 ```
 
-Use a synchronized 640 by 480 RGB uint8 frame and its depth frame aligned to RGB. Obtain the depth scale from the sensor or capture metadata. For input already in metres, pass `metres_per_unit=1.0`. Zero, negative, nonfinite and over-25-metre inputs are treated as holes. Output is a new 480 by 640 float32 array of axial depth in metres, with NaN for invalid predictions. Keep an instance open across frames to reuse the execution context and buffers.
+Use synchronized RGB and depth registered to RGB, with the sensor's depth scale.
+The result is estimated axial depth in metres. Keep a model instance open across
+frames to reuse GPU resources; the [inference implementation](../../src/humanoid/perception/depth.py)
+defines exact input shapes and invalid-value handling.
 
 ## Rebuilding
 
@@ -35,7 +40,7 @@ Use the pinned upstream implementation linked above and the checkpoint for the d
 
 Run from the repository root on the target Jetson, with the upstream checkout's `cdm` directory on `PYTHONPATH`. Set `CDM_PYTHON` to the conversion environment's interpreter, `CAMERA` to `d405` or `d435`, and `CHECKPOINT` to its original checkpoint path.
 
-```sh
+```bash
 uv run --no-project --python "$CDM_PYTHON" python scripts/cdm/export_onnx.py \
     "$CHECKPOINT" "/tmp/cdm/$CAMERA"
 trtexec --onnx="/tmp/cdm/$CAMERA/model.onnx" --saveEngine="models/cdm/$CAMERA.plan" \
@@ -45,16 +50,20 @@ trtexec --onnx="/tmp/cdm/$CAMERA/model.onnx" --saveEngine="models/cdm/$CAMERA.pl
 
 ## Validating against PyTorch
 
-```sh
+```bash
 uv run python scripts/cdm/validate.py "$CAMERA" models/cdm \
     "$CAPTURES" "$PYTORCH_REFERENCES" "$OBJECT_MASKS"
 ```
 
-Each capture directory contains `scene-*/rgb.png`, `depth_in_rgb.png` and `metadata.json`. The validator compares the public inference API against full-frame PyTorch FP16 reference depths (`scene-XXX-cdm.npy`, metres) and uses the saved `scene-XXX-mask.png` to isolate the car or cube. Per-scene parity requires at least 99.9% agreement on valid pixels, mean relative error at most 1%, 99th-percentile relative error at most 3%, and median and 95th-percentile absolute differences on the object at most 2 mm and 5 mm respectively.
+Each capture directory contains `scene-*/rgb.png`, `depth_in_rgb.png`, and
+`metadata.json`. Supply matching PyTorch FP16 references (`scene-XXX-cdm.npy`, metres)
+and object masks (`scene-XXX-mask.png`). The validator checks valid-pixel agreement,
+full-frame relative error, and object depth error. Its code defines the acceptance
+thresholds and reports per-scene results.
 
-All eleven Triskel captures passed. The error columns below report the worst scene for each metric. Latency is the median warm call to `infer`, including preprocessing, GPU execution, and returning a full-resolution array. These measurements compare the conversion to PyTorch FP16 on the same inputs.
+## See also
 
-| Engine | Captures passed | Valid-pixel agreement | Full-frame mean relative error | Full-frame p99 relative error | Object median absolute difference | Object p95 absolute difference | Warm inference |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| CDM-D405 | 6/6 | 100% | 0.181% | 1.473% | 0.327 mm | 0.754 mm | 704 ms |
-| CDM-D435 | 5/5 | 100% | 0.244% | 2.071% | 0.567 mm | 1.188 mm | 698 ms |
+- [Documentation index](../README.md)
+- [Agent perception](../agents.md#perception)
+- [ONNX exporter](../../scripts/cdm/export_onnx.py)
+- [Parity validator](../../scripts/cdm/validate.py)

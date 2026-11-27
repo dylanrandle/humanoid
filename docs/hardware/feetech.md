@@ -1,7 +1,9 @@
-# Feetech Actuators
+# Feetech actuators
 
 The Feetech package includes maintenance utilities for directly connected
 actuators. Stop the robot stack before using them.
+
+## Maintenance utilities
 
 Every utility accepts `--port`, `--baud-rate`, and `--servo-type`. Specify the
 port when more than one Feetech controller is connected so the command cannot
@@ -48,14 +50,23 @@ Read configured gains:
 uv run python -m humanoid.hardware.actuators.feetech.scripts.read_gains --actuator-id 1
 ```
 
+## Configuration
+
 Robot configs can set `port`, `baud_rate`, `servo_type`, and
 `feedback_read_retries` on each `FeetechActuatorControllerConfig`. A single controller may
 omit `port` to use SDK auto-detection. Multiple Feetech controllers require distinct
-explicit ports. Feedback sync reads retry missing responses and transient bus failures
-twice by default; servo-reported status faults are surfaced immediately without retrying.
+explicit ports. `feedback_read_retries` controls retries for missing feedback and transient bus
+failures; servo-reported status faults are surfaced immediately.
 
 Position-controlled actuators may also declare persistent `position_pid` gains in
 their `FeetechActuatorConfig`. On connection, the driver reads the servo first and
 only unlocks/writes EEPROM when a configured gain differs, then locks EEPROM and
 verifies the result before enabling torque. Triskel declares each position-controlled
 actuator's gains explicitly by physical actuator ID so they can be tuned independently.
+
+## See also
+
+- [Documentation index](../README.md)
+- [Hardware and actuator bindings](README.md)
+- [Maintenance utilities](../../src/humanoid/hardware/actuators/feetech/scripts/)
+- [Feetech configuration types](../../src/humanoid/hardware/actuators/feetech/config.py)

@@ -6,12 +6,12 @@ internally with float32 bindings. The MobileSAM decoder accepts point and box
 prompts and a previous mask's logits. The decoder profile supports 2 through
 16 coordinate tokens, including padding for a single point. [NVIDIA NanoSAM](https://github.com/NVIDIA-AI-IOT/nanosam)
 
-Fetch the materialized engines with `git lfs pull --include="models/nanosam/*.plan,models/cdm/*.plan"`.
-The deploy script syncs both model directories under the dashboard host's data
-root (normally `/opt/humanoid/models` on Triskel). For a manual wheel installation,
-copy the materialized engines there. RGB segmentation uses
-`nanosam/encoder.plan` and `nanosam/decoder.plan`. The optional `complete_depth`
-tool uses the matching `cdm/d435.plan` or `cdm/d405.plan`.
+## Install
+
+Follow [Deployment](../deployment.md#deploy-the-stack) to fetch and deploy the model
+engines. For a manual wheel installation, copy the materialized
+`models/nanosam/encoder.plan` and `models/nanosam/decoder.plan` files under the
+dashboard host's data root, normally `/opt/humanoid` on Triskel.
 
 ## Build on a compatible Jetson
 
@@ -25,10 +25,17 @@ Convert the encoder ONNX with
 and save it as `encoder-fp16.onnx`. Compile the encoder and original decoder on
 the target GPU with the installed TensorRT runtime.
 
-```sh
-trtexec --onnx=encoder-fp16.onnx --saveEngine=encoder.plan --skipInference --memPoolSize=workspace:512MiB
-trtexec --onnx=mobile_sam_mask_decoder.onnx --saveEngine=decoder.plan --skipInference \
+```bash
+trtexec --onnx=encoder-fp16.onnx --saveEngine=models/nanosam/encoder.plan \
+  --skipInference --memPoolSize=workspace:512MiB
+trtexec --onnx=mobile_sam_mask_decoder.onnx --saveEngine=models/nanosam/decoder.plan --skipInference \
   --minShapes=point_coords:1x2x2,point_labels:1x2 \
   --optShapes=point_coords:1x2x2,point_labels:1x2 \
   --maxShapes=point_coords:1x16x2,point_labels:1x16
 ```
+
+## See also
+
+- [Documentation index](../README.md)
+- [Agent perception](../agents.md#perception)
+- [Segmentation implementation](../../src/humanoid/perception/segmentation.py)
