@@ -61,6 +61,9 @@ function elements() {
     stackDetail: element(),
     stackAction: element(),
     stackActionLabel: element(),
+    motorHealthSection: element(),
+    lcmRateList: element(),
+    lcmRateSummary: element(),
     nodeRateSummary: element(),
     nodeRateList: element(),
     hostResources: {
@@ -204,6 +207,43 @@ function snapshot() {
     },
   };
 }
+
+test("LCM rates show active and idle channels and clear on disconnect", () => {
+  const ui = elements();
+  const current = snapshot();
+  render(current, new Set(), ui);
+  assert.equal(ui.lcmRateSummary.textContent, "No channels observed");
+  current.lcm_channels = [
+    { channel: "ROBOT/STATE", publish_rate_hz: 100, age_seconds: 0.1, active: true },
+    { channel: "CUSTOM/EVENT", publish_rate_hz: 0, age_seconds: 5, active: false },
+  ];
+  render(current, new Set(), ui);
+  assert.equal(ui.lcmRateSummary.textContent, "1 of 2 channels active");
+  assert.equal(ui.lcmRateList.children[0].children[2].textContent, "100.0 Hz");
+  assert.equal(ui.lcmRateList.children[1].children[2].textContent, "0.0 Hz");
+  assert.ok(ui.lcmRateList.children[1].classList.values.has("idle"));
+  assert.equal(ui.lcmRateList.children[1].children[1].children[1].textContent, "Idle · last message 5.0s ago");
+  renderDisconnected("Connection lost", ui);
+  assert.equal(ui.lcmRateSummary.textContent, "Unavailable");
+  assert.equal(ui.lcmRateList.children.length, 1);
+  assert.equal(ui.lcmRateList.children[0].textContent, "Reconnect to view LCM publish rates.");
+});
+
+test("motor subsection is hidden in simulation and restored for real hardware", () => {
+  const ui = elements();
+  const current = snapshot();
+  render(current, new Set(), ui);
+  assert.equal(ui.motorHealthSection.hidden, true);
+  assert.equal(ui.actuatorHealthList.children.length, 0);
+  current.runtime = "real";
+  render(current, new Set(), ui);
+  assert.equal(ui.motorHealthSection.hidden, false);
+  current.runtime = "sim";
+  render(current, new Set(), ui);
+  assert.equal(ui.motorHealthSection.hidden, true);
+  renderDisconnected("Connection lost", ui);
+  assert.equal(ui.motorHealthSection.hidden, true);
+});
 
 test("motor health renders temperatures and retains failure details", () => {
   const ui = elements();

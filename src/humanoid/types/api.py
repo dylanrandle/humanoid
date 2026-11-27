@@ -13,6 +13,7 @@ from humanoid.types.recording import RecordingStatus
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
 from humanoid.types.simulation import SimulationScene
+from humanoid.types.telemetry import LCMChannelStatus
 
 
 class ApiError(Exception):
@@ -53,6 +54,7 @@ class BackendStatus:
     scenes: list[SimulationScene]
     processes: dict[ProcessName, ProcessStatus]
     node_rates: list[NodeRateStatus]
+    lcm_channels: list[LCMChannelStatus]
     host_resources: HostResourceStatus | None
     actuator_health: ActuatorHealthStatus
     recording: RecordingStatus

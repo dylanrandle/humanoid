@@ -68,6 +68,7 @@ export function render(snapshot, busy, elements) {
     elements,
   );
   renderNodeRates(snapshot.node_rates || [], elements);
+  renderLCMRates(snapshot.lcm_channels || [], elements);
   renderHostResources(snapshot.host_resources, elements.hostResources);
   renderActuatorHealth(
     snapshot.actuator_health,
@@ -109,6 +110,47 @@ export function renderLogs(logs, elements) {
 
 export function renderLogsDisconnected(elements) {
   elements.logStatus.textContent = "Logs unavailable";
+}
+
+function renderLCMRates(channels, elements, disconnected = false) {
+  const document = elements.lcmRateList.ownerDocument;
+  const rows = channels.map((channel) => {
+    const row = document.createElement("article");
+    row.className = "node-rate-row lcm-rate-row";
+    row.classList.toggle("healthy", channel.active);
+    row.classList.toggle("idle", !channel.active);
+    row.setAttribute("data-lcm-channel", channel.channel);
+    const dot = document.createElement("span");
+    dot.className = "node-rate-dot";
+    dot.setAttribute("aria-hidden", "true");
+    const copy = document.createElement("div");
+    copy.className = "node-rate-copy";
+    const name = document.createElement("strong");
+    name.textContent = channel.channel;
+    const detail = document.createElement("small");
+    detail.textContent = `${channel.active ? "Active" : "Idle"} · last message ${channel.age_seconds.toFixed(1)}s ago`;
+    copy.replaceChildren(name, detail);
+    const rate = document.createElement("span");
+    rate.className = "node-rate-state";
+    rate.textContent = `${channel.publish_rate_hz.toFixed(1)} Hz`;
+    row.replaceChildren(dot, copy, rate);
+    return row;
+  });
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "node-rate-empty";
+    empty.textContent = disconnected
+      ? "Reconnect to view LCM publish rates."
+      : "Waiting for LCM traffic.";
+    rows.push(empty);
+  }
+  elements.lcmRateList.replaceChildren(...rows);
+  const active = channels.filter((channel) => channel.active).length;
+  elements.lcmRateSummary.textContent = disconnected
+    ? "Unavailable"
+    : channels.length
+      ? `${active} of ${channels.length} channels active`
+      : "No channels observed";
 }
 
 function renderNodeRates(nodeRates, elements) {
@@ -162,6 +204,7 @@ function renderNodeRates(nodeRates, elements) {
 }
 
 function renderActuatorHealth(health, runtime, driverActive, elements) {
+  elements.motorHealthSection.hidden = runtime === Runtime.SIM;
   elements.actuatorHealthSummary.classList.remove(
     "healthy",
     "unhealthy",
@@ -171,11 +214,7 @@ function renderActuatorHealth(health, runtime, driverActive, elements) {
   elements.actuatorHealthError.textContent = "";
 
   if (runtime === Runtime.SIM) {
-    renderActuatorHealthEmpty(
-      "Motor telemetry is available when running on real hardware.",
-      elements,
-    );
-    elements.actuatorHealthSummary.textContent = "Simulation";
+    elements.actuatorHealthList.replaceChildren();
     return;
   }
 
@@ -529,6 +568,7 @@ export function renderDisconnected(
   elements,
 ) {
   renderHostResources(null, elements.hostResources);
+  renderLCMRates([], elements, true);
   elements.systemState.classList.remove("online");
   elements.systemStateLabel.textContent = "Console disconnected";
   elements.stackLight.classList.remove("online");

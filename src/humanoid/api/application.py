@@ -29,6 +29,7 @@ from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.recording import RecordingCatalog
 from humanoid.telemetry.actuator import ActuatorHealthMonitor
 from humanoid.telemetry.host import HostResourceMonitor
+from humanoid.telemetry.lcm import LCMRateMonitor
 from humanoid.telemetry.node import NODE_RATE_SUBSCRIBER_QUEUE_SIZE, NodeRateMonitor
 from humanoid.telemetry.streaming import StreamTelemetry
 from humanoid.types.agent import AgentPanelStatus
@@ -96,6 +97,7 @@ class BackendApplication:
             Subscriber(url=lcm_url, topics=[Topic.ACTUATOR_HEALTH])
         )
         self.host_resource_monitor = HostResourceMonitor()
+        self.lcm_rate_monitor = LCMRateMonitor(url=lcm_url)
         self.stream_telemetry = StreamTelemetry()
 
         # Coordinating services depend on the components above.
@@ -141,6 +143,7 @@ class BackendApplication:
                 scenes=list(SimulationScene),
                 processes=processes,
                 node_rates=self.node_rate_monitor.snapshot(self.node_manager.active_nodes()),
+                lcm_channels=self.lcm_rate_monitor.snapshot(),
                 host_resources=self.host_resource_monitor.snapshot(),
                 actuator_health=self.actuator_health_monitor.snapshot(),
                 recording=self.recording_service.snapshot(),
@@ -293,6 +296,7 @@ class BackendApplication:
         self.runtime_id = uuid.uuid4().hex
         self.recording_service.reconcile_runtime(self.runtime_id)
         self.actuator_health_monitor.reset()
+        self.lcm_rate_monitor.reset()
         self._reset_sensor_services()
 
     def close(self) -> None:
@@ -310,6 +314,7 @@ class BackendApplication:
             self.mode_monitor.close()
             self.recording_service.close()
             self.node_rate_monitor.close()
+            self.lcm_rate_monitor.close()
             self.actuator_health_monitor.close()
             with self._lock:
                 self._reset_sensor_services()

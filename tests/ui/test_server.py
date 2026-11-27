@@ -25,6 +25,7 @@ from humanoid.types.recording import RecordingState, RecordingStatus
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
 from humanoid.types.simulation import SimulationScene
+from humanoid.types.telemetry import LCMChannelStatus
 
 
 @dataclass(frozen=True)
@@ -182,6 +183,7 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 last_output=None,
             ),
         },
+        lcm_channels=[LCMChannelStatus("ROBOT/STATE", 100.0, 0.1, True)],
         node_rates=[
             NodeRateStatus(
                 node_name="RobotControllerNode",
@@ -270,6 +272,9 @@ def test_serializes_orchestrator_status_dataclass(server_client):
                 "last_output": None,
             },
         },
+        "lcm_channels": [
+            {"channel": "ROBOT/STATE", "publish_rate_hz": 100.0, "age_seconds": 0.1, "active": True}
+        ],
         "node_rates": [
             {
                 "node_name": "RobotControllerNode",

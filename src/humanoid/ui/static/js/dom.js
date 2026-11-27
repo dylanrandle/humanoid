@@ -15,6 +15,9 @@ export const els = {
   stackDetail: document.querySelector("#stack-detail"),
   stackAction: document.querySelector("#stack-action"),
   stackActionLabel: document.querySelector("#stack-action-label"),
+  motorHealthSection: document.querySelector("#motor-health-section"),
+  lcmRateSummary: document.querySelector("#lcm-rate-summary"),
+  lcmRateList: document.querySelector("#lcm-rate-list"),
   nodeRateSummary: document.querySelector("#node-rate-summary"),
   nodeRateList: document.querySelector("#node-rate-list"),
   hostResources: {

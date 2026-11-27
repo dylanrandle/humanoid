@@ -10,15 +10,24 @@ share the same control interface; hardware actions require explicit operator
 acknowledgement. Start the input you want to use, then select its control mode.
 Use **Idle** to leave active control.
 
-The console shows node health, motor feedback, temperatures, and application logs.
-Host telemetry covers all processes on the backend machine, even with the stack stopped.
-The last driver or servo failure remains visible after stopping.
-
 Keyboard and Oculus provide teleoperation; [Agent control](agents.md) covers API mode.
 For headset installation, see [oculus_reader](https://github.com/rail-berkeley/oculus_reader);
 for a wireless connection, see [Deployment](deployment.md#wireless-oculus).
 Each Oculus clutch starts from the current tool target. Commands pause when tracking
 is lost or the latest frame exceeds `input_timeout`.
+
+## Health and metrics
+
+The **Health & metrics** panel groups motors, LCM channels, and nodes with host resources.
+Motor feedback and temperatures appear only on hardware; simulation hides that subsection
+without reserving space. The last driver or servo failure remains visible after stopping.
+Host telemetry covers all processes on the backend machine, even with the stack stopped.
+
+Use the LCM subsection to check observed publish rates and time since the last message,
+including camera and custom channels. Quiet channels show zero Hz and an idle status;
+event channels do not need to publish continuously. Application logs appear below the
+health panel. See the [LCM rate monitor](../src/humanoid/telemetry/lcm.py) for measurement
+and configuration details.
 
 ## Live 3D viewer
 

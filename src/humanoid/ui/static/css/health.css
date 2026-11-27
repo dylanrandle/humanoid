@@ -1,11 +1,65 @@
-.node-health-panel {
+.health-panel {
   min-height: auto;
   margin-top: 20px;
 }
 
-.actuator-health-panel {
-  min-height: auto;
-  margin-top: 20px;
+.health-subsection + .health-subsection {
+  margin-top: 24px;
+}
+
+.health-subsection[hidden] {
+  display: none;
+}
+
+.health-subsection[hidden] + .health-subsection {
+  margin-top: 0;
+}
+
+.health-subsection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.health-subsection-heading h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.health-description {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.lcm-rate-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 10px;
+}
+
+.lcm-rate-row .node-rate-copy strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.lcm-rate-row .node-rate-state {
+  text-transform: none;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.lcm-rate-row.idle .node-rate-dot {
+  background: var(--muted);
+  box-shadow: 0 0 0 5px rgb(100 105 99 / 12%);
+}
+
+.lcm-rate-row.idle .node-rate-state {
+  color: var(--muted);
+  background: var(--paper);
 }
 
 .node-rate-list {

@@ -544,92 +544,112 @@
           </div>
         </section>
 
-        <section
-          class="panel node-health-panel"
-          aria-labelledby="node-health-heading"
-        >
+        <section class="panel health-panel" aria-labelledby="health-heading">
           <div class="section-heading">
             <div>
               <p class="eyebrow">06 · Runtime telemetry</p>
-              <h2 id="node-health-heading">Host &amp; node health</h2>
-            </div>
-            <span class="panel-note node-rate-summary" id="node-rate-summary"
-              >No active nodes</span
-            >
-          </div>
-
-          <div class="host-resources" aria-label="Host resource usage">
-            <div class="host-resource">
-              <div class="host-resource-heading">
-                <h3>Host CPU</h3>
-                <strong id="host-cpu">Sampling…</strong>
-              </div>
-              <meter
-                id="host-cpu-meter"
-                min="0"
-                max="100"
-                value="0"
-                aria-label="Total host CPU usage"
-                hidden
-              ></meter>
-              <small>All cores · all processes</small>
-            </div>
-            <div class="host-resource">
-              <div class="host-resource-heading">
-                <h3>Host memory</h3>
-                <strong id="host-memory">Sampling…</strong>
-              </div>
-              <meter
-                id="host-memory-meter"
-                min="0"
-                max="100"
-                value="0"
-                aria-label="Total host memory usage"
-                hidden
-              ></meter>
-              <small id="host-memory-detail">Waiting for host telemetry</small>
+              <h2 id="health-heading">Health &amp; metrics</h2>
             </div>
           </div>
-
-          <div class="node-rate-list" id="node-rate-list">
-            <p class="node-rate-empty">
-              Start a process to view its health and resource usage.
-            </p>
-          </div>
-        </section>
-
-        <section
-          class="panel actuator-health-panel"
-          aria-labelledby="actuator-health-heading"
-        >
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">07 · Hardware telemetry</p>
-              <h2 id="actuator-health-heading">Motor health</h2>
-            </div>
-            <span
-              class="panel-note actuator-health-summary"
-              id="actuator-health-summary"
-              >No telemetry</span
-            >
-          </div>
-
-          <p
-            class="actuator-health-error"
-            id="actuator-health-error"
+          <section
+            class="health-subsection"
+            id="motor-health-section"
+            aria-labelledby="actuator-health-heading"
             hidden
-          ></p>
-          <div class="actuator-health-list" id="actuator-health-list">
-            <p class="actuator-health-empty">
-              Start the real robot stack to view motor health.
+          >
+            <div class="health-subsection-heading">
+              <h3 id="actuator-health-heading">Motors</h3>
+              <span
+                class="panel-note actuator-health-summary"
+                id="actuator-health-summary"
+                >No telemetry</span
+              >
+            </div>
+            <p
+              class="actuator-health-error"
+              id="actuator-health-error"
+              hidden
+            ></p>
+            <div class="actuator-health-list" id="actuator-health-list">
+              <p class="actuator-health-empty">
+                Start the real robot stack to view motor health.
+              </p>
+            </div>
+          </section>
+          <section
+            class="health-subsection"
+            aria-labelledby="lcm-health-heading"
+          >
+            <div class="health-subsection-heading">
+              <h3 id="lcm-health-heading">LCM</h3>
+              <span class="panel-note" id="lcm-rate-summary"
+                >No channels observed</span
+              >
+            </div>
+            <p class="health-description">
+              Observed publish rates · quiet event channels may be idle.
             </p>
-          </div>
+            <div class="lcm-rate-list" id="lcm-rate-list">
+              <p class="node-rate-empty">Waiting for LCM traffic.</p>
+            </div>
+          </section>
+          <section
+            class="health-subsection"
+            aria-labelledby="node-health-heading"
+          >
+            <div class="health-subsection-heading">
+              <h3 id="node-health-heading">Nodes &amp; host</h3>
+              <span class="panel-note node-rate-summary" id="node-rate-summary"
+                >No active nodes</span
+              >
+            </div>
+            <div class="host-resources" aria-label="Host resource usage">
+              <div class="host-resource">
+                <div class="host-resource-heading">
+                  <h3>Host CPU</h3>
+                  <strong id="host-cpu">Sampling…</strong>
+                </div>
+                <meter
+                  id="host-cpu-meter"
+                  min="0"
+                  max="100"
+                  value="0"
+                  aria-label="Total host CPU usage"
+                  hidden
+                ></meter>
+                <small>All cores · all processes</small>
+              </div>
+              <div class="host-resource">
+                <div class="host-resource-heading">
+                  <h3>Host memory</h3>
+                  <strong id="host-memory">Sampling…</strong>
+                </div>
+                <meter
+                  id="host-memory-meter"
+                  min="0"
+                  max="100"
+                  value="0"
+                  aria-label="Total host memory usage"
+                  hidden
+                ></meter>
+                <small id="host-memory-detail"
+                  >Waiting for host telemetry</small
+                >
+              </div>
+            </div>
+
+            <div class="node-rate-list" id="node-rate-list">
+              <p class="node-rate-empty">
+                Start a process to view its health and resource usage.
+              </p>
+            </div>
+          </section>
         </section>
 
         <section class="panel log-panel" aria-labelledby="log-heading">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">08 · Diagnostics</p>
+              <p class="eyebrow">07 · Diagnostics</p>
               <h2 id="log-heading">Logs</h2>
             </div>
             <span class="panel-note" id="log-status">Waiting for output</span>

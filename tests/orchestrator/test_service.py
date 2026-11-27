@@ -27,6 +27,7 @@ from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.orchestrator.monitor.mode import ModeMonitor
 from humanoid.recording import RecordingCatalog, RecordingError
 from humanoid.telemetry.actuator import ActuatorHealthMonitor
+from humanoid.telemetry.lcm import LCMRateMonitor
 from humanoid.telemetry.node import NodeRateMonitor
 from humanoid.types.actuator import ActuatorHealthStatus
 from humanoid.types.api import BackendError, SafetyContext
@@ -105,6 +106,8 @@ def _make_service(
         timestamp=0.0,
         state=RecordingState.STOPPED,
     )
+    lcm_rate_monitor = MagicMock(spec=LCMRateMonitor)
+    lcm_rate_monitor.snapshot.return_value = []
     node_rate_monitor = MagicMock(spec=NodeRateMonitor)
     node_rate_monitor.snapshot.return_value = []
     actuator_health_monitor = MagicMock(spec=ActuatorHealthMonitor)
@@ -128,6 +131,7 @@ def _make_service(
         OrchestratorClient=MagicMock(return_value=client),
         ModeMonitor=MagicMock(return_value=monitor),
         RecordingService=MagicMock(return_value=recording),
+        LCMRateMonitor=MagicMock(return_value=lcm_rate_monitor),
         NodeRateMonitor=MagicMock(return_value=node_rate_monitor),
         ActuatorHealthMonitor=MagicMock(return_value=actuator_health_monitor),
         ReplayManager=MagicMock(return_value=replay_manager),
@@ -851,6 +855,7 @@ def test_status_requests_rates_for_active_managed_nodes():
 
     cast(MagicMock, service.node_rate_monitor).snapshot.assert_called_once_with(active_nodes)
     assert status.node_rates == []
+    assert status.lcm_channels == []
 
 
 def test_homing_parameters_stay_selected_until_homing_completes():
@@ -953,6 +958,7 @@ def test_close_releases_mode_monitor_when_stack_status_fails():
     monitor.close.assert_called_once_with()
     cast(MagicMock, service.node_rate_monitor).close.assert_called_once_with()
     cast(MagicMock, service.actuator_health_monitor).close.assert_called_once_with()
+    cast(MagicMock, service.lcm_rate_monitor).close.assert_called_once_with()
     cast(MagicMock, service.log_service).close.assert_called_once_with()
 
 
