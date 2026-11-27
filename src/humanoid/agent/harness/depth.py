@@ -6,7 +6,7 @@ import numpy as np
 
 from humanoid.agent.harness.observation import PinnedObservation
 from humanoid.perception.depth import DepthCompleter
-from humanoid.types.depth import DepthCamera
+from humanoid.types.camera import DepthCamera
 from humanoid.types.tools import CompleteDepth, DepthCompletionResult, DepthSamples, ReadDepth
 
 

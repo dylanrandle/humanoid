@@ -13,7 +13,7 @@ from typing import BinaryIO
 import lcm
 import numpy as np
 
-from humanoid.config.camera import CAMERA_PREVIEW_CONFIG
+from humanoid.config.camera import CAMERA_DISPLAY_CONFIG
 from humanoid.perception.depth import colorize_depth
 from humanoid.recording import RECORDING_LOG_FILENAME
 from humanoid.types.camera import (
@@ -59,8 +59,8 @@ def _pixels(
         return image.data
     return colorize_depth(
         image.data.astype(np.float32) * image.depth_scale,
-        CAMERA_PREVIEW_CONFIG.depth_near_meters,
-        CAMERA_PREVIEW_CONFIG.default_depth_far_meters,
+        CAMERA_DISPLAY_CONFIG.depth_near_meters,
+        CAMERA_DISPLAY_CONFIG.default_depth_far_meters,
     )
 
 

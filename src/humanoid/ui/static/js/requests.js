@@ -1,6 +1,6 @@
 import {
   API,
-  PayloadKey,
+  ApiKey,
   ProcessAction,
   ProcessName,
   Runtime,
@@ -13,9 +13,9 @@ const REAL_REPLAY_CONFIRMATION =
 
 export function safetyPayload(snapshot, realHardwareAcknowledged = false) {
   return {
-    [PayloadKey.EXPECTED_RUNTIME]: snapshot.runtime,
-    [PayloadKey.EXPECTED_ROBOT]: snapshot.robot,
-    [PayloadKey.REAL_HARDWARE_ACKNOWLEDGED]: realHardwareAcknowledged,
+    [ApiKey.EXPECTED_RUNTIME]: snapshot.runtime,
+    [ApiKey.EXPECTED_ROBOT]: snapshot.robot,
+    [ApiKey.REAL_HARDWARE_ACKNOWLEDGED]: realHardwareAcknowledged,
   };
 }
 
@@ -24,7 +24,7 @@ export function runtimeRequest(snapshot, runtime) {
   return {
     path: API.RUNTIME,
     payload: {
-      [PayloadKey.RUNTIME]: runtime,
+      [ApiKey.RUNTIME]: runtime,
       ...safetyPayload(snapshot),
     },
   };
@@ -34,7 +34,7 @@ export function robotRequest(snapshot, robot) {
   if (!snapshot || robot === snapshot.robot) return null;
   return {
     path: API.ROBOT,
-    payload: { [PayloadKey.ROBOT]: robot, ...safetyPayload(snapshot) },
+    payload: { [ApiKey.ROBOT]: robot, ...safetyPayload(snapshot) },
   };
 }
 
@@ -57,8 +57,8 @@ export function processRequest(snapshot, name, confirmHardware) {
   };
 }
 
-export function loggingRequest(action) {
-  return { path: API.logging(action), payload: {} };
+export function recordingRequest(action) {
+  return { path: API.recording(action), payload: {} };
 }
 
 export function replayRequest(snapshot, recordingId, confirmHardware) {
@@ -73,7 +73,7 @@ export function replayRequest(snapshot, recordingId, confirmHardware) {
   return {
     path: API.replay(ProcessAction.START),
     payload: {
-      [PayloadKey.RECORDING]: recordingId,
+      [ApiKey.RECORDING]: recordingId,
       ...safetyPayload(snapshot, replayingOnHardware),
     },
   };

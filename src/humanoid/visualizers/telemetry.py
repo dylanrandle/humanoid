@@ -5,6 +5,7 @@ import time
 import numpy as np
 
 from humanoid.config import ROBOT_CONFIG, ROBOT_CONFIGS
+from humanoid.constants import EnvironmentVariable
 from humanoid.types.actuator import ActuatorEffortSource
 from humanoid.types.homing import HomingPreset
 from humanoid.types.process import Runtime
@@ -30,7 +31,7 @@ def _hardware_robot(q: np.ndarray) -> RobotName:
     ]
     if len(matches) != 1:
         raise ValueError(
-            f"No unique hardware model for {q.size} coordinates. Check HUMANOID_ROBOT."
+            f"No unique hardware model for {q.size} coordinates. Check {EnvironmentVariable.ROBOT}."
         )
     return matches[0]
 

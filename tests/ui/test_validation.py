@@ -2,18 +2,8 @@ from http import HTTPStatus
 
 import pytest
 
-from humanoid.types.homing import HomingPreset
-from humanoid.types.orchestrator import (
-    Mode,
-    OrchestratorParameter,
-    OrchestratorRequest,
-    SafetyContext,
-)
-from humanoid.types.process import ProcessAction, ProcessName, Runtime
-from humanoid.types.robot import RobotName
-from humanoid.ui.errors import ApiError
-from humanoid.ui.validation import (
-    parse_application_log_cursor,
+from humanoid.api.validation import (
+    parse_log_cursor,
     parse_orchestrator_request,
     parse_process_action,
     parse_process_name,
@@ -21,17 +11,22 @@ from humanoid.ui.validation import (
     parse_runtime,
     parse_safety_context,
 )
+from humanoid.types.api import ApiError, SafetyContext
+from humanoid.types.homing import HomingPreset
+from humanoid.types.orchestrator import Mode, OrchestratorParameter, OrchestratorRequest
+from humanoid.types.process import ProcessAction, ProcessName, Runtime
+from humanoid.types.robot import RobotName
 
 
 @pytest.mark.parametrize(("value", "expected"), [(None, None), ("0", 0), ("42", 42)])
-def test_parse_application_log_cursor(value, expected):
-    assert parse_application_log_cursor(value) == expected
+def test_parse_log_cursor(value, expected):
+    assert parse_log_cursor(value) == expected
 
 
 @pytest.mark.parametrize("value", ["-1", "invalid"])
-def test_parse_application_log_cursor_rejects_invalid_values(value):
+def test_parse_log_cursor_rejects_invalid_values(value):
     with pytest.raises(ApiError) as error:
-        parse_application_log_cursor(value)
+        parse_log_cursor(value)
 
     assert error.value.status is HTTPStatus.BAD_REQUEST
 

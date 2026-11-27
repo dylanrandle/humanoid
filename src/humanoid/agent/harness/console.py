@@ -7,8 +7,8 @@ from multiprocessing.connection import Connection
 from multiprocessing.process import BaseProcess
 
 from humanoid.agent.harness.worker import work
-from humanoid.types.agent import AgentPanelStatus, AgentPhase, AgentTask
-from humanoid.types.orchestrator import OrchestratorError
+from humanoid.types.agent import AgentExecution, AgentPanelStatus, AgentPhase
+from humanoid.types.api import BackendError
 
 
 class AgentConsole:
@@ -51,27 +51,27 @@ class AgentConsole:
                     )
             return self._state
 
-    def start(self, task: AgentTask | None = None) -> AgentPanelStatus:
+    def start(self, execution: AgentExecution | None = None) -> AgentPanelStatus:
         with self._lock:
             current = self.status()
             if self._process is not None:
-                raise OrchestratorError("An agent operation is already active.")
-            if task and task.model not in current.models:
-                raise OrchestratorError("Connect to ChatGPT and select an available model.")
+                raise BackendError("An agent operation is already active.")
+            if execution and execution.model not in current.models:
+                raise BackendError("Connect to ChatGPT and select an available model.")
             initial_status = (
                 AgentPanelStatus(phase=AgentPhase.CONNECTING, message="Connecting to ChatGPT…")
-                if task is None
+                if execution is None
                 else AgentPanelStatus(
                     phase=AgentPhase.RUNNING,
                     models=current.models,
-                    model=task.model,
-                    instruction=task.instruction,
+                    model=execution.model,
+                    instruction=execution.task.instruction,
                     message="Reading the robot and camera…",
                 )
             )
             incoming, outgoing = self._context.Pipe(duplex=False)
             process = self._context.Process(
-                target=work, args=(outgoing, task, initial_status), daemon=True
+                target=work, args=(outgoing, execution, initial_status), daemon=True
             )
             try:
                 process.start()

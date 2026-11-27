@@ -23,12 +23,9 @@ class RobotName(StrEnum):
     def from_environment(cls) -> "RobotName":
         """Parse a robot name, using the configured default when unset."""
         # Constants imports this enum, so resolve its environment settings lazily.
-        from humanoid.constants import (  # noqa: PLC0415
-            DEFAULT_HUMANOID_ROBOT,
-            ROBOT_ENVIRONMENT_VARIABLE,
-        )
+        from humanoid.constants import DEFAULT_HUMANOID_ROBOT, EnvironmentVariable  # noqa: PLC0415
 
-        value = os.getenv(ROBOT_ENVIRONMENT_VARIABLE)
+        value = os.getenv(EnvironmentVariable.ROBOT)
         if value is None or not value.strip():
             return cls(DEFAULT_HUMANOID_ROBOT)
         return cls(value.lower().strip())

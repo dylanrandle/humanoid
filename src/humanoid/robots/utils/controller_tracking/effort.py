@@ -7,7 +7,7 @@ import numpy as np
 
 from humanoid.robots.base import Robot
 from humanoid.types.actuator import ActuatorEffortLimits, ActuatorEffortSource, ActuatorEffortUnit
-from humanoid.types.controller_tracking import ActuatorEffortTrace, NativeJointSample
+from humanoid.types.controllers import ActuatorEffortTrace, NativeJointSample
 
 
 def _effort_unit(robot: Robot, name: str) -> ActuatorEffortUnit:

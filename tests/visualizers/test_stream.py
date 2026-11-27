@@ -10,7 +10,7 @@ import pinocchio as pin
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.constants import Topic
+from humanoid.constants import EnvironmentVariable, Topic
 from humanoid.types.homing import HomingPreset
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.process import Runtime
@@ -36,7 +36,7 @@ def test_existing_state_and_command_topics(tmp_path, monkeypatch, runtime, remot
     ssh.write_text('#!/bin/sh\nfor arg do remote="$arg"; done\nexec /bin/sh -c "$remote"\n')
     ssh.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
-    monkeypatch.setenv("HUMANOID_ROBOT_DIR", str(install))
+    monkeypatch.setenv(EnvironmentVariable.ROBOT_DIR, str(install))
 
     robot = RobotName.TRISKEL
     q = ROBOT_CONFIGS[robot].homing_presets[HomingPreset.HOME]
@@ -97,7 +97,7 @@ def test_existing_state_and_command_topics(tmp_path, monkeypatch, runtime, remot
 
 @pytest.mark.parametrize("host", [None, "triskel", "jetson"])
 def test_viewer_selects_ssh_only_with_explicit_host(monkeypatch, host):
-    monkeypatch.setenv("HUMANOID_ROBOT_HOST", "unrelated")
+    monkeypatch.setenv(EnvironmentVariable.ROBOT_HOST, "unrelated")
     monkeypatch.setenv("MJPYTHON_BIN", "test")
     monkeypatch.setattr(cli, "local_frames", lambda: nullcontext("local"))
     monkeypatch.setattr(cli, "ssh_frames", nullcontext)

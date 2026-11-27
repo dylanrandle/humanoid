@@ -1,1 +1,1 @@
-"""Jetson-native harness for the Triskel Agent API."""
+"""Jetson-native harness for the Triskel robot API."""

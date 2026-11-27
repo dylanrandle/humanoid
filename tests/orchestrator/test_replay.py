@@ -8,15 +8,15 @@ from unittest.mock import ANY, MagicMock
 import lcm
 import pytest
 
+from humanoid.api.services.replay import ReplayManager, ReplayManagerError
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.constants import DEFAULT_LCM_URL, Topic
-from humanoid.orchestrator.constants import (
+from humanoid.config.backend import (
     LCM_LOGPLAYER_COMMAND,
     REPLAY_CHANNEL_PATTERN,
     REPLAY_STDERR_TAIL_BYTES,
     REPLAY_STOP_TIMEOUT_SECONDS,
 )
-from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
+from humanoid.constants import DEFAULT_LCM_URL, Topic
 from humanoid.recording import RecordingCatalog
 from humanoid.types.replay import RecordingBundle, ReplayOutcome
 from humanoid.types.robot import RobotName
@@ -42,7 +42,7 @@ def test_start_runs_logplayer_on_managed_lcm_url(monkeypatch, tmp_path):
     recording = _recording(tmp_path)
     process = _running_process()
     popen = MagicMock(return_value=process)
-    monkeypatch.setattr("humanoid.orchestrator.replay.subprocess.Popen", popen)
+    monkeypatch.setattr("humanoid.api.services.replay.subprocess.Popen", popen)
     manager = ReplayManager()
 
     status = manager.start(recording)
@@ -69,7 +69,7 @@ def test_natural_completion_preserves_recording(monkeypatch, tmp_path):
     recording = _recording(tmp_path)
     process = _running_process()
     monkeypatch.setattr(
-        "humanoid.orchestrator.replay.subprocess.Popen",
+        "humanoid.api.services.replay.subprocess.Popen",
         MagicMock(return_value=process),
     )
     manager = ReplayManager()
@@ -90,7 +90,7 @@ def test_stop_interrupts_player_without_reporting_completion(monkeypatch, tmp_pa
     process = _running_process()
     process.wait.return_value = -signal.SIGINT
     monkeypatch.setattr(
-        "humanoid.orchestrator.replay.subprocess.Popen",
+        "humanoid.api.services.replay.subprocess.Popen",
         MagicMock(return_value=process),
     )
     manager = ReplayManager()
@@ -112,7 +112,7 @@ def test_stop_preserves_never_started_and_failed_states(monkeypatch, tmp_path):
 
     process = _running_process()
     monkeypatch.setattr(
-        "humanoid.orchestrator.replay.subprocess.Popen",
+        "humanoid.api.services.replay.subprocess.Popen",
         MagicMock(return_value=process),
     )
     manager.start(_recording(tmp_path))
@@ -128,7 +128,7 @@ def test_stop_preserves_never_started_and_failed_states(monkeypatch, tmp_path):
 def test_nonzero_exit_includes_bounded_stderr_tail(monkeypatch, tmp_path):
     process = _running_process()
     popen = MagicMock(return_value=process)
-    monkeypatch.setattr("humanoid.orchestrator.replay.subprocess.Popen", popen)
+    monkeypatch.setattr("humanoid.api.services.replay.subprocess.Popen", popen)
     manager = ReplayManager()
     manager.start(_recording(tmp_path))
     stderr = popen.call_args.kwargs["stderr"]
@@ -146,7 +146,7 @@ def test_nonzero_exit_includes_bounded_stderr_tail(monkeypatch, tmp_path):
 def test_missing_logplayer_returns_clear_error_and_preserves_recording(monkeypatch, tmp_path):
     recording = _recording(tmp_path)
     monkeypatch.setattr(
-        "humanoid.orchestrator.replay.subprocess.Popen",
+        "humanoid.api.services.replay.subprocess.Popen",
         MagicMock(side_effect=FileNotFoundError),
     )
     manager = ReplayManager()
@@ -161,7 +161,7 @@ def test_missing_logplayer_returns_clear_error_and_preserves_recording(monkeypat
 def test_stderr_capture_failure_preserves_recording(monkeypatch, tmp_path):
     recording = _recording(tmp_path)
     monkeypatch.setattr(
-        "humanoid.orchestrator.replay.tempfile.TemporaryFile",
+        "humanoid.api.services.replay.tempfile.TemporaryFile",
         MagicMock(side_effect=OSError("temporary storage unavailable")),
     )
     manager = ReplayManager()

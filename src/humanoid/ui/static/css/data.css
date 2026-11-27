@@ -43,7 +43,7 @@
 }
 
 .data-tool-heading,
-.logging-actions {
+.recording-actions {
   display: flex;
   align-items: center;
 }
@@ -53,15 +53,15 @@
   gap: 16px;
 }
 
-.logging-actions {
+.recording-actions {
   gap: 10px;
 }
 
-.logging-actions .secondary-action {
+.recording-actions .secondary-action {
   flex: 1;
 }
 
-.logging-actions .stop-logging {
+.recording-actions .stop-recording {
   border-color: var(--danger);
   color: var(--danger);
 }
@@ -102,7 +102,7 @@
 }
 
 @media (max-width: 420px) {
-  .logging-actions {
+  .recording-actions {
     align-items: stretch;
     flex-direction: column;
   }

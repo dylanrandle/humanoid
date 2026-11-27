@@ -1,7 +1,11 @@
 """Base and wrist RGB-D camera configurations."""
 
-from humanoid.types.camera import CameraPreviewConfig, RealSenseCameraConfig, SimulatedCameraConfig
-from humanoid.types.depth import DepthCamera
+from humanoid.types.camera import (
+    CameraDisplayConfig,
+    DepthCamera,
+    RealSenseCameraConfig,
+    SimulatedCameraConfig,
+)
 
 REALSENSE_CAMERA_CONFIG = RealSenseCameraConfig(
     width=640,
@@ -26,10 +30,8 @@ SIMULATED_CAMERA_CONFIG = SimulatedCameraConfig(
     depth_scale=0.001,
 )
 
-CAMERA_PREVIEW_CONFIG = CameraPreviewConfig(
+CAMERA_DISPLAY_CONFIG = CameraDisplayConfig(
     max_age_seconds=2.0,
-    max_width=640,
-    jpeg_quality=80,
     depth_near_meters=0.2,
     depth_ranges_meters=(1.0, 3.0, 5.0, 10.0),
     default_depth_far_meters=3.0,

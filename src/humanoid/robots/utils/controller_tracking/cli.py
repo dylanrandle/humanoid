@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from humanoid.config import ROBOT_CONFIG, ROBOT_CONFIGS
+from humanoid.constants import EnvironmentVariable
 from humanoid.logger import get_logger
 from humanoid.robots.base import Robot
 from humanoid.robots.utils.controller_tracking.effort import (
@@ -77,7 +78,7 @@ def _build_parser() -> argparse.ArgumentParser:
         type=RobotName,
         choices=list(RobotName),
         default=ROBOT_CONFIG.name,
-        help="Robot model; defaults to HUMANOID_ROBOT or the project default",
+        help=f"Robot model; defaults to {EnvironmentVariable.ROBOT} or the project default",
     )
     parser.add_argument(
         "--width",

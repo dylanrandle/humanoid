@@ -7,7 +7,6 @@ lcm-gen 1.5.2
 from .actuator_health_report_t import actuator_health_report_t as actuator_health_report_t
 from .camera_image_t import camera_image_t as camera_image_t
 from .homing_target_t import homing_target_t as homing_target_t
-from .logging_status_t import logging_status_t as logging_status_t
 from .node_rate_sample_t import node_rate_sample_t as node_rate_sample_t
 from .orchestrator_event_t import orchestrator_event_t as orchestrator_event_t
 from .orchestrator_mode_t import orchestrator_mode_t as orchestrator_mode_t

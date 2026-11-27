@@ -313,7 +313,7 @@ def test_robot_base_command_conversion():
     np.testing.assert_allclose(cmd_recovered.pose.rotation, rotation, atol=1e-9)
 
 
-def test_robot_base_command_identity():
+def test_robot_base_motion_identity():
     """Test that an identity SE3 round-trips cleanly."""
     cmd = RobotBaseCommand(timestamp=0.0, pose=pin.SE3.Identity())
 

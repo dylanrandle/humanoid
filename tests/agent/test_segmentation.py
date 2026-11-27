@@ -7,30 +7,29 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness import depth as depth_tools
 from humanoid.agent.harness import segmentation
 from humanoid.agent.harness.episode import Episode, open_episode
 from humanoid.agent.harness.observation import PinnedObservation
 from humanoid.agent.harness.robot import RobotTools
-from humanoid.agent.serialization import decode_frames, encode_frames
-from humanoid.agent.server import AgentControlServer
+from humanoid.api.clients.robot import RobotClient
+from humanoid.api.serialization import decode_frames, encode_frames
 from humanoid.config.camera import REALSENSE_CAMERA_CONFIG
 from humanoid.config.robot.panda import PANDA_CONFIG
 from humanoid.perception.masks import MaskStore
 from humanoid.robots.base import Robot
 from humanoid.simulation.tasks.toy_cleanup import ToyCleanupTask
-from humanoid.types.agent import AgentControlEndpoint
+from humanoid.types.api import ApiEndpoint
 from humanoid.types.camera import (
     CameraEncoding,
     CameraFrames,
     CameraImage,
     CameraIntrinsics,
+    DepthCamera,
     DepthKind,
     RegisteredDepth,
     RobotCameraConfig,
 )
-from humanoid.types.depth import DepthCamera
 from humanoid.types.homing import HomingPreset
 from humanoid.types.orchestrator import Mode
 from humanoid.types.process import Runtime
@@ -43,6 +42,7 @@ from humanoid.types.tools import (
     SegmentInBox,
 )
 from humanoid.types.trial import TaskScore
+from tests.api.helpers import ApiTestServer
 
 
 @pytest.fixture
@@ -109,7 +109,7 @@ def test_default_view_preserves_rgb_when_aligned_depth_is_missing(frames):
     assert view.depth is None and view.registered is None
 
 
-def test_http_pins_complete_capture_when_newer_native_pair_arrives(service, frames):
+def test_http_pins_complete_capture_when_newer_native_pair_arrives(observations, frames):
     now = time.perf_counter()
     old = replace(
         frames,
@@ -119,14 +119,14 @@ def test_http_pins_complete_capture_when_newer_native_pair_arrives(service, fram
             frames.registered, image=replace(frames.registered.image, timestamp=now)
         ),
     )
-    observation = service.observation()
-    service.observe(replace(observation, camera_frames={"base": old}))
+    observation = observations.observation()
+    observations.observe(replace(observation, camera_frames={"base": old}))
     new = replace(old, registered=None, rgb=replace(old.rgb, frame_number=old.rgb.frame_number + 1))
-    service.observe(replace(observation, camera_frames={"base": new}))
-    server = AgentControlServer(service)
+    observations.observe(replace(observation, camera_frames={"base": new}))
+    server = ApiTestServer(observations)
     server.start()
     host, port = server.server.server_address[:2]
-    client = AgentControlClient(AgentControlEndpoint(f"http://{host}:{port}"))
+    client = RobotClient(ApiEndpoint(f"http://{host}:{port}"))
     try:
         native = client.observe(depth_view="native")
         assert native.rgb.frame_number == new.rgb.frame_number and native.depth is not None
@@ -137,7 +137,7 @@ def test_http_pins_complete_capture_when_newer_native_pair_arrives(service, fram
         assert pinned.depth is pinned.registered.image
         assert pinned.depth.intrinsics == pinned.rgb.intrinsics
         np.testing.assert_array_equal(pinned.depth.data, frames.registered.image.data)
-        aligned = client._request("/v1/camera?depth_view=aligned")
+        aligned = client._request("/api/camera?depth_view=aligned")
         assert aligned["depth_view"] == "aligned"
         assert aligned["rgb"]["frame_number"] == pinned.rgb.frame_number
     finally:
@@ -146,24 +146,30 @@ def test_http_pins_complete_capture_when_newer_native_pair_arrives(service, fram
 
 
 @pytest.mark.parametrize("aligned", [True, False])
-def test_agent_exposes_native_depth_with_and_without_registration(service, frames, aligned, robot):
+def test_agent_exposes_native_depth_with_and_without_registration(
+    observations, frames, aligned, robot
+):
     client = MagicMock()
-    client.observation.return_value = service.observation()
+    client.observation.return_value = observations.observation()
     native = replace(frames.depth, frame_id=REALSENSE_CAMERA_CONFIG.depth_frame)
     native.data[0, 0] = 0
     source = replace(frames, depth=native, registered=frames.registered if aligned else None)
     payload = encode_frames(source, depth_view="both")
     client.capture.return_value = {
-        "base": (service.observation(), decode_frames(payload, received_after=100))
+        "base": (observations.observation(), decode_frames(payload, received_after=100))
     }
     tools = RobotTools(client, robot)
     try:
-        status, images = tools.observe(service.observation().mode)
+        status, images = tools.observe(observations.observation().mode)
         client.capture.assert_called_once_with()
         assert status["base_pose_world"] is not None
         assert status["tool_pose_reference_frame"] == robot.config.base.frame
         assert status["gripper_units"] == ["rad"]
-        assert status["registered_depth_available"] is aligned
+        assert status["primary_camera"] == "base"
+        assert "observation_id" not in status
+        assert "rgb_frame" not in status
+        assert "rgb_size_xy" not in status
+        assert "registered_depth_available" not in status
         assert set(images) == {"base RGB"}
         assert images["base RGB"].startswith("data:image/jpeg;")
         assert status["cameras"]["base"]["registered_depth_available"] is aligned
@@ -223,12 +229,12 @@ def test_fixed_base_robot_uses_world_tool_frame_and_linear_gripper(frames):
 
 @pytest.mark.parametrize("payload", [{}, {"depth_view": "native"}])
 def test_default_observe_requires_aligned_response(payload, monkeypatch):
-    client = AgentControlClient()
+    client = RobotClient()
     request = MagicMock(return_value=payload)
     monkeypatch.setattr(client, "_request", request)
     with pytest.raises(ValueError, match="depth_view='aligned'"):
         client.observe()
-    request.assert_called_once_with("/v1/camera")
+    request.assert_called_once_with("/api/camera")
 
 
 @pytest.fixture
@@ -414,13 +420,13 @@ def test_saved_capture_loads_original_json_format_and_rejects_invalid_metadata(t
 
 
 @pytest.fixture
-def recording_events(monkeypatch, service):
+def recording_events(monkeypatch, observations):
     events = []
 
     @contextmanager
-    def recording(console_url, session_id):
-        assert console_url == "http://localhost:9999"
-        assert session_id == service.session_id
+    def recording(api_url, session_id):
+        assert api_url.startswith("http://127.0.0.1:")
+        assert isinstance(session_id, str) and session_id
         events.append("start")
         try:
             yield "/robot/logs/recordings/example/recording.lcm"
@@ -451,10 +457,10 @@ def test_hardware_camera_validation_with_automated_scoring(frames, robot):
 
 
 def test_real_episode_attaches_to_both_serial_bound_views(
-    service, frames, robot, monkeypatch, recording_events
+    observations, frames, robot, monkeypatch, recording_events
 ):
     config = robot.config
-    sample = service.observation()
+    sample = observations.observation()
 
     def physical(camera, stamp):
         rgb = replace(
@@ -489,8 +495,10 @@ def test_real_episode_attaches_to_both_serial_bound_views(
         robot_state=replace(sample.robot_state, timestamp=stamp, joint_positions=other_joints),
         camera_frames={"base": primary, "wrist": wrist},
     )
-    service.observe(measured)
-    server = AgentControlServer(service, lambda: service.observe(replace(measured, mode=Mode.IDLE)))
+    observations.observe(measured)
+    server = ApiTestServer(
+        observations, lambda: observations.observe(replace(measured, mode=Mode.IDLE))
+    )
     server.start()
     try:
         host, port = server.server.server_address[:2]
@@ -501,9 +509,8 @@ def test_real_episode_attaches_to_both_serial_bound_views(
             task=ToyCleanupTask(),
             robot_config=config,
             backend=Runtime.REAL,
-            endpoint=AgentControlEndpoint(f"http://{host}:{port}"),
+            endpoint=ApiEndpoint(f"http://{host}:{port}"),
             record=True,
-            console_url="http://localhost:9999",
         ) as (episode, tools):
             assert recording_events == ["start"]
             captures = episode.capture()
@@ -516,6 +523,11 @@ def test_real_episode_attaches_to_both_serial_bound_views(
             )
             status, images = tools.observe(Mode.AUTONOMY)
             assert list(images) == ["base RGB", "wrist RGB"]
+            assert status["primary_camera"] == "base"
+            assert (
+                status["cameras"]["base"]["observation_id"]
+                != status["cameras"]["wrist"]["observation_id"]
+            )
             for name, camera in (
                 ("base", config.cameras["base"].hardware),
                 ("wrist", config.cameras["wrist"].hardware),
@@ -525,12 +537,12 @@ def test_real_episode_attaches_to_both_serial_bound_views(
                 assert tools.observation.frames.rgb.serial_number == camera.serial_number
             episode.release()
             assert recording_events == ["start", "stop"]
-            assert service.observation().mode is Mode.IDLE
-            service.observe(replace(measured, mode=Mode.KEYBOARD))
+            assert observations.observation().mode is Mode.IDLE
+            observations.observe(replace(measured, mode=Mode.KEYBOARD))
             score = episode.final_score()
             assert score.success
             assert episode.lcm_recording == "/robot/logs/recordings/example/recording.lcm"
         assert recording_events == ["start", "stop"]
-        assert service.observation().mode is Mode.KEYBOARD
+        assert observations.observation().mode is Mode.KEYBOARD
     finally:
         server.close()

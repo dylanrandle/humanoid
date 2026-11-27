@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from humanoid import start
-from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE
-from humanoid.ui import server
+from humanoid.api import server
+from humanoid.constants import EnvironmentVariable
 
 
 def test_spawned_oculus_worker_can_import_entrypoint_without_loading_console():
@@ -18,7 +18,7 @@ def test_spawned_oculus_worker_can_import_entrypoint_without_loading_console():
             "import sys\n"
             "from humanoid.start import main\n"
             "from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode\n"
-            "assert 'humanoid.ui.server' not in sys.modules\n"
+            "assert 'humanoid.api.server' not in sys.modules\n"
             "assert 'humanoid.nodes.manager' not in sys.modules",
         ],
         check=True,
@@ -30,7 +30,7 @@ def test_server_main_closes_service_and_web_server(monkeypatch):
     web_server = MagicMock(server_port=4321)
     web_server.serve_forever.side_effect = KeyboardInterrupt
     make_server = MagicMock(return_value=web_server)
-    monkeypatch.setattr(server, "OrchestratorService", MagicMock(return_value=service))
+    monkeypatch.setattr(server, "BackendApplication", MagicMock(return_value=service))
     monkeypatch.setattr(server, "make_server", make_server)
     monkeypatch.setattr(server.signal, "signal", MagicMock())
     monkeypatch.setattr(sys, "argv", ["start", "--no-open", "--port", "0"])
@@ -45,11 +45,11 @@ def test_server_main_closes_service_and_web_server(monkeypatch):
 
 
 def test_server_main_configures_wireless_oculus(monkeypatch):
-    monkeypatch.delenv(OCULUS_IP_ENVIRONMENT_VARIABLE, raising=False)
+    monkeypatch.delenv(EnvironmentVariable.OCULUS_IP, raising=False)
     service = MagicMock()
     web_server = MagicMock(server_port=4321)
     web_server.serve_forever.side_effect = KeyboardInterrupt
-    monkeypatch.setattr(server, "OrchestratorService", MagicMock(return_value=service))
+    monkeypatch.setattr(server, "BackendApplication", MagicMock(return_value=service))
     monkeypatch.setattr(server, "make_server", MagicMock(return_value=web_server))
     monkeypatch.setattr(server.signal, "signal", MagicMock())
     monkeypatch.setattr(
@@ -60,7 +60,7 @@ def test_server_main_configures_wireless_oculus(monkeypatch):
 
     server.main()
 
-    assert os.environ[OCULUS_IP_ENVIRONMENT_VARIABLE] == "192.168.1.42"
+    assert os.environ[EnvironmentVariable.OCULUS_IP] == "192.168.1.42"
 
 
 def test_server_main_rejects_invalid_oculus_ip(monkeypatch):

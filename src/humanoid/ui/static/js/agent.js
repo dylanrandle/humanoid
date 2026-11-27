@@ -29,7 +29,8 @@ export function setupAgentPanel(getSnapshot) {
       snapshot?.robot === "triskel" &&
       snapshot.orchestrator.connected &&
       snapshot.processes[ProcessName.STACK].running &&
-      snapshot.processes[ProcessName.AUTONOMY].running;
+      (mode !== Mode.AUTONOMY ||
+        snapshot.processes[ProcessName.AUTONOMY].running);
     const active = agent?.phase === "connecting" || agent?.phase === "running";
     const models = agent?.models ?? [];
     if (model.dataset.catalog !== JSON.stringify(models)) {
@@ -61,12 +62,12 @@ export function setupAgentPanel(getSnapshot) {
     element("mode").textContent = !snapshot
       ? "Waiting for the console"
       : !ready
-        ? "Select Triskel and start the stack and Agent API."
+        ? "Select Triskel and start the stack. Motion also requires API."
         : mode === Mode.IDLE
           ? "Idle · observation only"
           : mode === Mode.AUTONOMY
-            ? "Autonomy · motion enabled"
-            : "Select Idle or Autonomy.";
+            ? "API · motion enabled"
+            : "Select Idle or API.";
     login.hidden = !(
       agent?.login_code && agent?.login_url?.startsWith("https://")
     );

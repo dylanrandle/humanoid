@@ -11,7 +11,7 @@ from typing import Self
 import cv2
 import numpy as np
 
-from humanoid.types.depth import DepthCamera
+from humanoid.types.camera import DepthCamera
 from humanoid.utils.paths import find_data_root
 
 _FRAME = (480, 640)

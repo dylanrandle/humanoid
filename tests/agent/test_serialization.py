@@ -2,7 +2,7 @@ import time
 
 import numpy as np
 
-from humanoid.agent.serialization import (
+from humanoid.api.serialization import (
     decode_frames,
     decode_state,
     encode_frames,
@@ -18,7 +18,7 @@ from humanoid.types.camera import (
 
 
 def test_state_uses_client_clock_and_preserves_unavailable_efforts(service):
-    state = service.observation().robot_state
+    state = service._observation.robot_state
     state.joint_efforts = np.full_like(state.joint_velocities, np.nan)
     payload = encode_state(state)
     assert all(value is None for value in payload["joint_efforts"])

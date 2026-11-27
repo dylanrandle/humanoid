@@ -2,29 +2,24 @@ import os
 import signal
 import threading
 from collections.abc import Callable
+from multiprocessing import Pipe
 from multiprocessing.process import BaseProcess
 from unittest.mock import MagicMock, call
 
 import pytest
 
-from humanoid.constants import (
-    DEFAULT_HUMANOID_ROBOT,
-    DEFAULT_HUMANOID_RUNTIME,
-    ROBOT_ENVIRONMENT_VARIABLE,
-    RUNTIME_ENVIRONMENT_VARIABLE,
-)
+from humanoid.constants import DEFAULT_HUMANOID_ROBOT, DEFAULT_HUMANOID_RUNTIME, EnvironmentVariable
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.groups import NODE_GROUPS, PROCESS_STOP_ORDER
 from humanoid.nodes.manager import NodeManager, NodeManagerError
 from humanoid.nodes.orchestrator import OrchestratorNode
-from humanoid.nodes.policy.agent import AgentControlServerNode
 from humanoid.nodes.policy.homing import HomingNode
+from humanoid.nodes.policy.motion import MotionPolicyNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
 from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
 from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
-from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.nodes.robot.simulation import SimulationNode
 from humanoid.types.node import ProcessContext
 from humanoid.types.process import ProcessName, Runtime
@@ -89,7 +84,6 @@ def test_node_groups_reference_imported_node_classes():
     assert NODE_GROUPS[ProcessName.STACK].nodes == (
         RobotControllerNode,
         OrchestratorNode,
-        RobotLoggerNode,
     )
     assert NODE_GROUPS[ProcessName.STACK].deferred_nodes == (HomingNode,)
     assert NODE_GROUPS[ProcessName.REPLAY].nodes == ()
@@ -97,14 +91,12 @@ def test_node_groups_reference_imported_node_classes():
         SimulationNode,
         RobotControllerNode,
         OrchestratorNode,
-        RobotLoggerNode,
     )
     assert NODE_GROUPS[ProcessName.STACK].nodes_for_runtime(Runtime.REAL) == (
         RobotDriverNode,
         CameraDriverNode,
         RobotControllerNode,
         OrchestratorNode,
-        RobotLoggerNode,
     )
     assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.SIM) == (SimulationNode,)
     assert NODE_GROUPS[ProcessName.REPLAY].nodes_for_runtime(Runtime.REAL) == (
@@ -112,7 +104,7 @@ def test_node_groups_reference_imported_node_classes():
         CameraDriverNode,
     )
     assert NODE_GROUPS[ProcessName.KEYBOARD].nodes == (KeyboardTeleopNode,)
-    assert NODE_GROUPS[ProcessName.AUTONOMY].nodes == (AgentControlServerNode,)
+    assert NODE_GROUPS[ProcessName.AUTONOMY].nodes == (MotionPolicyNode,)
     assert NODE_GROUPS[ProcessName.OCULUS].nodes == (OculusTeleopNode,)
 
 
@@ -167,8 +159,8 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
     def capture_configuration():
         observed_configurations.append(
             (
-                os.getenv(RUNTIME_ENVIRONMENT_VARIABLE),
-                os.getenv(ROBOT_ENVIRONMENT_VARIABLE),
+                os.getenv(EnvironmentVariable.RUNTIME),
+                os.getenv(EnvironmentVariable.ROBOT),
             )
         )
 
@@ -177,8 +169,8 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
         capture_configuration,
         processes,
     )
-    monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, Runtime.SIM)
-    monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, RobotName.TRISKEL)
+    monkeypatch.setenv(EnvironmentVariable.RUNTIME, Runtime.SIM)
+    monkeypatch.setenv(EnvironmentVariable.ROBOT, RobotName.TRISKEL)
     _use_process_context(monkeypatch, context)
     manager = NodeManager(
         runtime=Runtime.REAL,
@@ -198,8 +190,8 @@ def test_starts_core_nodes_before_homing_with_selected_configuration(monkeypatch
         node.run_managed for node in expected_nodes
     ]
     assert observed_configurations == [(Runtime.REAL, RobotName.PANDA)] * len(expected_nodes)
-    assert os.getenv(RUNTIME_ENVIRONMENT_VARIABLE) == Runtime.SIM
-    assert os.getenv(ROBOT_ENVIRONMENT_VARIABLE) == RobotName.TRISKEL
+    assert os.getenv(EnvironmentVariable.RUNTIME) == Runtime.SIM
+    assert os.getenv(EnvironmentVariable.ROBOT) == RobotName.TRISKEL
     assert status.running is True
 
 
@@ -222,7 +214,7 @@ def _process_with_start_callback(
     ],
 )
 def test_environment_runtime_uses_known_values(monkeypatch, environment_value, expected):
-    monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, environment_value)
+    monkeypatch.setenv(EnvironmentVariable.RUNTIME, environment_value)
     _use_process_context(monkeypatch)
 
     manager = NodeManager()
@@ -232,7 +224,7 @@ def test_environment_runtime_uses_known_values(monkeypatch, environment_value, e
 
 @pytest.mark.parametrize("value", ["simulation", "typo"])
 def test_environment_runtime_rejects_unknown_values(monkeypatch, value):
-    monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, value)
+    monkeypatch.setenv(EnvironmentVariable.RUNTIME, value)
     _use_process_context(monkeypatch)
 
     with pytest.raises(ValueError, match=value):
@@ -242,11 +234,11 @@ def test_environment_runtime_rejects_unknown_values(monkeypatch, value):
 @pytest.mark.parametrize("environment_value", [None, ""])
 def test_environment_uses_explicit_defaults(monkeypatch, environment_value):
     if environment_value is None:
-        monkeypatch.delenv(RUNTIME_ENVIRONMENT_VARIABLE, raising=False)
-        monkeypatch.delenv(ROBOT_ENVIRONMENT_VARIABLE, raising=False)
+        monkeypatch.delenv(EnvironmentVariable.RUNTIME, raising=False)
+        monkeypatch.delenv(EnvironmentVariable.ROBOT, raising=False)
     else:
-        monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, environment_value)
-        monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, environment_value)
+        monkeypatch.setenv(EnvironmentVariable.RUNTIME, environment_value)
+        monkeypatch.setenv(EnvironmentVariable.ROBOT, environment_value)
     _use_process_context(monkeypatch)
 
     manager = NodeManager()
@@ -263,7 +255,7 @@ def test_environment_uses_explicit_defaults(monkeypatch, environment_value):
     ],
 )
 def test_environment_robot_rejects_unknown_values(monkeypatch, environment_value):
-    monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, environment_value)
+    monkeypatch.setenv(EnvironmentVariable.ROBOT, environment_value)
     _use_process_context(monkeypatch)
 
     with pytest.raises(ValueError, match=environment_value):
@@ -272,7 +264,7 @@ def test_environment_robot_rejects_unknown_values(monkeypatch, environment_value
 
 @pytest.mark.parametrize("robot", [RobotName.PANDA, RobotName.TRISKEL])
 def test_environment_robot_uses_known_values(monkeypatch, robot):
-    monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, robot)
+    monkeypatch.setenv(EnvironmentVariable.ROBOT, robot)
     _use_process_context(monkeypatch)
 
     assert NodeManager().robot is robot
@@ -461,3 +453,50 @@ def test_close_uses_dependency_safe_group_order(monkeypatch):
     manager.close()
 
     assert stop.call_args_list == [call(name) for name in PROCESS_STOP_ORDER]
+
+
+def test_motion_node_uses_injected_lifecycle(monkeypatch):
+    processes = []
+    context = _fake_context(processes)
+    parent, child = Pipe()
+    context.Pipe = MagicMock(return_value=(parent, child))
+    _use_process_context(monkeypatch, context)
+    lifecycle = MagicMock()
+    manager = NodeManager(motion=lifecycle)
+    try:
+        manager.start(ProcessName.AUTONOMY)
+        lifecycle.attach.assert_called_once()
+        connection, motion_session_id = lifecycle.attach.call_args.args
+        assert isinstance(motion_session_id, str) and motion_session_id
+        assert context.Process.call_args.kwargs["target"] == MotionPolicyNode.run_connected
+        assert context.Process.call_args.kwargs["args"] == (None, child, motion_session_id)
+        assert child.closed
+        assert not connection.closed
+        manager.stop(ProcessName.AUTONOMY)
+        lifecycle.detach.assert_called_once()
+    finally:
+        parent.close()
+        child.close()
+        manager.close()
+
+
+def test_motion_start_without_transport_does_not_spawn_process(monkeypatch):
+    processes = []
+    _use_process_context(monkeypatch, _fake_context(processes))
+    manager = NodeManager()
+    with pytest.raises(NodeManagerError, match="transport must be supplied"):
+        manager.start(ProcessName.AUTONOMY)
+    assert not processes
+
+
+def test_connected_motion_node_routes_logging_and_passes_connection_to_constructor(monkeypatch):
+    log_queue, connection = MagicMock(), MagicMock()
+    node_main = MagicMock()
+    setup_queue_logging = MagicMock()
+    monkeypatch.setattr(MotionPolicyNode, "main", node_main)
+    monkeypatch.setattr("humanoid.nodes.policy.motion.setup_queue_logging", setup_queue_logging)
+
+    MotionPolicyNode.run_connected(log_queue, connection, "session")
+
+    setup_queue_logging.assert_called_once_with(log_queue)
+    node_main.assert_called_once_with(connection, "session")

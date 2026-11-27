@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image
 
 from humanoid.perception.depth import DepthCompleter
-from humanoid.types.depth import DepthCamera
+from humanoid.types.camera import DepthCamera
 
 MIN_VALID_AGREEMENT = 0.999
 

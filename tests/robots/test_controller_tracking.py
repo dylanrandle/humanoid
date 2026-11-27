@@ -34,7 +34,7 @@ from humanoid.robots.utils.controller_tracking.models import (
 )
 from humanoid.robots.utils.controller_tracking.smoothness import analyze_smoothness
 from humanoid.types.actuator import ActuatorEffortLimits
-from humanoid.types.controller_tracking import ActuatorEffortTrace, NativeJointSample
+from humanoid.types.controllers import ActuatorEffortTrace, NativeJointSample
 from humanoid.types.robot import CartesianVelocity
 
 EXPECTED_TIMING_COMMAND_COUNT = 4

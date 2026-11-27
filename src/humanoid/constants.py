@@ -1,11 +1,10 @@
 import os
 import secrets
-from enum import Enum
+from enum import Enum, StrEnum
 
 from humanoid.types.actuator import ActuatorHealthReport
 from humanoid.types.camera import CameraImage, CameraTopic, RegisteredDepth
 from humanoid.types.homing import HomingTarget
-from humanoid.types.logging import LoggingStatus
 from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
 from humanoid.types.process import Runtime
@@ -32,13 +31,25 @@ def private_lcm_url() -> str:
     return local_lcm_url(group, 49152 + secrets.randbelow(16384 - 500 + 1))
 
 
+class EnvironmentVariable(StrEnum):
+    """Humanoid environment-variable names for runtime code and tooling."""
+
+    API_URL = "HUMANOID_API_URL"
+    DASHBOARD_PORT = "HUMANOID_DASHBOARD_PORT"
+    DATA_DIR = "HUMANOID_DATA_DIR"
+    LOCAL_DASHBOARD_PORT = "HUMANOID_LOCAL_DASHBOARD_PORT"
+    OCULUS_IP = "HUMANOID_OCULUS_IP"
+    ROBOT = "HUMANOID_ROBOT"
+    ROBOT_DIR = "HUMANOID_ROBOT_DIR"
+    ROBOT_HOST = "HUMANOID_ROBOT_HOST"
+    RUNTIME = "HUMANOID_RUNTIME"
+    SCENE = "HUMANOID_SCENE"
+
+
 DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", local_lcm_url("239.255.76.67", 7667))
-RUNTIME_ENVIRONMENT_VARIABLE = "HUMANOID_RUNTIME"
-SCENE_ENVIRONMENT_VARIABLE = "HUMANOID_SCENE"
-ROBOT_ENVIRONMENT_VARIABLE = "HUMANOID_ROBOT"
-OCULUS_IP_ENVIRONMENT_VARIABLE = "HUMANOID_OCULUS_IP"
 DEFAULT_HUMANOID_RUNTIME = Runtime.SIM
 DEFAULT_HUMANOID_ROBOT = RobotName.TRISKEL
+DEFAULT_ROBOT_DIR = "/opt/humanoid"
 
 
 class Topic(Enum):
@@ -76,9 +87,6 @@ class Topic(Enum):
     # Events published to the orchestrator (request_*, complete).
     ORCHESTRATOR_EVENT = "ORCHESTRATOR/EVENT"
 
-    # Current lcm-logger lifecycle, published by RobotLoggerNode.
-    LOGGING_STATUS = "LOGGING/STATUS"
-
     # Homing target published by requesters for the homing node.
     HOMING_TARGET = "HOMING/TARGET"
 
@@ -102,7 +110,6 @@ TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.AUTONOMY_BASE_COMMAND: RobotBaseCommand,
     Topic.ORCHESTRATOR_MODE: OrchestratorMode,
     Topic.ORCHESTRATOR_EVENT: OrchestratorEvent,
-    Topic.LOGGING_STATUS: LoggingStatus,
     Topic.HOMING_TARGET: HomingTarget,
 }
 

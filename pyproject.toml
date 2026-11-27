@@ -28,6 +28,7 @@ dependencies = [
     "lz4>=4.4,<5",
     "opencv-python-headless>=4.10,<5",
     "cuda-bindings>=13,<14 ; platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "aiortc>=1.14,<2",
 ]
 
 [project.scripts]

@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Literal, get_args
+from typing import Literal, TypedDict, get_args
 
 from humanoid.constants import Topic
-from humanoid.types.camera import CameraFrames, CameraView
+from humanoid.types.camera import CameraFrames, CameraSummary, CameraView, PoseRecord
 from humanoid.types.homing import HomingTarget
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotBaseCommand, RobotJointCommand, RobotState, RobotToolCommand
@@ -47,3 +47,28 @@ class Observation:
 
 
 type CameraCaptures = dict[str, tuple[Observation, CameraView]]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ObservationConfig:
+    feedback_timeout: float = 0.25
+    camera_timeout_seconds: float = 0.5
+    capture_state_tolerance: float = 0.04
+
+
+type CameraFrameCaptures = dict[str, tuple[Observation, CameraFrames]]
+
+
+class ObservationSummary(TypedDict):
+    """Measured state for tools and trial programs; primary_camera is a cameras key."""
+
+    cameras: dict[str, CameraSummary]
+    mode: Mode
+    base_pose_world: PoseRecord | None
+    tool_frame: str
+    tool_pose_reference_frame: str
+    tool_pose: PoseRecord
+    gripper_units: list[str]
+    gripper_positions: list[float]
+    gripper_limits: list[tuple[float, float]]
+    primary_camera: str

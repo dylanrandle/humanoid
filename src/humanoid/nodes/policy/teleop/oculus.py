@@ -4,6 +4,7 @@ This node uses the OculusTeleopPolicy with the RealtimeEnvironment to provide
 Oculus VR controller-based control of the robot's end-effector pose.
 """
 
+from humanoid.api.clients.recording import RecordingClient
 from humanoid.config import ROBOT_CONFIG, get_oculus_teleop_policy_config
 from humanoid.constants import Topic
 from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
@@ -36,7 +37,13 @@ class OculusTeleopNode(Node):
         """
         if policy_config is None:
             policy_config = get_oculus_teleop_policy_config()
-        self.policy = OculusTeleopPolicy(robot_config=robot_config, config=policy_config)
+        self.recording = RecordingClient()
+        self.policy = OculusTeleopPolicy(
+            robot_config=robot_config,
+            config=policy_config,
+            recording_request=self.recording.request,
+            recording_status=self.recording.snapshot,
+        )
 
         # Create environment
         self.env = RealtimeEnvironment(
@@ -64,7 +71,7 @@ class OculusTeleopNode(Node):
         logger.info("Hold either grip trigger (dead-man) to command motion")
         logger.info("Use right controller pose to control end-effector")
         logger.info("Hold A to close or B to open the gripper")
-        logger.info("Press X to move home and Y to toggle logging")
+        logger.info("Press X to move home and Y to toggle recording")
         logger.info("Use left joystick to drive the base (forward = y+, right = x+)")
         logger.info("Use right joystick X to yaw the base (left = yaw+, right = yaw-)\n")
         self.observation = self.env.reset()
@@ -73,6 +80,7 @@ class OculusTeleopNode(Node):
         try:
             self.policy.reader.stop()
         finally:
+            self.recording.close()
             self.env.close()
 
 

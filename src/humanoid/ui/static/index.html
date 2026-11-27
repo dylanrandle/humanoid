@@ -225,13 +225,13 @@
                 </div>
                 <div class="process-copy">
                   <div class="process-title">
-                    <h3>Agent API</h3>
+                    <h3>API</h3>
                     <span class="mini-status" data-process-status="autonomy"
                       >Stopped</span
                     >
                   </div>
                   <p>
-                    Local HTTP access to robot state, cameras, and motion
+                    Execute bounded robot motions through the unified API
                     commands.
                   </p>
                   <p
@@ -348,7 +348,7 @@
               >
                 <span class="mode-index">F</span>
                 <span>
-                  <strong>Autonomy</strong>
+                  <strong>API</strong>
                   <small>Route agent API commands</small>
                 </span>
                 <span class="mode-check" aria-hidden="true">●</span>
@@ -438,7 +438,8 @@
                 <span class="mini-status"></span>
               </figcaption>
               <div class="camera-image-area">
-                <img hidden alt="" />
+                <video hidden autoplay muted playsinline></video>
+                <canvas hidden aria-hidden="true"></canvas>
                 <p></p>
               </div>
               <p class="camera-detail"></p>
@@ -469,34 +470,37 @@
                 <div class="data-tool-heading">
                   <div>
                     <p class="eyebrow">Capture</p>
-                    <h3>Data logging</h3>
+                    <h3>Data recording</h3>
                   </div>
-                  <span class="mini-status" id="logging-status">Stopped</span>
+                  <span class="mini-status" id="recording-status">Stopped</span>
                 </div>
                 <p>Save live robot traffic to a timestamped LCM log.</p>
               </div>
-              <div class="logging-actions" aria-label="Data logging controls">
+              <div
+                class="recording-actions"
+                aria-label="Data recording controls"
+              >
                 <button
                   class="secondary-action"
-                  data-logging-action="start"
+                  data-recording-action="start"
                   type="button"
                   disabled
                 >
-                  Start logging
+                  Start recording
                 </button>
                 <button
-                  class="secondary-action stop-logging"
-                  data-logging-action="stop"
+                  class="secondary-action stop-recording"
+                  data-recording-action="stop"
                   type="button"
                   disabled
                 >
-                  Stop logging
+                  Stop recording
                 </button>
               </div>
-              <p class="data-tool-note" id="logging-detail">
-                The main stack must be online to control logging.
+              <p class="data-tool-note" id="recording-detail">
+                The main stack must be online to control recording.
               </p>
-              <p class="process-error" id="logging-error" hidden></p>
+              <p class="process-error" id="recording-error" hidden></p>
             </article>
 
             <article class="data-tool replay-tool">
@@ -622,28 +626,23 @@
           </div>
         </section>
 
-        <section
-          class="panel application-log-panel"
-          aria-labelledby="application-log-heading"
-        >
+        <section class="panel log-panel" aria-labelledby="log-heading">
           <div class="section-heading">
             <div>
               <p class="eyebrow">08 · Diagnostics</p>
-              <h2 id="application-log-heading">Application logs</h2>
+              <h2 id="log-heading">Logs</h2>
             </div>
-            <span class="panel-note" id="application-log-status"
-              >Waiting for output</span
-            >
+            <span class="panel-note" id="log-status">Waiting for output</span>
           </div>
 
           <pre
-            class="application-log-output"
-            id="application-log-output"
+            class="log-output"
+            id="log-output"
             role="region"
-            aria-label="Recent application log output"
+            aria-label="Recent log output"
             tabindex="0"
           >
-Application output will appear here.</pre>
+Log output will appear here.</pre>
         </section>
       </main>
 

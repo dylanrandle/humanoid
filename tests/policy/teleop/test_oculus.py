@@ -26,6 +26,7 @@ from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
+from humanoid.types.recording import RecordingState, RecordingStatus
 from humanoid.types.robot import RobotJointCommand, RobotState
 from humanoid.types.teleop import OculusInputSnapshot
 
@@ -73,13 +74,13 @@ class StubOculusReader:
 class StubOrchestratorClient(OrchestratorClient):
     """Stand-in for OrchestratorClient that records ``request_homing`` calls."""
 
-    start_logging: typing.Any
-    stop_logging: typing.Any
+    start_recording: typing.Any
+    stop_recording: typing.Any
 
     def __init__(self):
         self.homing_calls: list[np.ndarray] = []
-        self.start_logging = lambda: None
-        self.stop_logging = lambda: None
+        self.start_recording = lambda: None
+        self.stop_recording = lambda: None
 
     def request_homing(self, target_position: np.ndarray) -> None:
         self.homing_calls.append(np.asarray(target_position).copy())
@@ -209,13 +210,13 @@ class TestInputDropout:
             del reader.buttons[missing]
 
         client = StubOrchestratorClient()
-        client.start_logging = MagicMock()
+        client.start_recording = MagicMock()
         policy.orchestrator_client = client
         reader.buttons.update(X=True, Y=True)
         for _ in range(2):
             assert policy(obs) == Action()
         assert not client.homing_calls
-        client.start_logging.assert_not_called()
+        client.start_recording.assert_not_called()
         assert policy.filtered_controller_pose is None
 
     def test_homing_return_with_missing_left_hand_does_not_repeat_held_button(
@@ -1032,46 +1033,45 @@ class TestHomingButtons:
         expected_tool = policy.robot.get_tool_pose(q)
         np.testing.assert_allclose(action.tool_pose.translation, expected_tool.translation)
 
-    def test_y_button_toggles_data_logging(self, panda_policy_and_reader):
+    def test_y_button_toggles_data_recording(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
         stub_client = StubOrchestratorClient()
         policy.orchestrator_client = stub_client
 
-        # Mock orchestrator_client methods
-        stub_client.start_logging = MagicMock()
-        stub_client.stop_logging = MagicMock()
+        policy.recording_request = MagicMock(return_value=True)
+        policy.recording_status = MagicMock(return_value=RecordingStatus(0, RecordingState.STOPPED))
 
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
 
-        # 1. First press of Y button should start logging
+        # 1. First press of Y button should start recording
         reader.buttons["Y"] = True
         policy(obs)
-        stub_client.start_logging.assert_called_once()
-        stub_client.stop_logging.assert_not_called()
-        assert policy.is_logging is True
+        policy.recording_request.assert_called_once_with()
+        assert policy.is_recording is False
+        policy.recording_status.return_value = RecordingStatus(1, RecordingState.RUNNING)
+        assert policy.is_recording is True
 
         # Reset mock call counts
-        stub_client.start_logging.reset_mock()
+        policy.recording_request.reset_mock()
 
-        # 2. Holding Y button on the next step should not start or stop logging again (debouncing)
+        # 2. Holding Y button on the next step should not start or stop recording again (debouncing)
         policy(obs)
-        stub_client.start_logging.assert_not_called()
-        stub_client.stop_logging.assert_not_called()
-        assert policy.is_logging is True
+        policy.recording_request.assert_not_called()
+        assert policy.is_recording is True
 
         # 3. Release Y button
         reader.buttons["Y"] = False
         policy(obs)
-        stub_client.start_logging.assert_not_called()
-        stub_client.stop_logging.assert_not_called()
-        assert policy.is_logging is True
+        policy.recording_request.assert_not_called()
+        assert policy.is_recording is True
 
-        # 4. Press Y button again should stop logging
+        # 4. Press Y button again should stop recording
         reader.buttons["Y"] = True
         policy(obs)
-        stub_client.start_logging.assert_not_called()
-        stub_client.stop_logging.assert_called_once()
-        assert policy.is_logging is False
+        policy.recording_request.assert_called_once_with()
+        assert policy.is_recording is True
+        policy.recording_status.return_value = RecordingStatus(2, RecordingState.STOPPED)
+        assert policy.is_recording is False
 
     def test_homing_target_does_not_mutate_config(self, panda_policy_and_reader):
         """The policy must copy the config arrays before overwriting gripper slots."""
@@ -1113,12 +1113,13 @@ class TestHomingButtons:
         )
 
     def test_x_and_y_triggered_simultaneously(self, panda_policy_and_reader):
-        """When both X and Y are pressed, X triggers homing and Y toggles logging."""
+        """When both X and Y are pressed, X triggers homing and Y toggles recording."""
         policy, reader = panda_policy_and_reader
         stub_client = StubOrchestratorClient()
         policy.orchestrator_client = stub_client
 
-        stub_client.start_logging = MagicMock()
+        policy.recording_request = MagicMock(return_value=True)
+        policy.recording_status = MagicMock(return_value=RecordingStatus(0, RecordingState.STOPPED))
         reader.buttons["X"] = True
         reader.buttons["Y"] = True
 
@@ -1131,9 +1132,11 @@ class TestHomingButtons:
             stub_client.homing_calls[0], policy.robot_config.homing_presets[HomingPreset.HOME]
         )
 
-        # Check logging triggered
-        stub_client.start_logging.assert_called_once()
-        assert policy.is_logging is True
+        # Check recording triggered
+        policy.recording_request.assert_called_once_with()
+        assert policy.is_recording is False
+        policy.recording_status.return_value = RecordingStatus(1, RecordingState.RUNNING)
+        assert policy.is_recording is True
 
     def test_no_button_pressed_does_not_request_homing(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader

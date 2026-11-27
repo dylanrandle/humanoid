@@ -14,10 +14,10 @@ from humanoid.types.camera import (
     CameraFrames,
     CameraImage,
     CameraIntrinsics,
+    DepthCamera,
     RealSenseCameraConfig,
     RegisteredDepth,
 )
-from humanoid.types.depth import DepthCamera
 
 
 class RealSenseCamera:

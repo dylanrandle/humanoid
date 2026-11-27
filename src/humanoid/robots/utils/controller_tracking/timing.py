@@ -9,7 +9,7 @@ import numpy as np
 from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.robots.base import Robot
-from humanoid.types.controller_tracking import (
+from humanoid.types.controllers import (
     ControllerCommandTiming,
     ControllerPublicationStatistics,
     ControllerTrackingSegment,

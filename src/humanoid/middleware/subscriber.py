@@ -10,14 +10,12 @@ import lcm
 from humanoid.constants import DEFAULT_LCM_URL, Channel, Topic, message_type
 from humanoid.logger import get_logger
 from humanoid.types.actuator import ActuatorHealthReport
-from humanoid.types.camera import CameraImage, CameraTopic, RegisteredDepth
-from humanoid.types.depth import DepthCamera
+from humanoid.types.camera import CameraImage, CameraTopic, DepthCamera, RegisteredDepth
 from humanoid.types.homing import HomingTarget
 from humanoid.types.lcm import (
     actuator_health_report_t,
     camera_image_t,
     homing_target_t,
-    logging_status_t,
     node_rate_sample_t,
     orchestrator_event_t,
     orchestrator_mode_t,
@@ -29,7 +27,6 @@ from humanoid.types.lcm import (
     simulation_state_t,
 )
 from humanoid.types.lcm.converter import LCMConverter
-from humanoid.types.logging import LoggingStatus
 from humanoid.types.middleware import AcceptedTypes
 from humanoid.types.node import NodeRateSample
 from humanoid.types.orchestrator import OrchestratorEvent, OrchestratorMode
@@ -133,9 +130,6 @@ class Subscriber:
             elif expected_type is HomingTarget:
                 lcm_msg = homing_target_t.decode(data)
                 decoded_data = LCMConverter.homing_target_from_lcm(lcm_msg)
-            elif expected_type is LoggingStatus:
-                lcm_msg = logging_status_t.decode(data)
-                decoded_data = LCMConverter.logging_status_from_lcm(lcm_msg)
             else:
                 raise RuntimeError("Encountered unexpected channel")
 
@@ -217,11 +211,6 @@ class Subscriber:
     def receive(
         self, topic: Literal[Topic.HOMING_TARGET], timeout: int | None = None
     ) -> HomingTarget | None: ...
-
-    @overload
-    def receive(
-        self, topic: Literal[Topic.LOGGING_STATUS], timeout: int | None = None
-    ) -> LoggingStatus | None: ...
 
     @overload
     def receive(

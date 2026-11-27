@@ -3,19 +3,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 
-from humanoid.types.actuator import ActuatorHealthStatus
 from humanoid.types.homing import HomingPreset
-from humanoid.types.host import HostResourceStatus
-from humanoid.types.logging import LoggingStatus
-from humanoid.types.node import NodeRateStatus
-from humanoid.types.process import ProcessName, ProcessStatus, Runtime
-from humanoid.types.replay import RecordingSummary, ReplayStatus
-from humanoid.types.robot import RobotName
-from humanoid.types.simulation import SimulationScene
-
-
-class OrchestratorError(Exception):
-    """An expected orchestrator-service failure."""
 
 
 class Mode(StrEnum):
@@ -98,34 +86,6 @@ class OrchestratorState(ModeStatus):
     parameters: dict[str, object]
 
 
-@dataclass(frozen=True)
-class OrchestratorStatus:
-    """Aggregate operator-console status produced by OrchestratorService."""
-
-    runtime: Runtime
-    robot: RobotName
-    robots: list[RobotName]
-    scene: SimulationScene
-    scenes: list[SimulationScene]
-    processes: dict[ProcessName, ProcessStatus]
-    node_rates: list[NodeRateStatus]
-    host_resources: HostResourceStatus | None
-    actuator_health: ActuatorHealthStatus
-    logging: LoggingStatus
-    recordings: list[RecordingSummary]
-    replay: ReplayStatus
-    orchestrator: OrchestratorState
-
-
-@dataclass(frozen=True)
-class SafetyContext:
-    """Configuration observed and hardware risk acknowledged by an operator."""
-
-    expected_runtime: Runtime
-    expected_robot: RobotName
-    real_hardware_acknowledged: bool = False
-
-
 @dataclass
 class OrchestratorMode:
     timestamp: float
@@ -143,8 +103,6 @@ class EventKind(StrEnum):
     RELEASE_AUTONOMY = "release_autonomy"
     REQUEST_IDLE = "request_idle"
     COMPLETE = "complete"
-    START_LOGGING = "start_logging"
-    STOP_LOGGING = "stop_logging"
 
 
 @dataclass

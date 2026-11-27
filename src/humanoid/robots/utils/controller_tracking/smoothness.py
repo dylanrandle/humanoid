@@ -12,7 +12,7 @@ from humanoid.robots.utils.controller_tracking.models import (
     ControllerTrackingSettings,
     Segment,
 )
-from humanoid.types.controller_tracking import (
+from humanoid.types.controllers import (
     JointSmoothnessStatistics,
     JointTelemetryStream,
     MotionTrace,

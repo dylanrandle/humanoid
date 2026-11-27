@@ -3,7 +3,7 @@
 
 def main() -> None:
     # Spawned node processes also import this entry point.
-    from humanoid.ui.server import main as serve_console  # noqa: PLC0415
+    from humanoid.api.server import main as serve_console  # noqa: PLC0415
 
     serve_console()
 

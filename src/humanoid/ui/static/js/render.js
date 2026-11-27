@@ -1,9 +1,9 @@
 import {
   BusyKey,
-  LoggingState,
+  RecordingState,
   Mode,
   OrchestratorParameter,
-  PayloadKey,
+  ApiKey,
   ProcessName,
   ReplayOutcome,
   Runtime,
@@ -78,7 +78,7 @@ export function render(snapshot, busy, elements) {
   for (const name of INPUT_PROCESSES) {
     renderProcess(name, processes[name], controlsReady, busy, elements);
   }
-  renderLogging(snapshot.logging, controlsReady, busy, elements);
+  renderRecording(snapshot.recording, controlsReady, busy, elements);
   renderReplay(snapshot, anyRunning, replayActive, busy, elements);
   renderOrchestrator(
     snapshot.orchestrator,
@@ -90,11 +90,11 @@ export function render(snapshot, busy, elements) {
   );
 }
 
-export function renderApplicationLogs(logs, elements) {
-  const output = elements.applicationLogOutput;
+export function renderLogs(logs, elements) {
+  const output = elements.logOutput;
   const content = logs.length
     ? logs.join("\n")
-    : "Application output will appear here.";
+    : "Log output will appear here.";
   const nearBottom =
     output.scrollHeight - output.scrollTop - output.clientHeight <= 24;
 
@@ -102,13 +102,13 @@ export function renderApplicationLogs(logs, elements) {
     output.textContent = content;
     if (nearBottom) output.scrollTop = output.scrollHeight;
   }
-  elements.applicationLogStatus.textContent = logs.length
+  elements.logStatus.textContent = logs.length
     ? `${logs.length} recent ${logs.length === 1 ? "entry" : "entries"}`
     : "Waiting for output";
 }
 
-export function renderApplicationLogsDisconnected(elements) {
-  elements.applicationLogStatus.textContent = "Logs unavailable";
+export function renderLogsDisconnected(elements) {
+  elements.logStatus.textContent = "Logs unavailable";
 }
 
 function renderNodeRates(nodeRates, elements) {
@@ -305,51 +305,51 @@ function formatActuatorName(name) {
   return name.replaceAll("_", " ");
 }
 
-function renderLogging(logging, controlsReady, busy, elements) {
-  const isBusy = busy.has(BusyKey.LOGGING);
+function renderRecording(recording, controlsReady, busy, elements) {
+  const isBusy = busy.has(BusyKey.RECORDINGS);
   const active =
-    logging.state === LoggingState.STARTING ||
-    logging.state === LoggingState.RUNNING;
+    recording.state === RecordingState.STARTING ||
+    recording.state === RecordingState.RUNNING;
 
-  for (const button of elements.loggingButtons) {
-    const startsLogging = button.dataset.loggingAction === "start";
+  for (const button of elements.recordingButtons) {
+    const startsRecording = button.dataset.recordingAction === "start";
     button.disabled =
       !controlsReady ||
       isBusy ||
-      (startsLogging
-        ? active || logging.state === LoggingState.STOPPING
+      (startsRecording
+        ? active || recording.state === RecordingState.STOPPING
         : !active);
   }
 
   const labels = {
-    [LoggingState.STOPPED]: "Stopped",
-    [LoggingState.STARTING]: "Starting",
-    [LoggingState.RUNNING]: "Recording",
-    [LoggingState.STOPPING]: "Stopping",
-    [LoggingState.FAILED]: "Failed",
+    [RecordingState.STOPPED]: "Stopped",
+    [RecordingState.STARTING]: "Starting",
+    [RecordingState.RUNNING]: "Recording",
+    [RecordingState.STOPPING]: "Stopping",
+    [RecordingState.FAILED]: "Failed",
   };
-  elements.loggingStatus.textContent = labels[logging.state] || "Unknown";
+  elements.recordingStatus.textContent = labels[recording.state] || "Unknown";
 
-  if (logging.state === LoggingState.RUNNING) {
-    elements.loggingDetail.textContent = logging.file_name
-      ? `Recording to ${logging.file_name}.`
+  if (recording.state === RecordingState.RUNNING) {
+    elements.recordingDetail.textContent = recording.file_name
+      ? `Recording to ${recording.file_name}.`
       : "Recording LCM traffic.";
-  } else if (logging.state === LoggingState.STARTING) {
-    elements.loggingDetail.textContent = "Starting lcm-logger…";
-  } else if (logging.state === LoggingState.STOPPING) {
-    elements.loggingDetail.textContent =
+  } else if (recording.state === RecordingState.STARTING) {
+    elements.recordingDetail.textContent = "Starting lcm-logger…";
+  } else if (recording.state === RecordingState.STOPPING) {
+    elements.recordingDetail.textContent =
       "Stopping and flushing the current log…";
-  } else if (logging.state === LoggingState.FAILED) {
-    elements.loggingDetail.textContent = "Data logging is unavailable.";
+  } else if (recording.state === RecordingState.FAILED) {
+    elements.recordingDetail.textContent = "Data recording is unavailable.";
   } else {
-    elements.loggingDetail.textContent =
+    elements.recordingDetail.textContent =
       "Recordings are written to the logs/recordings directory.";
   }
 
-  const failed = logging.state === LoggingState.FAILED;
-  elements.loggingError.hidden = !failed;
-  elements.loggingError.textContent = failed
-    ? logging.error || "Data logging failed."
+  const failed = recording.state === RecordingState.FAILED;
+  elements.recordingError.hidden = !failed;
+  elements.recordingError.textContent = failed
+    ? recording.error || "Data recording failed."
     : "";
 }
 
@@ -498,9 +498,9 @@ function renderOrchestrator(
   busy,
   elements,
 ) {
-  const mode = orchestrator[PayloadKey.MODE];
+  const mode = orchestrator[ApiKey.MODE];
   const preset =
-    orchestrator[PayloadKey.PARAMETERS][OrchestratorParameter.PRESET] || null;
+    orchestrator[ApiKey.PARAMETERS][OrchestratorParameter.PRESET] || null;
   elements.activeMode.textContent = orchestratorLabel(
     mode,
     preset,
@@ -558,12 +558,13 @@ export function renderDisconnected(
   Object.values(elements.processes).forEach(({ action }) => {
     action.disabled = true;
   });
-  elements.loggingButtons.forEach((button) => {
+  elements.recordingButtons.forEach((button) => {
     button.disabled = true;
   });
-  elements.loggingStatus.textContent = "Unavailable";
-  elements.loggingDetail.textContent = "Reconnect to view data logging status.";
-  elements.loggingError.hidden = true;
+  elements.recordingStatus.textContent = "Unavailable";
+  elements.recordingDetail.textContent =
+    "Reconnect to view data recording status.";
+  elements.recordingError.hidden = true;
   elements.replayRecording.disabled = true;
   elements.replayAction.disabled = true;
   elements.replayStatus.textContent = "Unavailable";
@@ -631,6 +632,7 @@ function orchestratorLabel(mode, preset, stackActive) {
   if (preset) {
     return `${preset} · ${mode === Mode.HOMING ? "moving" : "requested"}`;
   }
+  if (mode === Mode.AUTONOMY) return "API";
   if (mode) return mode.replaceAll("_", " ");
   return stackActive ? "Connecting" : "Offline";
 }

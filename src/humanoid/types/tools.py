@@ -1,13 +1,14 @@
-"""Typed arguments and results for the agent's perception tools."""
+"""Shared tool calls, perception arguments, results, and errors."""
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from humanoid.types.camera import DepthKind, ObservationId
-from humanoid.types.segmentation import MAX_TOKENS, Box, MaskId, Pixel
+from humanoid.types.motion import ControlOperation, Hold, MoveBase, MoveTool, SetGripper
+from humanoid.types.segmentation import MAX_TOKENS, Box, MaskId, Pixel, SegmentOperation
 
 
 class PerceptionOperation(StrEnum):
@@ -47,9 +48,6 @@ type SegmentRequest = SegmentEverything | SegmentAtPoint | SegmentInBox | Refine
 
 
 class CompleteDepth(ToolModel):
-    # Structured model replies must name every field. An empty list requests only the map.
-    model_config = ConfigDict(json_schema_extra={"required": ["observation_id", "points_xy"]})
-
     observation_id: ObservationId
     points_xy: tuple[Pixel, ...] = Field(default_factory=tuple)
 
@@ -74,3 +72,36 @@ class DepthCompletionResult:
     valid_pixels: int
     depths_m: tuple[float | None, ...]
     operation: Literal[PerceptionOperation.COMPLETE_DEPTH] = PerceptionOperation.COMPLETE_DEPTH
+
+
+class ObserveAgain(ToolModel):
+    pass
+
+
+class ToolCall[Name: str, Args: BaseModel](ToolModel):
+    operation: Name
+    arguments: Args
+
+
+type PerceptionCall = (
+    ToolCall[Literal[SegmentOperation.EVERYTHING], SegmentEverything]
+    | ToolCall[Literal[SegmentOperation.POINT], SegmentAtPoint]
+    | ToolCall[Literal[SegmentOperation.BOX], SegmentInBox]
+    | ToolCall[Literal[SegmentOperation.REFINE], RefineMask]
+    | ToolCall[Literal[PerceptionOperation.COMPLETE_DEPTH], CompleteDepth]
+    | ToolCall[Literal[PerceptionOperation.READ_DEPTH], ReadDepth]
+    | ToolCall[Literal[PerceptionOperation.OBSERVE_AGAIN], ObserveAgain]
+)
+type MotionCall = (
+    ToolCall[Literal[ControlOperation.MOVE_BASE], MoveBase]
+    | ToolCall[Literal[ControlOperation.MOVE_TOOL], MoveTool]
+    | ToolCall[Literal[ControlOperation.SET_GRIPPER], SetGripper]
+    | ToolCall[Literal[ControlOperation.HOLD], Hold]
+)
+
+
+class ToolError(TypedDict):
+    """JSON-friendly failure shared by agent feedback and trial records."""
+
+    operation: str
+    error: str

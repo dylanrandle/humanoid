@@ -17,23 +17,23 @@ from humanoid.agent.harness.review import REVIEW_INDEX_FILENAME, ExplorationRevi
 from humanoid.agent.harness.worker import run_steps
 from humanoid.config import ROBOT_CONFIGS, ROBOT_NAME
 from humanoid.config.agent import (
-    AGENT_MOTION_LIMITS,
     DEFAULT_AGENT_MODEL,
-    DEFAULT_TRIAL_CONSOLE_URL,
     TRIAL_EVALUATION_SECONDS,
     TRIAL_EXPLORATION_SECONDS,
-    get_agent_endpoint,
 )
+from humanoid.config.api import get_api_endpoint
+from humanoid.config.motion import DEFAULT_MOTION_LIMITS
 from humanoid.simulation.tasks import TASKS
-from humanoid.types.agent import AgentControlEndpoint, AgentTask, EpisodeTimeExpired, TimeBudget
+from humanoid.types.agent import AgentTask, EpisodeTimeExpired, TimeBudget
+from humanoid.types.api import ApiEndpoint
 from humanoid.types.orchestrator import Mode
 from humanoid.types.process import Runtime
+from humanoid.types.tools import ToolError
 from humanoid.types.trial import (
     ControllerImage,
     EpisodeEnd,
     SimulationTask,
     TrialFeedback,
-    TrialMotionError,
     TrialObservation,
     TrialResult,
     TrialStep,
@@ -54,7 +54,8 @@ It runs once per decision in an isolated environment. Return a dict with fields
 command (one motion call {operation,arguments}, or None to finish) and memory (JSON object
 passed to the next decision, initially {}). Use only the motion operations and limits you
 explored. obs contains the same measured status fields, plus images keyed by the names
-in obs["cameras"]. Each images[name] has rgb (rows of RGB byte triples) and
+in obs["cameras"]. obs["primary_camera"] names the default camera.
+Each images[name] has rgb (rows of RGB byte triples) and
 registered_depth_m (axial metres aligned to RGB) and raw_depth_m (axial metres on the
 depth sensor's native pixel grid). Zero means missing depth in either array. All arrays
 sample every 8th pixel starting at (0,0) in their respective original frames. Use
@@ -62,7 +63,7 @@ cameras[name].raw_depth for native intrinsics and pose. During evaluation, use t
 arrays directly. The NanoSAM and CDM tools are available only during exploration.
 cameras[name].intrinsics uses original pixels. cameras[name].camera_pose maps
 optical coordinates (right, down, forward) into
-tool_pose_reference_frame. last_result is null, measured command feedback, or an error.
+tool_pose_reference_frame. last_result is null, measured motion feedback, or {operation,error}.
 seconds_remaining gives the remaining wall-clock budget. Use these live measurements
 and memory to adapt to new episodes.
 A fresh episode starts at home with an empty memory.
@@ -93,7 +94,17 @@ def explore(  # noqa: PLR0913 - shared agent session and episode settings
     with ExplorationReview(review_folder, seed) as review, episodes(seed) as (episode, tools):
         episode.timer = TimeBudget(seconds)
         try:
-            record(run_steps(thread, tools, task, record, budget=episode.timer, review=review))
+            record(
+                run_steps(
+                    thread,
+                    tools,
+                    task,
+                    record,
+                    mode=Mode.AUTONOMY,
+                    budget=episode.timer,
+                    review=review,
+                )
+            )
             ended_by = EpisodeEnd.AGENT
         except EpisodeTimeExpired:
             record("Exploration time expired.")
@@ -122,7 +133,7 @@ def generate(thread: Thread, seconds: float, goal: str) -> str:
     result = thread.run(
         f"{goal}\nExploration is complete. {PROGRAM_INTERFACE}\n"
         f"Evaluation budget: {seconds} wall-clock seconds per episode. "
-        f"Limits: {asdict(AGENT_MOTION_LIMITS)}. Return source without markdown.",
+        f"Limits: {asdict(DEFAULT_MOTION_LIMITS)}. Return source without markdown.",
         output_schema=TrialSubmission.model_json_schema(),
     )
     if result.status.value != "completed" or not result.final_response:
@@ -228,7 +239,7 @@ def evaluate(
                         call.operation, call.arguments.model_dump(mode="json")
                     )
                 except ValueError as exc:
-                    feedback = TrialMotionError(error=str(exc))
+                    feedback = ToolError(operation=call.operation, error=str(exc))
                 if (score := episode.completed_score()) is not None:
                     ended_by = EpisodeEnd.COMPLETE
                     break
@@ -253,7 +264,7 @@ def evaluate(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", type=Runtime, choices=list(Runtime), default=Runtime.SIM)
-    parser.add_argument("--endpoint", help="Agent API URL for the real backend.")
+    parser.add_argument("--endpoint", help="robot API URL for the real backend.")
     parser.add_argument("--robot", choices=ROBOT_CONFIGS, default=ROBOT_NAME)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--explore", type=int, default=3)
@@ -265,11 +276,6 @@ def main(argv: list[str] | None = None) -> None:
         "--record",
         action="store_true",
         help="Save an LCM recording bundle for each episode.",
-    )
-    parser.add_argument(
-        "--console-url",
-        default=DEFAULT_TRIAL_CONSOLE_URL,
-        help="Operator console URL for hardware LCM recording.",
     )
     parser.add_argument("--replay", type=Path, help="Test a saved controller starting at --seed.")
     parser.add_argument("--output", type=Path, default=Path("logs/trials"))
@@ -297,10 +303,9 @@ def main(argv: list[str] | None = None) -> None:
         task=simulation_task,
         robot_config=robot_config,
         backend=args.backend,
-        endpoint=AgentControlEndpoint(args.endpoint) if args.endpoint else get_agent_endpoint(),
+        endpoint=ApiEndpoint(args.endpoint) if args.endpoint else get_api_endpoint(),
         record=args.record,
         recording_root=folder / "recordings",
-        console_url=args.console_url,
     )
     first_test_seed = args.seed
     if args.replay is not None:
@@ -318,9 +323,7 @@ def main(argv: list[str] | None = None) -> None:
                     "When an attempt fails, inspect what happened, change the approach, and retry. "
                     "Carry forward strategies verified by observing the result."
                 )
-                task = AgentTask(
-                    instruction, args.model, Mode.AUTONOMY, args.backend.value, robot_config.name
-                )
+                task = AgentTask(instruction)
                 seed = args.seed + index
                 explore(
                     thread,

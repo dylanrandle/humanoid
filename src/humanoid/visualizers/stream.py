@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 
 import lcm
 
-from humanoid.constants import DEFAULT_LCM_URL, Topic
+from humanoid.constants import DEFAULT_LCM_URL, DEFAULT_ROBOT_DIR, EnvironmentVariable, Topic
 from humanoid.types.lcm import (
     robot_base_command_t,
     robot_joint_command_t,
@@ -85,7 +85,7 @@ def local_frames() -> Iterator[Receive]:
 
 @contextmanager
 def ssh_frames(host: str) -> Iterator[Receive]:
-    root = PurePosixPath(os.environ.get("HUMANOID_ROBOT_DIR", "/opt/humanoid"))
+    root = PurePosixPath(os.environ.get(EnvironmentVariable.ROBOT_DIR, DEFAULT_ROBOT_DIR))
     relay = Path(__file__).with_name("relay.py").read_text()
     remote = shlex.join(
         [str(root / ".venv/bin/python"), "-u", "-c", relay, *(t.value for t in _CHANNELS)]
@@ -116,7 +116,8 @@ def ssh_frames(host: str) -> Iterator[Receive]:
             chunk = os.read(stream.fileno(), 65536)
             if not chunk:
                 raise RuntimeError(
-                    f"Viewer stream from {host} closed. Check SSH and HUMANOID_ROBOT_DIR."
+                    f"Viewer stream from {host} closed. "
+                    f"Check SSH and {EnvironmentVariable.ROBOT_DIR}."
                 )
             pending.extend(chunk)
             lines = pending.split(b"\n")

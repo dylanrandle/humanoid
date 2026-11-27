@@ -112,21 +112,24 @@ export LCM_DEFAULT_URL='mpudpm://239.255.76.67:7667?ttl=1&recv_buf_size=8388608'
 
 ### Agent control API
 
-Start **Agent API** under **Control inputs** in the operator console, then select
-**Autonomy** to let an agent control the robot through HTTP. Agents can read state and RGB-D frames, move the tool or
+The dashboard and agents share one backend in `humanoid.api`. State and RGB-D captures are
+available while the stack runs, independently of the motion policy. Start **API**
+under **Control inputs** in the operator console, then select
+**API** to let an agent control the robot through HTTP. Agents can read state and RGB-D frames, move the tool or
 mobile base, set the gripper, and cancel motion. The Python client is
-`AgentControlClient`. See the [MuJoCo quickstart and HTTP contract](src/humanoid/agent/README.md).
+`RobotClient`. See the [MuJoCo quickstart and HTTP contract](src/humanoid/agent/README.md).
 
 The **Triskel agent** panel uses your ChatGPT account to answer questions about
-the live camera and robot state in Idle and run bounded motion tasks in Autonomy.
+the live camera and robot state in Idle and run bounded motion tasks in API.
 See the [operator workflow](src/humanoid/agent/README.md#triskel-agent-harness).
 
 ### RGB and depth cameras
 
 The camera driver starts automatically with real hardware. Triskel simulation renders
-RGB and native depth from the URDF camera frames. The console displays both views,
+RGB and native depth from the URDF camera frames. The console streams both views over WebRTC,
 with an adjustable depth color scale and stale-stream indicators. Depth is not aligned
-to RGB; black means no depth measurement.
+to RGB; black means no depth measurement. The agent API retains synchronized snapshots
+and metric depth. See [backend structure and streaming configuration](src/humanoid/api/README.md).
 
 Defaults are 640 × 480 at 30 FPS, configured in
 [`src/humanoid/config/camera.py`](src/humanoid/config/camera.py). The official

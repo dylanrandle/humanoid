@@ -25,9 +25,8 @@ from humanoid.state_estimation.root.wheel_dead_reckoning import (
     WheelDeadReckoningRootStateEstimatorConfig,
 )
 from humanoid.types.actuator import ActuatorControlMode, ActuatorHardwareConfig, JointDriveConfig
-from humanoid.types.camera import RobotCameraConfig
+from humanoid.types.camera import DepthCamera, RobotCameraConfig
 from humanoid.types.controllers import OmniwheelBaseConfig, OperationalSpaceConfig
-from humanoid.types.depth import DepthCamera
 from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import (
     CartesianVelocityLimits,

@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-HUMANOID_DATA_DIR_ENVIRONMENT_VARIABLE = "HUMANOID_DATA_DIR"
+from humanoid.constants import EnvironmentVariable
 
 
 def find_repo_root(start: str | Path | None = None) -> Path:
@@ -23,7 +23,7 @@ def find_repo_root(start: str | Path | None = None) -> Path:
 
 def find_data_root(start: str | Path | None = None) -> Path:
     """Find the persistent data root in development and installed environments."""
-    configured_root = os.getenv(HUMANOID_DATA_DIR_ENVIRONMENT_VARIABLE)
+    configured_root = os.getenv(EnvironmentVariable.DATA_DIR)
     if configured_root:
         return Path(configured_root).expanduser().resolve()
 

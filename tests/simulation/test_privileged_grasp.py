@@ -22,6 +22,8 @@ from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.robot import RobotConfig, RobotName
 from humanoid.types.simulation import SimulationScene
 
+GRASP_OUTPUT_ENVIRONMENT_VARIABLE = "HUMANOID_GRASP_OUTPUT"
+
 MIN_LIFT_M = 0.060
 HOLD_SECONDS = 10.0
 MAX_HOLD_HEIGHT_RANGE_M = 0.002
@@ -349,7 +351,7 @@ def test_privileged_floor_pickup(
     commands, interval = approach.close_commands(rig, width)
 
     with ExitStack() as stack:
-        output = os.getenv("HUMANOID_GRASP_OUTPUT")
+        output = os.getenv(GRASP_OUTPUT_ENVIRONMENT_VARIABLE)
         directory = "" if approach.travel is None else f"close-{approach.travel:.0%}"
         save_frame = (
             record_trial(stack, rig, name, Path(output) / directory)

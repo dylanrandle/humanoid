@@ -20,7 +20,7 @@ from humanoid.robots.utils.controller_tracking.report import (
 )
 from humanoid.robots.utils.controller_tracking.timing import _native_joint_sample
 from humanoid.types.actuator import ActuatorEffortLimits, ActuatorEffortSource
-from humanoid.types.controller_tracking import ActuatorEffortTrace
+from humanoid.types.controllers import ActuatorEffortTrace
 from humanoid.types.homing import HomingPreset
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.robot import RobotState

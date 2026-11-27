@@ -41,7 +41,7 @@ from humanoid.robots.utils.controller_tracking.smoothness import (
     smoothness_metrics,
 )
 from humanoid.types.actuator import ActuatorEffortLimits
-from humanoid.types.controller_tracking import (
+from humanoid.types.controllers import (
     ActuatorEffortTrace,
     ControllerCommandTiming,
     JointSmoothnessStatistics,

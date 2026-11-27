@@ -5,32 +5,26 @@ from unittest.mock import MagicMock
 import pytest
 from flask.testing import FlaskClient
 
-from humanoid.orchestrator.service import OrchestratorService
+from humanoid.api.application import BackendApplication
+from humanoid.api.server import create_app
+from humanoid.config.api import MAX_REQUEST_BYTES
 from humanoid.types.actuator import ActuatorHealth, ActuatorHealthStatus
+from humanoid.types.api import ApiKey, ApiRoute, BackendError, BackendStatus, SafetyContext
 from humanoid.types.homing import HomingPreset
 from humanoid.types.host import HostResourceStatus
-from humanoid.types.logging import (
-    ApplicationLogEntry,
-    ApplicationLogSnapshot,
-    LoggingState,
-    LoggingStatus,
-)
+from humanoid.types.logs import LogEntry, LogSnapshot
 from humanoid.types.node import NodeRateStatus
 from humanoid.types.orchestrator import (
     Mode,
-    OrchestratorError,
     OrchestratorParameter,
     OrchestratorRequest,
     OrchestratorState,
-    OrchestratorStatus,
-    SafetyContext,
 )
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
+from humanoid.types.recording import RecordingState, RecordingStatus
 from humanoid.types.replay import RecordingSummary, ReplayStatus
 from humanoid.types.robot import RobotName
 from humanoid.types.simulation import SimulationScene
-from humanoid.ui.constants import ApiRoute, PayloadKey
-from humanoid.ui.server import create_app
 
 
 @dataclass(frozen=True)
@@ -44,7 +38,7 @@ class RouteCase:
 
 @pytest.fixture
 def server_client() -> tuple[MagicMock, FlaskClient]:
-    service = MagicMock(spec=OrchestratorService)
+    service = MagicMock(spec=BackendApplication)
     service.status.return_value = {"runtime": Runtime.SIM}
     app = create_app(service)
     app.config["TESTING"] = True
@@ -53,9 +47,9 @@ def server_client() -> tuple[MagicMock, FlaskClient]:
 
 def _safety_payload(*, acknowledged: bool = False) -> dict[str, object]:
     return {
-        PayloadKey.EXPECTED_RUNTIME.value: Runtime.SIM,
-        PayloadKey.EXPECTED_ROBOT.value: RobotName.TRISKEL,
-        PayloadKey.REAL_HARDWARE_ACKNOWLEDGED.value: acknowledged,
+        ApiKey.EXPECTED_RUNTIME.value: Runtime.SIM,
+        ApiKey.EXPECTED_ROBOT.value: RobotName.TRISKEL,
+        ApiKey.REAL_HARDWARE_ACKNOWLEDGED.value: acknowledged,
     }
 
 
@@ -76,14 +70,14 @@ def test_serves_split_ui_assets(server_client):
     assert b'id="robot-select"' in response.data
     assert b'data-orchestrator-mode="homing"' in response.data
     assert b'data-orchestrator-preset="home"' in response.data
-    assert b'data-logging-action="start"' in response.data
-    assert b'data-logging-action="stop"' in response.data
+    assert b'data-recording-action="start"' in response.data
+    assert b'data-recording-action="stop"' in response.data
     assert b'id="replay-recording"' in response.data
     assert b'id="replay-action"' in response.data
     assert b'id="node-rate-list"' in response.data
     assert b'id="actuator-health-list"' in response.data
     assert b'id="actuator-health-error"' in response.data
-    assert b'id="application-log-output"' in response.data
+    assert b'id="log-output"' in response.data
     assert b'role="region"' in response.data
     assert b'role="log"' not in response.data
     assert b"Home and Rest stay highlighted" not in response.data
@@ -112,7 +106,7 @@ def test_serves_split_ui_assets(server_client):
 
     response = client.get("/css/logs.css")
     assert response.status_code == HTTPStatus.OK
-    assert b".application-log-output" in response.data
+    assert b".log-output" in response.data
     assert b"overflow-y: scroll" in response.data
     assert b"scrollbar-gutter: stable" in response.data
 
@@ -129,16 +123,16 @@ def test_routes_status(server_client):
     service.status.assert_called_once_with()
 
 
-def test_routes_incremental_application_logs(server_client):
+def test_routes_incremental_logs(server_client):
     service, client = server_client
-    service.application_logs.return_value = ApplicationLogSnapshot(
+    service.logs.return_value = LogSnapshot(
         cursor=4,
-        entries=[ApplicationLogEntry(cursor=4, message="[INFO] Stack started")],
+        entries=[LogEntry(cursor=4, message="[INFO] Stack started")],
         reset=False,
         capacity=200,
     )
 
-    response = client.get(f"{ApiRoute.APPLICATION_LOGS}?after=3")
+    response = client.get(f"{ApiRoute.LOGS}?after=3")
 
     assert response.status_code == HTTPStatus.OK
     assert response.json == {
@@ -147,23 +141,23 @@ def test_routes_incremental_application_logs(server_client):
         "reset": False,
         "capacity": 200,
     }
-    service.application_logs.assert_called_once_with(3)
+    service.logs.assert_called_once_with(3)
 
 
 @pytest.mark.parametrize("cursor", ["-1", "invalid"])
-def test_rejects_invalid_application_log_cursor(server_client, cursor):
+def test_rejects_invalid_log_cursor(server_client, cursor):
     service, client = server_client
 
-    response = client.get(f"{ApiRoute.APPLICATION_LOGS}?after={cursor}")
+    response = client.get(f"{ApiRoute.LOGS}?after={cursor}")
 
     assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json["ok"] is False
-    service.application_logs.assert_not_called()
+    service.logs.assert_not_called()
 
 
 def test_serializes_orchestrator_status_dataclass(server_client):
     service, client = server_client
-    service.status.return_value = OrchestratorStatus(
+    service.status.return_value = BackendStatus(
         host_resources=HostResourceStatus(25.0, 50.0, 4096, 8192),
         runtime=Runtime.SIM,
         robot=RobotName.PANDA,
@@ -216,9 +210,9 @@ def test_serializes_orchestrator_status_dataclass(server_client):
             ),
             error="Incomplete actuator feedback.",
         ),
-        logging=LoggingStatus(
+        recording=RecordingStatus(
             timestamp=1.0,
-            state=LoggingState.RUNNING,
+            state=RecordingState.RUNNING,
             file_name="logs/lcmlog_20260101",
         ),
         recordings=[
@@ -304,7 +298,7 @@ def test_serializes_orchestrator_status_dataclass(server_client):
             ],
             "error": "Incomplete actuator feedback.",
         },
-        "logging": {
+        "recording": {
             "timestamp": 1.0,
             "state": "running",
             "file_name": "logs/lcmlog_20260101",
@@ -338,21 +332,21 @@ def test_serializes_orchestrator_status_dataclass(server_client):
     [
         RouteCase(
             path=ApiRoute.RUNTIME,
-            payload={PayloadKey.RUNTIME: "real", **_safety_payload(acknowledged=True)},
+            payload={ApiKey.RUNTIME: "real", **_safety_payload(acknowledged=True)},
             method_name="set_runtime",
             arguments=(Runtime.REAL, _safety_context(acknowledged=True)),
             result={"runtime": "real"},
         ),
         RouteCase(
             path=ApiRoute.SCENE,
-            payload={PayloadKey.SCENE: "toy_cleanup", **_safety_payload()},
+            payload={ApiKey.SCENE: "toy_cleanup", **_safety_payload()},
             method_name="set_scene",
             arguments=(SimulationScene.TOY_CLEANUP, _safety_context()),
             result={"scene": "toy_cleanup"},
         ),
         RouteCase(
             path=ApiRoute.ROBOT,
-            payload={PayloadKey.ROBOT: "panda", **_safety_payload()},
+            payload={ApiKey.ROBOT: "panda", **_safety_payload()},
             method_name="set_robot",
             arguments=(RobotName.PANDA, _safety_context()),
             result={"robot": "panda"},
@@ -372,36 +366,43 @@ def test_serializes_orchestrator_status_dataclass(server_client):
             result={"keyboard": "stopped"},
         ),
         RouteCase(
-            path="/api/logging/start",
+            path="/api/recordings/toggle",
             payload={},
-            method_name="set_logging",
-            arguments=(ProcessAction.START,),
-            result={"logging": "started"},
+            method_name="toggle_recording",
+            arguments=(),
+            result={"state": "running", "file_name": "recording.lcm"},
         ),
         RouteCase(
-            path="/api/logging/start",
-            payload={"episode_id": "one", "session_id": "agent"},
-            method_name="set_episode_logging",
+            path="/api/recordings/start",
+            payload={},
+            method_name="set_recording",
+            arguments=(ProcessAction.START,),
+            result={"recording": "started"},
+        ),
+        RouteCase(
+            path="/api/recordings/start",
+            payload={"episode_id": "one", "runtime_id": "agent"},
+            method_name="set_episode_recording",
             arguments=(ProcessAction.START, "one", "agent"),
             result={"state": "running", "file_name": "recording.lcm"},
         ),
         RouteCase(
-            path="/api/logging/stop",
+            path="/api/recordings/stop",
             payload={},
-            method_name="set_logging",
+            method_name="set_recording",
             arguments=(ProcessAction.STOP,),
-            result={"logging": "stopping"},
+            result={"recording": "stopping"},
         ),
         RouteCase(
-            path="/api/logging/stop",
-            payload={"episode_id": "one", "session_id": "agent"},
-            method_name="set_episode_logging",
+            path="/api/recordings/stop",
+            payload={"episode_id": "one", "runtime_id": "agent"},
+            method_name="set_episode_recording",
             arguments=(ProcessAction.STOP, "one", "agent"),
             result={"state": "stopped", "file_name": "recording.lcm"},
         ),
         RouteCase(
             path="/api/replay/start",
-            payload={PayloadKey.RECORDING: "recording_1", **_safety_payload()},
+            payload={ApiKey.RECORDING: "recording_1", **_safety_payload()},
             method_name="start_replay",
             arguments=("recording_1", _safety_context()),
             result={"replay": "running"},
@@ -415,7 +416,7 @@ def test_serializes_orchestrator_status_dataclass(server_client):
         ),
         RouteCase(
             path=ApiRoute.ORCHESTRATOR,
-            payload={PayloadKey.MODE: "homing", PayloadKey.PARAMETERS: {"preset": "home"}},
+            payload={ApiKey.MODE: "homing", ApiKey.PARAMETERS: {"preset": "home"}},
             method_name="request_mode",
             arguments=(
                 OrchestratorRequest(
@@ -446,18 +447,18 @@ def test_routes_typed_control_actions(
     "payload",
     [
         {"episode_id": "one"},
-        {"session_id": "agent"},
-        {"episode_id": "", "session_id": "agent"},
-        {"episode_id": "one", "session_id": None},
+        {"runtime_id": "agent"},
+        {"episode_id": "", "runtime_id": "agent"},
+        {"episode_id": "one", "runtime_id": None},
         {"epsiode_id": "one"},
     ],
 )
 def test_malformed_episode_stop_never_stops_manual_recording(server_client, payload):
     service, client = server_client
-    response = client.post("/api/logging/stop", json=payload)
+    response = client.post("/api/recordings/stop", json=payload)
     assert response.status_code == HTTPStatus.BAD_REQUEST
-    service.set_logging.assert_not_called()
-    service.set_episode_logging.assert_not_called()
+    service.set_recording.assert_not_called()
+    service.set_episode_recording.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -503,7 +504,7 @@ def test_malformed_episode_stop_never_stops_manual_recording(server_client, payl
         ("/api/processes/unknown/start", "{}", "application/json", HTTPStatus.NOT_FOUND),
         ("/api/processes/stack/restart", "{}", "application/json", HTTPStatus.NOT_FOUND),
         ("/api/processes/replay/start", "{}", "application/json", HTTPStatus.NOT_FOUND),
-        ("/api/logging/restart", "{}", "application/json", HTTPStatus.NOT_FOUND),
+        ("/api/recordings/restart", "{}", "application/json", HTTPStatus.NOT_FOUND),
         ("/api/replay/restart", "{}", "application/json", HTTPStatus.NOT_FOUND),
         ("/api/replay/start", "{}", "application/json", HTTPStatus.BAD_REQUEST),
         ("/api/unknown", "{}", "application/json", HTTPStatus.NOT_FOUND),
@@ -529,7 +530,7 @@ def test_rejects_oversized_requests(server_client):
 
     response = client.post(
         ApiRoute.ORCHESTRATOR,
-        data=b"x" * (16 * 1024 + 1),
+        data=b"x" * (MAX_REQUEST_BYTES + 1),
         content_type="application/json",
     )
 
@@ -550,7 +551,7 @@ def test_rejects_non_local_requests(server_client, headers):
 
     response = client.post(
         ApiRoute.RUNTIME,
-        json={PayloadKey.RUNTIME: "sim"},
+        json={ApiKey.RUNTIME: "sim"},
         headers=headers,
     )
 
@@ -561,7 +562,7 @@ def test_rejects_non_local_requests(server_client, headers):
 
 def test_service_error_returns_conflict(server_client):
     service, client = server_client
-    service.start_process.side_effect = OrchestratorError("stack unavailable")
+    service.start_process.side_effect = BackendError("stack unavailable")
 
     response = client.post("/api/processes/stack/start", json=_safety_payload())
 
@@ -571,7 +572,7 @@ def test_service_error_returns_conflict(server_client):
 
 def test_external_stack_status_returns_conflict(server_client):
     service, client = server_client
-    service.status.side_effect = OrchestratorError(
+    service.status.side_effect = BackendError(
         "Another stack is already broadcasting. Stop it before using this console."
     )
 
@@ -602,27 +603,6 @@ def test_static_path_cannot_escape_ui_directory(server_client):
     assert response.status_code == HTTPStatus.NOT_FOUND
 
 
-def test_routes_camera_previews(server_client):
-    service, client = server_client
-    service.camera_previews.return_value = {
-        name: {"rgb": {"connected": False}, "depth": {"connected": False}}
-        for name in ("base", "wrist")
-    }
-    response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far=5")
-    assert response.status_code == HTTPStatus.OK
-    assert response.json == service.camera_previews.return_value
-    assert response.headers["Cache-Control"] == "no-store"
-    service.camera_previews.assert_called_once_with(5.0)
-
-
-@pytest.mark.parametrize("value", ["bad", "nan", "inf", "0", "-1", "999"])
-def test_rejects_invalid_preview_range(server_client, value):
-    service, client = server_client
-    response = client.get(f"{ApiRoute.CAMERA_PREVIEWS}?depth_far={value}")
-    assert response.status_code == HTTPStatus.BAD_REQUEST
-    service.camera_previews.assert_not_called()
-
-
 def test_run_agent_uses_operator_configuration_and_mode(server_client):
     service, client = server_client
     service.run_agent.return_value = {"phase": "running"}
@@ -642,3 +622,21 @@ def test_run_agent_uses_operator_configuration_and_mode(server_client):
         == HTTPStatus.BAD_REQUEST
     )
     service.run_agent.assert_called_once()
+
+
+def test_recording_status_is_available_without_robot_observations(server_client):
+    service, client = server_client
+    service.recording_status.return_value = RecordingStatus(
+        timestamp=1, state=RecordingState.STOPPED
+    )
+    response = client.get("/api/recordings")
+    assert response.status_code == HTTPStatus.OK
+    assert response.json["status"]["state"] == "stopped"
+    service.recording_status.assert_called_once_with()
+
+
+def test_toggle_rejects_episode_payload(server_client):
+    service, client = server_client
+    response = client.post("/api/recordings/toggle", json={"episode_id": "other"})
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    service.toggle_recording.assert_not_called()

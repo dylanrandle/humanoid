@@ -8,16 +8,11 @@ from typing import Protocol, TypedDict
 import mujoco
 from pydantic import JsonValue
 
-from humanoid.types.agent import (
-    AgentDecision,
-    AgentFeedback,
-    DecisionContext,
-    MotionCall,
-    MotionResult,
-    ObservationStatus,
-)
+from humanoid.types.agent import AgentDecision, AgentFeedback, DecisionContext
+from humanoid.types.motion import MotionResult
+from humanoid.types.observation import ObservationSummary
 from humanoid.types.simulation import SimulationScene
-from humanoid.types.tools import ToolModel
+from humanoid.types.tools import MotionCall, ToolError, ToolModel
 
 
 class TrialSubmission(ToolModel):
@@ -29,11 +24,7 @@ class TrialStep(ToolModel):
     memory: dict[str, object]
 
 
-class TrialMotionError(TypedDict):
-    error: str
-
-
-type TrialFeedback = MotionResult | TrialMotionError
+type TrialFeedback = MotionResult | ToolError
 
 
 class ControllerImage(TypedDict):
@@ -42,7 +33,7 @@ class ControllerImage(TypedDict):
     raw_depth_m: list[list[float]]
 
 
-class TrialObservation(ObservationStatus):
+class TrialObservation(ObservationSummary):
     seconds_remaining: float
     images: dict[str, ControllerImage]
     last_result: TrialFeedback | None

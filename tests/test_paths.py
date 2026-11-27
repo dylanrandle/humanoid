@@ -2,8 +2,8 @@ import sys
 
 import pytest
 
+from humanoid.constants import EnvironmentVariable
 from humanoid.utils.paths import (
-    HUMANOID_DATA_DIR_ENVIRONMENT_VARIABLE,
     find_data_root,
     find_repo_root,
 )
@@ -45,7 +45,7 @@ def test_default_start_uses_current_directory(monkeypatch, tmp_path):
 
 def test_data_root_prefers_environment_override(monkeypatch, tmp_path):
     configured_root = tmp_path / "data"
-    monkeypatch.setenv(HUMANOID_DATA_DIR_ENVIRONMENT_VARIABLE, str(configured_root))
+    monkeypatch.setenv(EnvironmentVariable.DATA_DIR, str(configured_root))
 
     assert find_data_root(tmp_path) == configured_root.resolve()
 
@@ -55,7 +55,7 @@ def test_data_root_uses_virtual_environment_parent_without_repo(monkeypatch, tmp
     module = install_root / ".venv" / "lib" / "python3.12" / "site-packages" / "module.py"
     module.parent.mkdir(parents=True)
     module.touch()
-    monkeypatch.delenv(HUMANOID_DATA_DIR_ENVIRONMENT_VARIABLE, raising=False)
+    monkeypatch.delenv(EnvironmentVariable.DATA_DIR, raising=False)
     monkeypatch.setattr(sys, "prefix", str(install_root / ".venv"))
     monkeypatch.setattr(sys, "base_prefix", "/usr")
 

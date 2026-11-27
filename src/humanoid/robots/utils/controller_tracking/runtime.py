@@ -33,7 +33,7 @@ from humanoid.robots.utils.controller_tracking.trajectory import (
     figure_eight_pose,
     figure_eight_velocity,
 )
-from humanoid.types.controller_tracking import ControllerCommandTiming
+from humanoid.types.controllers import ControllerCommandTiming
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import (
     CartesianVelocity,

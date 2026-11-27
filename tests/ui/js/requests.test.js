@@ -3,16 +3,16 @@ import test from "node:test";
 
 import { ProcessName, Runtime } from "../../../src/humanoid/ui/static/js/constants.js";
 import {
-  loggingRequest,
+  recordingRequest,
   processRequest,
   replayRequest,
   robotRequest,
   runtimeRequest,
 } from "../../../src/humanoid/ui/static/js/requests.js";
 
-test("logging controls use the dedicated start and stop endpoints", () => {
-  assert.deepEqual(loggingRequest("start"), { path: "/api/logging/start", payload: {} });
-  assert.deepEqual(loggingRequest("stop"), { path: "/api/logging/stop", payload: {} });
+test("recording controls use the dedicated start and stop endpoints", () => {
+  assert.deepEqual(recordingRequest("start"), { path: "/api/recordings/start", payload: {} });
+  assert.deepEqual(recordingRequest("stop"), { path: "/api/recordings/stop", payload: {} });
 });
 
 function snapshot(runtime = Runtime.SIM) {

@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 from humanoid.constants import Topic
 from humanoid.middleware.subscriber import Subscriber
-from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
+from humanoid.telemetry.actuator import ActuatorHealthMonitor
 from humanoid.types.actuator import ActuatorHealth, ActuatorHealthReport
 
 EXPECTED_TEMPERATURE_CELSIUS = 31.0

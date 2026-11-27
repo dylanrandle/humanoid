@@ -21,14 +21,8 @@ from openai_codex import (
 from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue
 from pydantic_core import core_schema
 
-from humanoid.types.agent import (
-    AgentDecision,
-    Decision,
-    DecisionContext,
-    MotionCall,
-    PerceptionCall,
-    TimeBudget,
-)
+from humanoid.types.agent import AgentDecision, Decision, DecisionContext, TimeBudget
+from humanoid.types.tools import MotionCall, PerceptionCall
 
 
 @contextmanager
@@ -99,20 +93,23 @@ def start_thread(codex: Codex, model: str) -> Thread:
             "Duration is seconds. Use the reported limits. "
             "Do not guess distances from an RGB image. Check the measured result before "
             "reporting success. When finished or unable to proceed, return a final message "
-            "with no command. In Idle or Autonomy, use the read-only segmentation tools "
+            "with no command. In Idle or API, use the read-only segmentation tools "
             "to get object masks from an RGB image. "
             "Use native RGB pixel coordinates, origin top left. segment_everything proposes "
             "numbered instances in the full frame or region_xyxy. segment_in_box outlines one "
             "target. segment_at_point selects an object at a pixel. Ask for alternatives if "
             "ambiguous. refine_mask includes or excludes selected pixels on a previous mask. "
             "Results and overlays use the pinned observation until motion or observe_again. "
-            "You see one RGB image per camera. Use read_depth with its observation_id, "
+            "You see one RGB image per camera. primary_camera names the default entry in cameras. "
+            "Read image dimensions from that camera's intrinsics.width and intrinsics.height. "
+            "Use read_depth with the camera's observation_id, "
             "view (registered or raw) and points_xy to measure axial depth in metres. "
             "Use registered for RGB pixels. For raw pixels use the raw_depth intrinsics and pose. "
             "In simulation, valid depth pixels give ground-truth distances to rendered surfaces. "
             "Skip depth completion in simulation. On hardware, RealSense depth can have holes. "
             "Use complete_depth to run CDM when missing depth matters for the task. "
-            "It needs registered_depth_available and can run before or after segmentation. "
+            "It needs cameras[name].registered_depth_available "
+            "and can run before or after segmentation. "
             "Pass RGB pixels in points_xy to read axial depths_m in metres (null if invalid). "
             "An empty list just saves the full map under the observation_id. "
             "Use the returned mask_id to identify a selection for downstream tools. "
@@ -123,6 +120,15 @@ def start_thread(codex: Codex, model: str) -> Thread:
 
 
 class _ToolSchema(GenerateJsonSchema):
+    def model_schema(self, schema: core_schema.ModelSchema) -> JsonSchemaValue:
+        result = super().model_schema(schema)
+        # Structured model replies name every field, even when API callers may omit it.
+        if "properties" in result:
+            result["required"] = list(result["properties"])
+            for field in result["properties"].values():
+                field.pop("default", None)
+        return result
+
     def tuple_schema(self, schema: core_schema.TupleSchema) -> JsonSchemaValue:
         result = super().tuple_schema(schema)
         # The model API represents homogeneous fixed-size coordinates with items + length.

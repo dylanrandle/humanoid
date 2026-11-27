@@ -11,10 +11,11 @@ import mujoco
 import pytest
 
 from humanoid.agent.harness import trial
-from humanoid.config.agent import get_agent_endpoint
+from humanoid.config.api import get_api_endpoint
 from humanoid.config.robot import PANDA_CONFIG, SO101_CONFIG, TRISKEL_CONFIG
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.constants import Topic
+from humanoid.middleware.subscriber import Subscriber
 from humanoid.recording import RecordingCatalog
 from humanoid.simulation.tasks.toy_cleanup import TOYS
 from humanoid.simulation.trial_stack import TrialStack
@@ -139,6 +140,7 @@ def test_rejected_motion_returns_feedback_and_replay_continues(tmp_path, monkeyp
             command = {"operation": "hold", "arguments": {"duration": 0}}
         elif "error" in last:
             assert "duration" in last["error"]
+            assert last["operation"] == "hold"
             command = {"operation": "hold", "arguments": {"duration": 0.1}}
         else:
             assert "elapsed_seconds" in last
@@ -171,6 +173,7 @@ def test_rejected_motion_returns_feedback_and_replay_continues(tmp_path, monkeyp
         assert result["ended_by"] == "controller_finished"
         rejected, recovered = result["trace"]
         assert "duration" in rejected["result"]["error"]
+        assert rejected["result"]["operation"] == "hold"
         assert (
             recovered["result"]["elapsed_seconds"] >= recovered["command"]["arguments"]["duration"]
         )
@@ -186,7 +189,7 @@ def test_vision_trial_rejects_robots_without_cameras(robot, backend):
             task=WaitTask(),
             robot_config=robot,
             backend=backend,
-            endpoint=get_agent_endpoint(),
+            endpoint=get_api_endpoint(),
         ),
     ):
         pass
@@ -194,14 +197,14 @@ def test_vision_trial_rejects_robots_without_cameras(robot, backend):
 
 def test_time_budget_ends_both_phases_without_dispatching_a_decision(tmp_path, monkeypatch):
     task = WaitTask()
-    agent = AgentTask(task.goal, "test", Mode.AUTONOMY, "simulation", RobotName.TRISKEL)
+    agent = AgentTask(task.goal)
     thread = Mock()
     output = tmp_path / "explore.json"
     episodes = partial(
         trial.open_episode,
         task=task,
         backend=Runtime.SIM,
-        endpoint=get_agent_endpoint(),
+        endpoint=get_api_endpoint(),
         robot_config=TRISKEL_CONFIG,
     )
     trial.explore(thread, agent, 0, output, 1e-12, episodes=episodes)
@@ -230,7 +233,7 @@ def test_trial_routes_renamed_cameras_from_robot_config():
         task=WaitTask(),
         robot_config=config,
         backend=Runtime.SIM,
-        endpoint=get_agent_endpoint(),
+        endpoint=get_api_endpoint(),
     ) as (_, tools):
         status, images = tools.observe(Mode.AUTONOMY)
         assert {name: view["model"] for name, view in status["cameras"].items()} == {
@@ -238,3 +241,30 @@ def test_trial_routes_renamed_cameras_from_robot_config():
             "inspection_2": "d405",
         }
         assert set(images) == {"chassis RGB", "inspection_2 RGB"}
+
+
+def test_api_process_crash_stops_motion_process_and_returns_robot_to_idle():
+
+    stack = TrialStack(WaitTask(), 0, robot_config=TRISKEL_CONFIG)
+    api = next(p for p in stack._children if p.name == "trial-api")
+    motion = next(p for p in stack._children if p.name == "trial-motion")
+    subscriber = Subscriber(topics=[Topic.ORCHESTRATOR_MODE], url=stack.lcm_url)
+    try:
+        api.terminate()
+        api.join(timeout=5)
+        motion.join(timeout=6)
+        assert not motion.is_alive()
+        assert motion.exitcode == 0
+        deadline = time.monotonic() + 3
+        mode = None
+        while mode is not Mode.IDLE and time.monotonic() < deadline:
+            message = subscriber.receive(Topic.ORCHESTRATOR_MODE)
+            if message is not None:
+                mode = message.mode
+            time.sleep(0.02)
+        assert mode is Mode.IDLE
+    finally:
+        subscriber.close()
+        # The deliberately terminated API has already been reaped.
+        stack._children.remove(api)
+        stack.close()

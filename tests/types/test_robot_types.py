@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from humanoid.config import ROBOT_CONFIGS
-from humanoid.constants import DEFAULT_HUMANOID_ROBOT, ROBOT_ENVIRONMENT_VARIABLE
+from humanoid.constants import DEFAULT_HUMANOID_ROBOT, EnvironmentVariable
 from humanoid.types.actuator import ActuatorControlMode, JointDriveConfig
 from humanoid.types.controllers import OmniwheelBaseConfig
 from humanoid.types.homing import HomingPreset
@@ -56,22 +56,22 @@ def test_cartesian_velocity_rejects_invalid_vectors(linear, angular):
 )
 def test_robot_environment_values(monkeypatch, value, expected):
     if value is None:
-        monkeypatch.delenv(ROBOT_ENVIRONMENT_VARIABLE, raising=False)
+        monkeypatch.delenv(EnvironmentVariable.ROBOT, raising=False)
     else:
-        monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, value)
+        monkeypatch.setenv(EnvironmentVariable.ROBOT, value)
 
     assert RobotName.from_environment() is expected
 
 
 def test_invalid_robot_environment_is_rejected(monkeypatch):
-    monkeypatch.setenv(ROBOT_ENVIRONMENT_VARIABLE, "typo")
+    monkeypatch.setenv(EnvironmentVariable.ROBOT, "typo")
 
     with pytest.raises(ValueError, match="typo"):
         RobotName.from_environment()
 
 
 def test_invalid_robot_environment_breaks_fresh_config_import():
-    environment = {**os.environ, ROBOT_ENVIRONMENT_VARIABLE: "typo"}
+    environment = {**os.environ, EnvironmentVariable.ROBOT: "typo"}
 
     result = subprocess.run(
         [

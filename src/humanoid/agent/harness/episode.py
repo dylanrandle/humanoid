@@ -1,41 +1,34 @@
-"""One trial episode through the stack's Agent API, on simulation or hardware."""
+"""One trial episode through the stack's robot API, on simulation or hardware."""
 
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, ExitStack, closing, contextmanager
 from pathlib import Path
 
-from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness.recording import record_lcm_episode
 from humanoid.agent.harness.robot import RobotTools
-from humanoid.config.agent import (
-    DEFAULT_MOTION_TIMEOUT_SECONDS,
-    DEFAULT_TRIAL_CONSOLE_URL,
-    TRIAL_CAPTURE_POLL_INTERVAL_SECONDS,
-    TRIAL_CAPTURE_TIMEOUT_SECONDS,
-)
+from humanoid.api.clients.robot import RobotClient
+from humanoid.config.agent import TRIAL_CAPTURE_POLL_INTERVAL_SECONDS, TRIAL_CAPTURE_TIMEOUT_SECONDS
+from humanoid.config.motion import DEFAULT_MOTION_TIMEOUT_SECONDS
 from humanoid.recording import DEFAULT_RECORDING_ROOT
 from humanoid.robots.base import Robot
 from humanoid.simulation.trial_stack import TrialStack
-from humanoid.types.agent import AgentControlEndpoint, ControlOperation, MotionResult, TimeBudget
+from humanoid.types.agent import TimeBudget
+from humanoid.types.api import ApiEndpoint
 from humanoid.types.camera import HardwareCameraConfig
+from humanoid.types.motion import ControlOperation, MotionResult
 from humanoid.types.observation import CameraCaptures, Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotConfig
-from humanoid.types.trial import (
-    EpisodeScorer,
-    SimulationTask,
-    TaskScore,
-    TrialMotionError,
-    TrialTraceEntry,
-)
+from humanoid.types.tools import ToolError
+from humanoid.types.trial import EpisodeScorer, SimulationTask, TaskScore, TrialTraceEntry
 
 
 class Episode:
     def __init__(
         self,
-        client: AgentControlClient,
+        client: RobotClient,
         robot_config: RobotConfig,
         *,
         backend: Runtime,
@@ -51,9 +44,9 @@ class Episode:
         self._recording = ExitStack()
         self.lcm_recording: str | None = None
 
-    def start_recording(self, console_url: str) -> None:
+    def start_recording(self) -> None:
         self.lcm_recording = self._recording.enter_context(
-            record_lcm_episode(console_url, self.client.session_id)
+            record_lcm_episode(self.client.endpoint.url, self.client.runtime_id)
         )
 
     def release(self) -> None:
@@ -119,7 +112,9 @@ class Episode:
         try:
             result = self.client.execute(operation, arguments, timeout=timeout)
         except (RuntimeError, ValueError) as exc:
-            self.trace.append({"command": call, "result": TrialMotionError(error=str(exc))})
+            self.trace.append(
+                {"command": call, "result": ToolError(operation=operation, error=str(exc))}
+            )
             if self.timer:
                 self.timer.remaining()
             raise
@@ -152,11 +147,10 @@ def open_episode(  # noqa: PLR0913 - task and backend attachment settings
     task: SimulationTask,
     robot_config: RobotConfig,
     backend: Runtime,
-    endpoint: AgentControlEndpoint,
+    endpoint: ApiEndpoint,
     score_fn: EpisodeScorer | None = None,
     record: bool = False,
     recording_root: Path = DEFAULT_RECORDING_ROOT,
-    console_url: str = DEFAULT_TRIAL_CONSOLE_URL,
 ) -> Iterator[tuple[Episode, RobotTools]]:
     robot = Robot(robot_config)
     with ExitStack() as resources:
@@ -185,10 +179,10 @@ def open_episode(  # noqa: PLR0913 - task and backend attachment settings
                 raise ValueError(
                     f"The vision trial requires a hardware RGB-D camera on {robot_config.name}."
                 )
-            client = resources.enter_context(closing(AgentControlClient(endpoint)))
+            client = resources.enter_context(closing(RobotClient(endpoint)))
             client.wait_until_ready()
             input(
-                f"Set up physical episode {seed}, home the robot, and select Autonomy. "
+                f"Set up physical episode {seed}, home the robot, and select API. "
                 "Press Enter when ready. "
             )
             episode = Episode(client, robot_config, backend=backend, score_fn=score_fn)
@@ -196,8 +190,8 @@ def open_episode(  # noqa: PLR0913 - task and backend attachment settings
             if any(
                 measured.mode is not Mode.AUTONOMY for measured, _ in episode.capture().values()
             ):
-                raise RuntimeError("Select Autonomy on the robot before starting the episode.")
+                raise RuntimeError("Select API on the robot before starting the episode.")
             if record:
-                episode.start_recording(console_url)
+                episode.start_recording()
         tools = resources.enter_context(closing(RobotTools(episode, robot)))
         yield episode, tools

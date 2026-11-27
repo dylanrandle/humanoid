@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from humanoid.orchestrator.monitor import host
+from humanoid.telemetry import host
 
 
 @pytest.fixture

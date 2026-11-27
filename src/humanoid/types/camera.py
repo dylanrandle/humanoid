@@ -5,13 +5,16 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import cache
-from typing import Literal, NewType, Protocol, assert_never
+from typing import Literal, NewType, Protocol, TypedDict, assert_never
 
 import numpy as np
 
-from humanoid.types.depth import DepthCamera
-
 MAX_FOV_DEGREES = 180
+
+
+class DepthCamera(StrEnum):
+    D405 = "d405"
+    D435 = "d435"
 
 
 class DepthView(StrEnum):
@@ -231,32 +234,11 @@ class CameraSource(Protocol):
 
 
 @dataclass(frozen=True, kw_only=True)
-class CameraPreviewConfig:
+class CameraDisplayConfig:
     max_age_seconds: float
-    max_width: int
-    jpeg_quality: int
     depth_near_meters: float
     depth_ranges_meters: tuple[float, ...]
     default_depth_far_meters: float
-
-
-@dataclass(frozen=True, kw_only=True)
-class CameraPreview:
-    connected: bool
-    age_seconds: float | None = None
-    image: str | None = None
-    width: int | None = None
-    height: int | None = None
-    frame_id: str | None = None
-    frame_number: int | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class CameraPreviewSnapshot:
-    rgb: CameraPreview
-    depth: CameraPreview
-    depth_near_meters: float
-    depth_far_meters: float
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -292,3 +274,37 @@ def camera_topics(name: str) -> CameraTopics:
         CameraTopic(f"{prefix}/DEPTH", CameraImage, CameraEncoding.DEPTH16),
         CameraTopic(f"{prefix}/REGISTERED_DEPTH", RegisteredDepth),
     )
+
+
+class PoseRecord(TypedDict):
+    position_m: list[float]
+    quaternion_xyzw: list[float]
+
+
+class CameraIntrinsicsSummary(TypedDict):
+    width: int
+    height: int
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    distortion_model: str
+    distortion_coefficients: tuple[float, ...]
+
+
+class OpticalCalibration(TypedDict):
+    optical_frame: str
+    camera_pose: PoseRecord
+    intrinsics: CameraIntrinsicsSummary
+
+
+class CameraSummary(OpticalCalibration):
+    """JSON-friendly calibration and metadata for one pinned camera view."""
+
+    model: str | None
+    observation_id: ObservationId
+    frame_number: int
+    device_timestamp: float
+    timestamp_domain: str
+    raw_depth: OpticalCalibration | None
+    registered_depth_available: bool

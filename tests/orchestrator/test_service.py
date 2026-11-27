@@ -1,10 +1,11 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, closing
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 from typing import cast
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 import lcm
 import numpy as np
@@ -12,44 +13,31 @@ import pytest
 from werkzeug.serving import make_server
 
 from humanoid.agent.harness.recording import record_lcm_episode
+from humanoid.api.application import BackendApplication
+from humanoid.api.server import create_app
+from humanoid.api.services.logs import LogService
+from humanoid.api.services.recording import RecordingService
+from humanoid.api.services.replay import ReplayManager, ReplayManagerError
 from humanoid.config import ROBOT_CONFIGS
+from humanoid.config.backend import INPUT_PROCESSES
 from humanoid.constants import Topic, private_lcm_url
 from humanoid.middleware.publisher import Publisher
-from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.manager import NodeManager, NodeManagerError
-from humanoid.nodes.robot.logger import RobotLoggerNode
 from humanoid.orchestrator.client import OrchestratorClient
-from humanoid.orchestrator.constants import INPUT_PROCESSES
-from humanoid.orchestrator.monitor.actuator import ActuatorHealthMonitor
-from humanoid.orchestrator.monitor.application_log import ApplicationLogMonitor
-from humanoid.orchestrator.monitor.logging import LoggingMonitor
 from humanoid.orchestrator.monitor.mode import ModeMonitor
-from humanoid.orchestrator.monitor.node import NodeRateMonitor
-from humanoid.orchestrator.replay import ReplayManager, ReplayManagerError
-from humanoid.orchestrator.service import OrchestratorService
 from humanoid.recording import RecordingCatalog, RecordingError
+from humanoid.telemetry.actuator import ActuatorHealthMonitor
+from humanoid.telemetry.node import NodeRateMonitor
 from humanoid.types.actuator import ActuatorHealthStatus
+from humanoid.types.api import BackendError, SafetyContext
 from humanoid.types.homing import HomingPreset
-from humanoid.types.logging import (
-    ApplicationLogEntry,
-    ApplicationLogSnapshot,
-    LoggingState,
-    LoggingStatus,
-)
-from humanoid.types.orchestrator import (
-    Mode,
-    ModeStatus,
-    OrchestratorError,
-    OrchestratorParameter,
-    OrchestratorRequest,
-    SafetyContext,
-)
+from humanoid.types.logs import LogEntry, LogSnapshot
+from humanoid.types.orchestrator import Mode, ModeStatus, OrchestratorParameter, OrchestratorRequest
 from humanoid.types.process import ProcessAction, ProcessName, ProcessStatus, Runtime
+from humanoid.types.recording import RecordingOwner, RecordingState, RecordingStatus
 from humanoid.types.replay import RecordingBundle, RecordingSummary, ReplayOutcome, ReplayStatus
 from humanoid.types.robot import RobotName
 from humanoid.types.simulation import SimulationScene
-from humanoid.ui.server import create_app
-from humanoid.utils.loop import loop_at_rate
 
 
 def _process_status(running: bool = False) -> ProcessStatus:
@@ -86,7 +74,7 @@ def _make_service(
     oculus: bool = False,
     connected: bool = False,
     mode: Mode | None = None,
-) -> tuple[OrchestratorService, MagicMock, MagicMock, MagicMock]:
+) -> tuple[BackendApplication, MagicMock, MagicMock, MagicMock]:
     manager = MagicMock(spec=NodeManager)
     manager.runtime = Runtime.SIM
     manager.robot = RobotName.TRISKEL
@@ -112,10 +100,10 @@ def _make_service(
         exit_code=None,
         last_output=None,
     )
-    logging_monitor = MagicMock(spec=LoggingMonitor)
-    logging_monitor.snapshot.return_value = LoggingStatus(
+    recording = MagicMock(spec=RecordingService)
+    recording.snapshot.return_value = RecordingStatus(
         timestamp=0.0,
-        state=LoggingState.STOPPED,
+        state=RecordingState.STOPPED,
     )
     node_rate_monitor = MagicMock(spec=NodeRateMonitor)
     node_rate_monitor.snapshot.return_value = []
@@ -126,26 +114,32 @@ def _make_service(
         age_seconds=None,
         actuators=(),
     )
-    application_log_monitor = MagicMock(spec=ApplicationLogMonitor)
-    application_log_monitor.snapshot.return_value = ApplicationLogSnapshot(
+    log_service = MagicMock(spec=LogService)
+    log_service.snapshot.return_value = LogSnapshot(
         cursor=0,
         entries=[],
         reset=False,
         capacity=200,
     )
-    service = OrchestratorService(
-        node_manager=manager,
-        orchestrator_client=client,
-        mode_monitor=monitor,
-        logging_monitor=logging_monitor,
-        node_rate_monitor=node_rate_monitor,
-        actuator_health_monitor=actuator_health_monitor,
-        replay_manager=replay_manager,
-        application_log_monitor=application_log_monitor,
-    )
+    log_service.queue = MagicMock()
+    with patch.multiple(
+        "humanoid.api.application",
+        NodeManager=MagicMock(return_value=manager),
+        OrchestratorClient=MagicMock(return_value=client),
+        ModeMonitor=MagicMock(return_value=monitor),
+        RecordingService=MagicMock(return_value=recording),
+        NodeRateMonitor=MagicMock(return_value=node_rate_monitor),
+        ActuatorHealthMonitor=MagicMock(return_value=actuator_health_monitor),
+        ReplayManager=MagicMock(return_value=replay_manager),
+        LogService=MagicMock(return_value=log_service),
+        Publisher=MagicMock(),
+        Subscriber=MagicMock(),
+    ):
+        service = BackendApplication()
     recording_catalog = MagicMock(spec=RecordingCatalog)
     recording_catalog.list.return_value = []
     service.recording_catalog = recording_catalog
+    service.runtime_service.recording_catalog = recording_catalog
     return service, manager, client, monitor
 
 
@@ -178,7 +172,7 @@ def _safety_context(
 def test_teleop_requires_main_stack():
     service, manager, _, _ = _make_service()
 
-    with pytest.raises(OrchestratorError, match="Start the main stack"):
+    with pytest.raises(BackendError, match="Start the main stack"):
         service.start_process(ProcessName.OCULUS, _safety_context())
 
     manager.start.assert_not_called()
@@ -187,7 +181,7 @@ def test_teleop_requires_main_stack():
 def test_teleop_waits_for_orchestrator_readiness():
     service, manager, _, _ = _make_service(stack=True)
 
-    with pytest.raises(OrchestratorError, match="finish starting"):
+    with pytest.raises(BackendError, match="finish starting"):
         service.start_process(ProcessName.KEYBOARD, _safety_context())
 
     manager.start.assert_not_called()
@@ -212,12 +206,12 @@ def test_restarting_selected_input_requires_idle(mode, process, idle_acknowledge
         manager.start.assert_not_called()
         return idle_acknowledged
 
-    monkeypatch.setattr(service, "_wait_for_mode", wait_for_idle)
+    monkeypatch.setattr(service.mode_service, "wait_for_mode", wait_for_idle)
     if idle_acknowledged:
         service.start_process(process, _safety_context())
         manager.start.assert_called_once_with(process)
     else:
-        with pytest.raises(OrchestratorError, match="Select Idle before restarting"):
+        with pytest.raises(BackendError, match="Select Idle before restarting"):
             service.start_process(process, _safety_context())
         manager.start.assert_not_called()
 
@@ -226,14 +220,14 @@ def test_manager_start_failure_is_returned_as_control_error():
     service, manager, _, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
     manager.start.side_effect = NodeManagerError("process failed")
 
-    with pytest.raises(OrchestratorError, match="process failed"):
+    with pytest.raises(BackendError, match="process failed"):
         service.start_process(ProcessName.KEYBOARD, _safety_context())
 
 
 def test_start_stack_rejects_external_orchestrator():
     service, manager, _, _ = _make_service(connected=True, mode=Mode.IDLE)
 
-    with pytest.raises(OrchestratorError, match="already broadcasting"):
+    with pytest.raises(BackendError, match="already broadcasting"):
         service.start_process(ProcessName.STACK, _safety_context())
 
     manager.start.assert_not_called()
@@ -242,7 +236,7 @@ def test_start_stack_rejects_external_orchestrator():
 def test_status_rejects_external_orchestrator():
     service, _, _, _ = _make_service(connected=True, mode=Mode.IDLE)
 
-    with pytest.raises(OrchestratorError, match="Stop it before using this console"):
+    with pytest.raises(BackendError, match="Stop it before using this console"):
         service.status()
 
 
@@ -273,10 +267,10 @@ def test_stack_failure_stops_inputs_and_clears_its_recent_mode_before_reporting_
     assert status.processes[ProcessName.STACK].exit_code == failure_code
     assert status.orchestrator.connected is False
     monitor.reset.assert_called_once_with()
-    cast(MagicMock, service.logging_monitor).reset.assert_called_once_with()
+    cast(MagicMock, service.recording_service).finalize.assert_called_once_with()
 
     monitor.snapshot.return_value = ModeStatus(mode=Mode.IDLE, connected=True, age_seconds=0.0)
-    with pytest.raises(OrchestratorError, match="already broadcasting"):
+    with pytest.raises(BackendError, match="already broadcasting"):
         service.status()
     monitor.reset.assert_called_once_with()
 
@@ -284,7 +278,7 @@ def test_stack_failure_stops_inputs_and_clears_its_recent_mode_before_reporting_
 def test_runtime_change_is_rejected_while_external_stack_is_active():
     service, manager, _, _ = _make_service(connected=True, mode=Mode.IDLE)
 
-    with pytest.raises(OrchestratorError, match="already broadcasting"):
+    with pytest.raises(BackendError, match="already broadcasting"):
         service.set_runtime(Runtime.REAL, _safety_context(acknowledged=True))
 
     manager.set_runtime.assert_not_called()
@@ -293,7 +287,7 @@ def test_runtime_change_is_rejected_while_external_stack_is_active():
 def test_robot_change_is_rejected_while_external_stack_is_active():
     service, manager, _, _ = _make_service(connected=True, mode=Mode.IDLE)
 
-    with pytest.raises(OrchestratorError, match="already broadcasting"):
+    with pytest.raises(BackendError, match="already broadcasting"):
         service.set_robot(RobotName.PANDA, _safety_context())
 
     manager.set_robot.assert_not_called()
@@ -302,7 +296,7 @@ def test_robot_change_is_rejected_while_external_stack_is_active():
 def test_stop_process_does_not_control_external_stack():
     service, manager, client, _ = _make_service(connected=True, mode=Mode.KEYBOARD)
 
-    with pytest.raises(OrchestratorError, match="already broadcasting"):
+    with pytest.raises(BackendError, match="already broadcasting"):
         service.stop_process(ProcessName.KEYBOARD)
 
     manager.stop.assert_not_called()
@@ -328,7 +322,7 @@ def test_robot_change_uses_typed_robot_name():
 def test_configuration_change_rejects_stale_operator_snapshot(safety):
     service, manager, _, _ = _make_service()
 
-    with pytest.raises(OrchestratorError, match="Configuration changed"):
+    with pytest.raises(BackendError, match="Configuration changed"):
         service.set_robot(RobotName.PANDA, safety)
 
     manager.set_robot.assert_not_called()
@@ -346,7 +340,7 @@ def test_real_stack_start_requires_current_configuration_and_acknowledgement():
     service, manager, _, _ = _make_service()
     manager.runtime = Runtime.REAL
 
-    with pytest.raises(OrchestratorError, match="acknowledgement is required"):
+    with pytest.raises(BackendError, match="acknowledgement is required"):
         service.start_process(
             ProcessName.STACK,
             _safety_context(runtime=Runtime.REAL),
@@ -359,7 +353,7 @@ def test_stack_start_rejects_stale_operator_snapshot():
     service, manager, _, _ = _make_service()
     manager.runtime = Runtime.REAL
 
-    with pytest.raises(OrchestratorError, match="Configuration changed"):
+    with pytest.raises(BackendError, match="Configuration changed"):
         service.start_process(
             ProcessName.STACK,
             _safety_context(acknowledged=True),
@@ -374,7 +368,7 @@ def test_stale_client_cannot_start_after_another_client_selects_real_runtime():
 
     service.set_runtime(Runtime.REAL, _safety_context(acknowledged=True))
 
-    with pytest.raises(OrchestratorError, match="Configuration changed"):
+    with pytest.raises(BackendError, match="Configuration changed"):
         service.start_process(ProcessName.STACK, _safety_context())
 
     manager.start.assert_not_called()
@@ -383,7 +377,7 @@ def test_stale_client_cannot_start_after_another_client_selects_real_runtime():
 def test_request_waits_for_orchestrator_readiness():
     service, _, client, _ = _make_service(stack=True)
 
-    with pytest.raises(OrchestratorError, match="finish starting"):
+    with pytest.raises(BackendError, match="finish starting"):
         service.request_mode(_homing_request(HomingPreset.HOME))
 
     client.request_homing.assert_not_called()
@@ -392,7 +386,7 @@ def test_request_waits_for_orchestrator_readiness():
 def test_teleop_mode_requires_matching_process():
     service, _, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
 
-    with pytest.raises(OrchestratorError, match="Start Keyboard teleop"):
+    with pytest.raises(BackendError, match="Start Keyboard teleop"):
         service.request_mode(OrchestratorRequest(mode=Mode.KEYBOARD))
 
     client.request_keyboard.assert_not_called()
@@ -420,7 +414,7 @@ def test_system_mode_does_not_require_an_input_process():
 def test_agent_start_requires_separate_autonomy_selection():
     service, manager, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
     request = OrchestratorRequest(mode=Mode.AUTONOMY)
-    with pytest.raises(OrchestratorError, match="Start Agent API"):
+    with pytest.raises(BackendError, match="Start API"):
         service.request_mode(request)
     service.start_process(ProcessName.AUTONOMY, _safety_context())
     manager.start.assert_called_once_with(ProcessName.AUTONOMY)
@@ -430,64 +424,33 @@ def test_agent_start_requires_separate_autonomy_selection():
     client.request_autonomy.assert_called_once_with()
 
 
-@pytest.mark.parametrize(
-    ("action", "method_name"),
-    [
-        (ProcessAction.START, "start_logging"),
-        (ProcessAction.STOP, "stop_logging"),
-    ],
-)
-def test_logging_controls_publish_requested_event(action, method_name):
+@pytest.mark.parametrize("action", [ProcessAction.START, ProcessAction.STOP])
+def test_recording_controls_call_backend_service(action):
     service, _, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
-
-    service.set_logging(action)
-
-    getattr(client, method_name).assert_called_once_with()
-    logging_monitor = cast(MagicMock, service.logging_monitor)
-    expected_monitor_method = (
-        "start_requested" if action is ProcessAction.START else "stop_requested"
-    )
-    getattr(logging_monitor, expected_monitor_method).assert_called_once_with()
+    service.set_recording(action)
+    recorder = cast(MagicMock, service.recording_service)
+    method = recorder.start if action is ProcessAction.START else recorder.stop
+    method.assert_called_once_with()
+    client._send.assert_not_called()
 
 
-def test_logging_controls_require_ready_stack():
-    service, _, client, _ = _make_service()
-
-    with pytest.raises(OrchestratorError, match="Start the main stack"):
-        service.set_logging(ProcessAction.START)
-
-    client.start_logging.assert_not_called()
+def test_recording_controls_require_ready_stack():
+    service, _, _, _ = _make_service()
+    with pytest.raises(BackendError, match="Start the main stack"):
+        service.set_recording(ProcessAction.START)
+    cast(MagicMock, service.recording_service).start.assert_not_called()
 
 
-def test_episode_logging_uses_the_stack_logger_and_only_stops_its_bundle(monkeypatch):
-    service, manager, client, _ = _make_service(stack=True, connected=True)
+def test_episode_recording_rejects_stale_runtime_before_requesting_recording():
+    service, manager, _, _ = _make_service(stack=True, connected=True)
     manager.runtime = Runtime.REAL
-    agent = MagicMock(session_id="agent")
-    monkeypatch.setattr("humanoid.orchestrator.service.AgentControlClient", lambda _: agent)
-    snapshot = cast(MagicMock, service.logging_monitor).snapshot
-    path = "/robot/logs/recordings/example/recording.lcm"
-
-    def report(state):
-        snapshot.return_value = LoggingStatus(1, state, path)
-
-    client.start_logging.side_effect = lambda: report(LoggingState.RUNNING)
-    client.stop_logging.side_effect = lambda: report(LoggingState.STOPPED)
-    with pytest.raises(OrchestratorError, match="different Agent APIs"):
-        service.set_episode_logging(ProcessAction.START, "one", "other")
-    client.start_logging.assert_not_called()
-    start = service.set_episode_logging(ProcessAction.START, "one", "agent")
-    assert start == service.set_episode_logging(ProcessAction.START, "one", "agent")
-    assert start.file_name == path
-    client.start_logging.assert_called_once()
-    with pytest.raises(OrchestratorError, match="already in use"):
-        service.set_episode_logging(ProcessAction.START, "two", "agent")
-    with pytest.raises(OrchestratorError, match="does not own"):
-        service.set_episode_logging(ProcessAction.STOP, "two", "agent")
-    client.stop_logging.assert_not_called()
-    stop = service.set_episode_logging(ProcessAction.STOP, "one", "agent")
-    assert stop == service.set_episode_logging(ProcessAction.STOP, "one", "agent")
-    assert stop.file_name == path and stop.state is LoggingState.STOPPED
-    client.stop_logging.assert_called_once()
+    with pytest.raises(BackendError, match="runtime has expired"):
+        service.set_episode_recording(ProcessAction.START, "one", "old-session")
+    cast(MagicMock, service.recording_service).start.assert_not_called()
+    service.set_episode_recording(ProcessAction.START, "one", service.runtime_id)
+    cast(MagicMock, service.recording_service).start.assert_called_once_with(
+        owner=RecordingOwner(service.runtime_id, "one")
+    )
 
 
 def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
@@ -495,11 +458,10 @@ def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
 ):
     service, manager, _, _ = _make_service(stack=True, connected=True)
     manager.runtime = Runtime.REAL
-    monkeypatch.setattr(
-        "humanoid.orchestrator.service.AgentControlClient", lambda _: MagicMock(session_id="agent")
-    )
     url = private_lcm_url()
     publisher = Publisher(url)
+    # Multiport discovery needs an active receive loop for this synthetic publisher.
+    publisher.lc.subscribe(".*", lambda _channel, _data: None)
     service.orchestrator_client = OrchestratorClient(publisher)
     channels = {
         "CAMERA/BASE/RGB",
@@ -509,58 +471,56 @@ def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
         Topic.ROBOT_STATE.value,
     }
     with ExitStack() as resources:
-        service.logging_monitor = resources.enter_context(
-            closing(LoggingMonitor(Subscriber([Topic.LOGGING_STATUS], url=url)))
-        )
-        logger = resources.enter_context(closing(RobotLoggerNode(log_dir=tmp_path, lcm_url=url)))
-        logger.setup()
+        resources.callback(service.close)
+        recorder = resources.enter_context(closing(RecordingService(log_dir=tmp_path, lcm_url=url)))
+        service.recording_service = recorder
+        service.runtime_service.recording_service = recorder
         server = make_server("127.0.0.1", 0, create_app(service))
         resources.callback(server.server_close)
         pool = resources.enter_context(ThreadPoolExecutor(max_workers=2))
         stop = Event()
-        pool.submit(loop_at_rate, logger.step, logger.rate_hz, stop_condition=stop.is_set)
         resources.callback(stop.set)
         pool.submit(server.serve_forever, poll_interval=0.01)
         resources.callback(server.shutdown)
         console = f"http://127.0.0.1:{server.server_port}"
         with (
             pytest.raises(ValueError, match="interrupted"),
-            record_lcm_episode(console, "agent") as name,
+            record_lcm_episode(console, service.runtime_id) as name,
         ):
-            # Publish identifiable payloads on the real camera and state channels.
-            for _ in range(20):
+            # A late wildcard subscriber can wait for mpudpm's five-second
+            # channel-map rebroadcast. Exercise that path with sustained input.
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline:
                 for channel in channels:
                     publisher.lc.publish(channel, b"episode sample")
+                publisher.lc.handle_timeout(0)
                 time.sleep(0.01)
             raise ValueError("episode interrupted")
-        assert logger.process is None
+        assert recorder.process is None
         assert Path(name).with_name("robot.json").is_file()
         with closing(lcm.EventLog(name, "r")) as log:
             assert {event.channel for event in log if event.data == b"episode sample"} == channels
 
 
-def test_logging_request_failure_is_reported_by_monitor():
-    service, _, client, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
-    client.start_logging.side_effect = RuntimeError("publish failed")
-
-    with pytest.raises(RuntimeError, match="publish failed"):
-        service.set_logging(ProcessAction.START)
-
-    cast(MagicMock, service.logging_monitor).fail.assert_called_once_with(
-        "Could not request data logging: publish failed"
+def test_recording_failure_reaches_api_caller():
+    service, _, _, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
+    cast(MagicMock, service.recording_service).start.return_value = RecordingStatus(
+        0, RecordingState.FAILED, error="disk full"
     )
+    with pytest.raises(BackendError, match="disk full"):
+        service.set_recording(ProcessAction.START)
 
 
-def test_status_exposes_latest_logging_lifecycle():
+def test_status_exposes_latest_recording_lifecycle():
     service, _, _, _ = _make_service()
-    expected = LoggingStatus(
+    expected = RecordingStatus(
         timestamp=2.0,
-        state=LoggingState.RUNNING,
+        state=RecordingState.RUNNING,
         file_name="logs/lcmlog_20260101",
     )
-    cast(MagicMock, service.logging_monitor).snapshot.return_value = expected
+    cast(MagicMock, service.recording_service).snapshot.return_value = expected
 
-    assert service.status().logging == expected
+    assert service.status().recording == expected
 
 
 def test_status_exposes_latest_actuator_health():
@@ -577,18 +537,18 @@ def test_status_exposes_latest_actuator_health():
     assert service.status().actuator_health == expected
 
 
-def test_application_logs_exposes_incremental_snapshot():
+def test_logs_exposes_incremental_snapshot():
     service, _, _, _ = _make_service()
-    expected = ApplicationLogSnapshot(
+    expected = LogSnapshot(
         cursor=8,
-        entries=[ApplicationLogEntry(cursor=8, message="[WARNING] Input is stale")],
+        entries=[LogEntry(cursor=8, message="[WARNING] Input is stale")],
         reset=False,
         capacity=200,
     )
-    cast(MagicMock, service.application_log_monitor).snapshot.return_value = expected
+    cast(MagicMock, service.log_service).snapshot.return_value = expected
 
-    assert service.application_logs(after=7) == expected
-    cast(MagicMock, service.application_log_monitor).snapshot.assert_called_once_with(7)
+    assert service.logs(after=7) == expected
+    cast(MagicMock, service.log_service).snapshot.assert_called_once_with(7)
 
 
 def test_status_exposes_server_managed_recordings():
@@ -662,7 +622,7 @@ def test_replay_cannot_use_generic_process_controls(method_name):
         else (ProcessName.REPLAY,)
     )
 
-    with pytest.raises(OrchestratorError, match="dedicated replay controls"):
+    with pytest.raises(BackendError, match="dedicated replay controls"):
         method(*arguments)
 
     manager.start.assert_not_called()
@@ -675,7 +635,7 @@ def test_real_replay_requires_hardware_acknowledgement(tmp_path):
     recording = _recording(tmp_path)
     cast(MagicMock, service.recording_catalog).get.return_value = recording
 
-    with pytest.raises(OrchestratorError, match="acknowledgement is required"):
+    with pytest.raises(BackendError, match="acknowledgement is required"):
         service.start_replay(recording.id, _safety_context(runtime=Runtime.REAL))
 
     manager.start.assert_not_called()
@@ -720,7 +680,7 @@ def test_replay_start_failure_stops_nodes_and_preserves_recording(tmp_path):
     cast(MagicMock, service.recording_catalog).get.return_value = recording
     manager.wait_until_robot_ready.side_effect = NodeManagerError("Robot state unavailable")
 
-    with pytest.raises(OrchestratorError, match="Robot state unavailable"):
+    with pytest.raises(BackendError, match="Robot state unavailable"):
         service.start_replay(recording.id, _safety_context())
 
     manager.stop.assert_called_once_with(ProcessName.REPLAY)
@@ -738,7 +698,7 @@ def test_replay_validation_failure_prevents_node_start_and_preserves_recording(t
         "The recorded robot configuration does not match the selected configuration."
     )
 
-    with pytest.raises(OrchestratorError, match="configuration does not match"):
+    with pytest.raises(BackendError, match="configuration does not match"):
         service.start_replay(recording.id, _safety_context())
 
     manager.start.assert_not_called()
@@ -750,7 +710,7 @@ def test_replay_requires_all_managed_processes_to_be_stopped(tmp_path):
     recording = _recording(tmp_path)
     cast(MagicMock, service.recording_catalog).get.return_value = recording
 
-    with pytest.raises(OrchestratorError, match="Stop the stack and input"):
+    with pytest.raises(BackendError, match="Stop the stack and input"):
         service.start_replay(recording.id, _safety_context())
 
     manager.start.assert_not_called()
@@ -762,7 +722,7 @@ def test_replay_rejects_unknown_recording(tmp_path):
         "The selected recording is unavailable."
     )
 
-    with pytest.raises(OrchestratorError, match="selected recording is unavailable"):
+    with pytest.raises(BackendError, match="selected recording is unavailable"):
         service.start_replay("recording_missing", _safety_context())
 
     manager.start.assert_not_called()
@@ -915,7 +875,7 @@ def test_homing_parameters_stay_selected_until_homing_completes():
 def test_pending_homing_parameters_expire_if_transition_is_not_seen(monkeypatch):
     service, _, _, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
     monotonic = MagicMock(side_effect=[0.0, 0.0, 3.0])
-    monkeypatch.setattr("humanoid.orchestrator.service.time.monotonic", monotonic)
+    monkeypatch.setattr("humanoid.api.services.modes.time.monotonic", monotonic)
 
     requested = service.request_mode(_homing_request(HomingPreset.HOME))
     expired = service.status()
@@ -993,28 +953,26 @@ def test_close_releases_mode_monitor_when_stack_status_fails():
     monitor.close.assert_called_once_with()
     cast(MagicMock, service.node_rate_monitor).close.assert_called_once_with()
     cast(MagicMock, service.actuator_health_monitor).close.assert_called_once_with()
-    cast(MagicMock, service.application_log_monitor).close.assert_called_once_with()
+    cast(MagicMock, service.log_service).close.assert_called_once_with()
 
 
 def test_camera_monitor_is_lazy_reset_on_configuration_change_and_closed(monkeypatch):
     service, _, _, _ = _make_service()
     base, wrist = MagicMock(), MagicMock()
     factory = MagicMock(side_effect=[base, wrist])
-    monkeypatch.setattr("humanoid.orchestrator.service.CameraPreviewMonitor", factory)
+    monkeypatch.setattr("humanoid.api.application.CameraFrameService", factory)
     factory.assert_not_called()
-    for depth_far in (3, 5):
-        assert service.camera_previews(depth_far) == {
-            "base": base.snapshot.return_value,
-            "wrist": wrist.snapshot.return_value,
-        }
-        for monitor in (base, wrist):
-            monitor.snapshot.assert_called_with(depth_far)
-    assert factory.call_args_list == [call(camera_name="base"), call(camera_name="wrist")]
+    assert service.camera_frame_services == {"base": base, "wrist": wrist}
+    assert service.camera_frame_services == {"base": base, "wrist": wrist}
+    assert factory.call_args_list == [
+        call(camera_name="base", lcm_url=service.lcm_url),
+        call(camera_name="wrist", lcm_url=service.lcm_url),
+    ]
     service.set_robot(
         RobotName.PANDA,
         SafetyContext(expected_runtime=Runtime.SIM, expected_robot=RobotName.TRISKEL),
     )
-    assert not service._camera_monitors
+    assert not service._camera_frame_services
     service.close()
     for monitor in (base, wrist):
         monitor.close.assert_called_once()
@@ -1024,6 +982,114 @@ def test_camera_monitor_is_lazy_reset_on_configuration_change_and_closed(monkeyp
 def test_robot_without_cameras_has_disconnected_previews(robot):
     service, manager, _, _ = _make_service()
     manager.robot = robot
-    preview = service.camera_previews(3)
+    preview = service.camera_frame_services
     assert preview == {}
     service.close()
+
+
+def test_supervision_reaps_stack_failure_without_status_requests():
+    service, manager, _, _ = _make_service(stack=True, connected=True)
+    processes = manager.status.return_value
+    service.start()
+    try:
+        processes[ProcessName.STACK] = ProcessStatus(
+            running=False,
+            pid=None,
+            exit_code=1,
+            runtime=Runtime.SIM,
+            uptime_seconds=None,
+            last_output="stack crashed",
+        )
+        deadline = time.monotonic() + 2
+        while (
+            not cast(MagicMock, service.recording_service).finalize.called
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.01)
+        cast(MagicMock, service.recording_service).finalize.assert_called()
+        assert service._supervisor is not None and service._supervisor.is_alive()
+    finally:
+        service.close()
+
+
+def test_read_only_agent_task_does_not_require_motion_process(monkeypatch):
+    service, _, _, _ = _make_service(stack=True, connected=True, mode=Mode.IDLE)
+    observations = MagicMock()
+    observations.observation.return_value.mode = Mode.IDLE
+    service._observation_service = observations
+    console = MagicMock()
+    monkeypatch.setattr(service.agent_task_service, "console", console)
+    try:
+        service.run_agent("Describe the scene", "test-model", Mode.IDLE, _safety_context())
+        console.start.assert_called_once()
+        execution = console.start.call_args.args[0]
+        assert execution.task.instruction == "Describe the scene"
+        assert execution.model == "test-model"
+        assert execution.mode is Mode.IDLE
+        assert execution.runtime_id == service.runtime_id
+        assert execution.motion_session_id is None
+        service.motion_service.detach()
+        service.stop_process(ProcessName.AUTONOMY)
+        console.stop.assert_not_called()
+        assert service.runtime_id == execution.runtime_id
+    finally:
+        service.close()
+
+
+def test_motion_restart_preserves_runtime_and_episode_recording(tmp_path):
+    service, manager, _, _ = _make_service(stack=True, connected=True)
+    manager.runtime = Runtime.REAL
+    with patch("humanoid.api.services.recording.subprocess.Popen") as popen:
+        popen.return_value.poll.return_value = None
+        popen.return_value.wait.return_value = 0
+        with closing(RecordingService(tmp_path)) as recording:
+            service.recording_service = recording
+            original_runtime = service.runtime_id
+            service.set_episode_recording(ProcessAction.START, "episode", original_runtime)
+            service.motion_service.detach()
+            service.status()
+            assert service.runtime_id == original_runtime
+            assert recording.snapshot().state is RecordingState.RUNNING
+            service._reset_runtime()
+            assert service.runtime_id != original_runtime
+            assert recording.snapshot().state is RecordingState.STOPPED
+            assert (
+                service.set_episode_recording(ProcessAction.STOP, "episode", original_runtime).state
+                is RecordingState.STOPPED
+            )
+
+
+def test_toggle_recording_uses_authoritative_state_and_preserves_episode_owner(tmp_path):
+    service, _, _, _ = _make_service(stack=True, connected=True)
+    with patch("humanoid.api.services.recording.subprocess.Popen") as popen:
+        popen.return_value.poll.return_value = None
+        popen.return_value.wait.return_value = 0
+        with closing(RecordingService(tmp_path)) as recording:
+            service.recording_service = recording
+            assert service.toggle_recording().state is RecordingState.RUNNING
+            assert service.toggle_recording().state is RecordingState.STOPPED
+            recording.start(owner=RecordingOwner(service.runtime_id, "episode"))
+            with pytest.raises(RuntimeError, match="does not own"):
+                service.toggle_recording()
+            assert recording.snapshot().state is RecordingState.RUNNING
+
+
+def test_public_observation_service_creation_replaces_and_closes_owned_service(monkeypatch):
+    service, manager, _, _ = _make_service()
+    default_config = ROBOT_CONFIGS[manager.robot]
+    custom_config = replace(default_config, cameras={"chassis": default_config.cameras["base"]})
+    original, replacement = MagicMock(), MagicMock()
+    factory = MagicMock(side_effect=[original, replacement])
+    monkeypatch.setattr("humanoid.api.application.ObservationService", factory)
+    try:
+        assert service.observation_service is original
+        assert service.create_observation_service(custom_config) is replacement
+        original.close.assert_called_once_with()
+        assert service.observation_service is replacement
+        assert factory.call_args_list == [
+            call(default_config, lcm_url=service.lcm_url),
+            call(custom_config, lcm_url=service.lcm_url),
+        ]
+    finally:
+        service.close()
+    replacement.close.assert_called_once_with()

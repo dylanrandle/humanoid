@@ -3,14 +3,13 @@ import time
 import numpy as np
 import pytest
 
-from humanoid.agent.service import AgentControlService
+from humanoid.api.services.observations import ObservationService
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
-from humanoid.policy.agent import AgentPolicy
+from humanoid.motion.executor import MotionExecutor
+from humanoid.policy.motion import MotionPolicy
 from humanoid.robots.base import Robot
-from humanoid.types.agent import (
-    AgentControlServerConfig,
-)
 from humanoid.types.homing import HomingPreset
+from humanoid.types.motion import MotionServiceConfig
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotState
@@ -23,8 +22,8 @@ def robot():
 
 @pytest.fixture
 def service(robot):
-    policy = AgentPolicy(robot)
-    service = AgentControlService(policy, AgentControlServerConfig(port=0))
+    policy = MotionPolicy(robot)
+    service = MotionExecutor(policy, MotionServiceConfig())
     state = RobotState(
         timestamp=time.perf_counter(),
         joint_positions=TRISKEL_CONFIG.homing_presets[HomingPreset.HOME].copy(),
@@ -32,4 +31,14 @@ def service(robot):
         actuator_temperatures=np.zeros(robot.model.nq),
     )
     service.observe(Observation(robot_state=state, mode=Mode.AUTONOMY))
-    return service
+    yield service
+    service.close()
+
+
+@pytest.fixture
+def observations(service):
+
+    result = ObservationService(TRISKEL_CONFIG, collect=False)
+    result.observe(service._observation)
+    yield result
+    result.close()

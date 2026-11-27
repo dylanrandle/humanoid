@@ -36,7 +36,7 @@ from humanoid.robots.utils.controller_tracking.trajectory import (
     figure_eight_velocity,
     gripper_sinusoid,
 )
-from humanoid.types.controller_tracking import (
+from humanoid.types.controllers import (
     ControllerCommandTiming,
     ControllerPublicationStatistics,
     NativeJointSample,

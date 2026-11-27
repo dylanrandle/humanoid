@@ -1,6 +1,7 @@
 """Oculus VR teleoperation policy for controlling robot end-effector pose."""
 
 import time
+from collections.abc import Callable
 from copy import deepcopy
 
 import numpy as np
@@ -17,6 +18,7 @@ from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
+from humanoid.types.recording import RecordingState, RecordingStatus
 from humanoid.types.robot import RobotConfig
 from humanoid.types.teleop import OculusInputSnapshot, OculusTeleopPolicyConfig
 
@@ -49,7 +51,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         - A button (hold): Close gripper; release to freeze at current width
         - B button (hold): Open gripper; release to freeze at current width
         - X button: Move to the configured home position
-        - Y button: Toggle LCM data logging
+        - Y button: Toggle LCM data recording
         - Grip trigger (either hand): Dead-man switch -- all motion is
           only commanded while held; releasing both grips clears the
           controller, base, and gripper reference state, which re-anchor
@@ -65,7 +67,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
     Args:
         robot_config: Robot configuration (default: ROBOT_CONFIG)
         config: Optional policy parameters and observation subscriptions.
-        orchestrator_client: Client used for homing and logging requests
+        orchestrator_client: Client used for homing requests
     """
 
     mode = Mode.OCULUS
@@ -75,6 +77,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         robot_config: RobotConfig = ROBOT_CONFIG,
         config: OculusTeleopPolicyConfig | None = None,
         orchestrator_client: OrchestratorClient | None = None,
+        recording_request: Callable[[], bool] | None = None,
+        recording_status: Callable[[], RecordingStatus | None] | None = None,
     ):
         """Initialize the Oculus teleoperation policy."""
         if config is None:
@@ -96,7 +100,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         )
         self.orchestrator_client = orchestrator_client or OrchestratorClient()
         self.previous_button_states: dict[str, bool] = {}
-        self.is_logging = False
+        self.recording_status = recording_status
+        self.recording_request = recording_request
 
         # Oculus reader. An explicit address selects wireless ADB; None keeps
         # the upstream library's USB-device discovery behavior.
@@ -207,7 +212,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         logger.info("  A button (hold) -> Close gripper (release to freeze)")
         logger.info("  B button (hold) -> Open gripper (release to freeze)")
         logger.info("  X button -> Move to the configured home position")
-        logger.info("  Y button -> Toggle LCM data logging")
+        logger.info("  Y button -> Toggle LCM data recording")
         logger.info(
             "  Grip trigger (either hand) -> Dead-man switch "
             "(hold for any command; release to freeze)"
@@ -358,6 +363,11 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.commanded_tool_pose = target_pose.copy()
         return target_pose
 
+    @property
+    def is_recording(self) -> bool | None:
+        status = self.recording_status() if self.recording_status is not None else None
+        return None if status is None else status.state is RecordingState.RUNNING
+
     def step(self, observation: Observation) -> Action:
         """Generate an action given an observation.
 
@@ -388,16 +398,9 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             )
             self.orchestrator_client.request_homing(target)
 
-        # Handle Y button logging toggle (edge-triggered)
-        if self._is_rising_edge(buttons, Y_BUTTON_KEY):
-            if self.is_logging:
-                logger.info("Y button pressed: Stopping data logging")
-                self.orchestrator_client.stop_logging()
-                self.is_logging = False
-            else:
-                logger.info("Y button pressed: Starting data logging")
-                self.orchestrator_client.start_logging()
-                self.is_logging = True
+        # Handle Y button recording toggle (edge-triggered)
+        if self._is_rising_edge(buttons, Y_BUTTON_KEY) and self.recording_request is not None:
+            self.recording_request()
 
         # Dead-man switch: either grip trigger must be held to command any
         # motion. Releasing both clears the reference poses so they re-anchor

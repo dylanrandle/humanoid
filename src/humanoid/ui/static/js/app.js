@@ -1,23 +1,23 @@
-import { fetchApplicationLogs, fetchStatus, post } from "./api.js";
+import { fetchLogs, fetchStatus, post } from "./api.js";
 import { setupAgentPanel } from "./agent.js";
-import { startCameraPreviews } from "./cameras.js";
+import { startCameraStreams } from "./cameras.js";
 import {
   API,
   BusyKey,
   OrchestratorParameter,
-  PayloadKey,
+  ApiKey,
   ProcessName,
 } from "./constants.js";
 import { els } from "./dom.js";
 import { errorMessage, performOperation } from "./operations.js";
 import {
   render,
-  renderApplicationLogs,
-  renderApplicationLogsDisconnected,
+  renderLogs,
+  renderLogsDisconnected,
   renderDisconnected,
 } from "./render.js";
 import {
-  loggingRequest,
+  recordingRequest,
   processRequest,
   replayRequest,
   robotRequest,
@@ -30,9 +30,9 @@ const state = {
   snapshot: null,
   busy: new Set(),
   connected: null,
-  applicationLogs: [],
-  applicationLogCursor: null,
-  applicationLogsConnected: null,
+  logs: [],
+  logCursor: null,
+  logsConnected: null,
   refreshPromise: null,
 };
 const agent = setupAgentPanel(() => (state.connected ? state.snapshot : null));
@@ -41,7 +41,7 @@ function refresh() {
   if (state.refreshPromise) return state.refreshPromise;
   state.refreshPromise = Promise.all([
     loadStatus(),
-    loadApplicationLogs(),
+    loadLogs(),
     agent.refresh(),
   ]).finally(() => {
     state.refreshPromise = null;
@@ -63,22 +63,21 @@ async function loadStatus() {
   agent.render();
 }
 
-async function loadApplicationLogs() {
+async function loadLogs() {
   try {
-    const snapshot = await fetchApplicationLogs(state.applicationLogCursor);
-    if (snapshot.reset) state.applicationLogs = [];
-    state.applicationLogs = [
-      ...state.applicationLogs,
+    const snapshot = await fetchLogs(state.logCursor);
+    if (snapshot.reset) state.logs = [];
+    state.logs = [
+      ...state.logs,
       ...snapshot.entries.map((entry) => entry.message),
     ].slice(-snapshot.capacity);
-    state.applicationLogCursor = snapshot.cursor;
-    state.applicationLogsConnected = true;
-    renderApplicationLogs(state.applicationLogs, els);
+    state.logCursor = snapshot.cursor;
+    state.logsConnected = true;
+    renderLogs(state.logs, els);
   } catch (error) {
-    renderApplicationLogsDisconnected(els);
-    if (state.applicationLogsConnected !== false)
-      showToast(errorMessage(error));
-    state.applicationLogsConnected = false;
+    renderLogsDisconnected(els);
+    if (state.logsConnected !== false) showToast(errorMessage(error));
+    state.logsConnected = false;
   }
 }
 
@@ -113,7 +112,7 @@ els.sceneSelect.addEventListener("change", () => {
   const scene = els.sceneSelect.value;
   perform(BusyKey.SCENE, () =>
     post(API.SCENE, {
-      [PayloadKey.SCENE]: scene,
+      [ApiKey.SCENE]: scene,
       ...safetyPayload(state.snapshot),
     }),
   );
@@ -138,10 +137,10 @@ Object.values(els.processes).forEach(({ action: button }) => {
   });
 });
 
-els.loggingButtons.forEach((button) => {
+els.recordingButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    const request = loggingRequest(button.dataset.loggingAction);
-    perform(BusyKey.LOGGING, () => post(request.path, request.payload));
+    const request = recordingRequest(button.dataset.recordingAction);
+    perform(BusyKey.RECORDINGS, () => post(request.path, request.payload));
   });
 });
 
@@ -162,10 +161,10 @@ els.replayAction.addEventListener("click", () => {
 els.orchestratorButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const payload = {
-      [PayloadKey.MODE]: button.dataset.orchestratorMode,
+      [ApiKey.MODE]: button.dataset.orchestratorMode,
     };
     if (button.dataset.orchestratorPreset) {
-      payload[PayloadKey.PARAMETERS] = {
+      payload[ApiKey.PARAMETERS] = {
         [OrchestratorParameter.PRESET]: button.dataset.orchestratorPreset,
       };
     }
@@ -174,7 +173,7 @@ els.orchestratorButtons.forEach((button) => {
 });
 
 refresh();
-startCameraPreviews(els.cameras);
+startCameraStreams(els.cameras);
 window.setInterval(() => {
   void refresh();
 }, 1000);

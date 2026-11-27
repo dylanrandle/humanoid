@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { fetchApplicationLogs } from "../../../src/humanoid/ui/static/js/api.js";
+import { fetchLogs } from "../../../src/humanoid/ui/static/js/api.js";
 
-test("application log requests fetch only entries after the current cursor", async () => {
+test("log requests fetch only entries after the current cursor", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   const expected = {
@@ -18,11 +18,11 @@ test("application log requests fetch only entries after the current cursor", asy
   };
 
   try {
-    assert.deepEqual(await fetchApplicationLogs(7), expected);
+    assert.deepEqual(await fetchLogs(7), expected);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requests[0][0], "/api/application-logs?after=7");
+  assert.equal(requests[0][0], "/api/logs?after=7");
   assert.deepEqual(requests[0][1], { cache: "no-store" });
 });

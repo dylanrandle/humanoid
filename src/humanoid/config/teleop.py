@@ -2,7 +2,7 @@
 
 import os
 
-from humanoid.constants import OCULUS_IP_ENVIRONMENT_VARIABLE, Topic
+from humanoid.constants import EnvironmentVariable, Topic
 from humanoid.types.observation import ObservationSubscriptions
 from humanoid.types.teleop import KeyboardTeleopPolicyConfig, OculusTeleopPolicyConfig
 
@@ -31,7 +31,7 @@ def get_keyboard_teleop_policy_config() -> KeyboardTeleopPolicyConfig:
 
 def get_oculus_teleop_policy_config() -> OculusTeleopPolicyConfig:
     """Build Oculus configuration from the current process environment."""
-    value = os.getenv(OCULUS_IP_ENVIRONMENT_VARIABLE)
+    value = os.getenv(EnvironmentVariable.OCULUS_IP)
     ip_address = value.strip() if value is not None and value.strip() else None
     return OculusTeleopPolicyConfig(
         subscriptions=TELEOP_SUBSCRIPTIONS,

@@ -4,8 +4,8 @@ import test from "node:test";
 import { ProcessName } from "../../../src/humanoid/ui/static/js/constants.js";
 import {
   render,
-  renderApplicationLogs,
-  renderApplicationLogsDisconnected,
+  renderLogs,
+  renderLogsDisconnected,
   renderDisconnected,
 } from "../../../src/humanoid/ui/static/js/render.js";
 
@@ -70,8 +70,8 @@ function elements() {
     actuatorHealthSummary: element(),
     actuatorHealthError: element(),
     actuatorHealthList: element(),
-    applicationLogStatus: element(),
-    applicationLogOutput: element(),
+    logStatus: element(),
+    logOutput: element(),
     processes: {
       keyboard: {
         row: element(),
@@ -87,13 +87,13 @@ function elements() {
         action: element(),
       },
     },
-    loggingButtons: [
-      element({ loggingAction: "start" }),
-      element({ loggingAction: "stop" }),
+    recordingButtons: [
+      element({ recordingAction: "start" }),
+      element({ recordingAction: "stop" }),
     ],
-    loggingStatus: element(),
-    loggingDetail: element(),
-    loggingError: element(),
+    recordingStatus: element(),
+    recordingDetail: element(),
+    recordingError: element(),
     replayRecording: element(),
     replayStatus: element(),
     replayDetail: element(),
@@ -182,7 +182,7 @@ function snapshot() {
       actuators: [],
       error: null,
     },
-    logging: {
+    recording: {
       timestamp: 0,
       state: "stopped",
       file_name: null,
@@ -272,7 +272,7 @@ test("motor health renders temperatures and retains failure details", () => {
   );
 });
 
-test("logging lifecycle controls and failures are rendered", () => {
+test("recording lifecycle controls and failures are rendered", () => {
   const ui = elements();
   const current = snapshot();
   current.processes.stack = processStatus({ running: true });
@@ -283,58 +283,58 @@ test("logging lifecycle controls and failures are rendered", () => {
     parameters: {},
   };
 
-  current.logging = {
+  current.recording = {
     timestamp: 1,
     state: "running",
     file_name: "logs/lcmlog_20260101",
     error: null,
   };
   render(current, new Set(), ui);
-  assert.equal(ui.loggingStatus.textContent, "Recording");
-  assert.equal(ui.loggingButtons[0].disabled, true);
-  assert.equal(ui.loggingButtons[1].disabled, false);
-  assert.match(ui.loggingDetail.textContent, /logs\/lcmlog_20260101/);
+  assert.equal(ui.recordingStatus.textContent, "Recording");
+  assert.equal(ui.recordingButtons[0].disabled, true);
+  assert.equal(ui.recordingButtons[1].disabled, false);
+  assert.match(ui.recordingDetail.textContent, /logs\/lcmlog_20260101/);
 
-  current.logging = {
+  current.recording = {
     timestamp: 2,
     state: "failed",
     file_name: null,
     error: "lcm-logger was not found in PATH.",
   };
   render(current, new Set(), ui);
-  assert.equal(ui.loggingStatus.textContent, "Failed");
-  assert.equal(ui.loggingError.hidden, false);
+  assert.equal(ui.recordingStatus.textContent, "Failed");
+  assert.equal(ui.recordingError.hidden, false);
   assert.equal(
-    ui.loggingError.textContent,
+    ui.recordingError.textContent,
     "lcm-logger was not found in PATH.",
   );
 });
 
-test("recent application logs render as text and follow the live tail", () => {
+test("recent logs render as text and follow the live tail", () => {
   const ui = elements();
-  ui.applicationLogOutput.scrollHeight = 300;
-  ui.applicationLogOutput.clientHeight = 100;
-  ui.applicationLogOutput.scrollTop = 200;
+  ui.logOutput.scrollHeight = 300;
+  ui.logOutput.clientHeight = 100;
+  ui.logOutput.scrollTop = 200;
   const logs = [
     "[INFO] Controller initialized",
     "[WARNING] Oculus input is stale",
   ];
 
-  renderApplicationLogs(logs, ui);
+  renderLogs(logs, ui);
 
   assert.equal(
-    ui.applicationLogOutput.textContent,
+    ui.logOutput.textContent,
     "[INFO] Controller initialized\n[WARNING] Oculus input is stale",
   );
-  assert.equal(ui.applicationLogOutput.scrollTop, 300);
-  assert.equal(ui.applicationLogStatus.textContent, "2 recent entries");
+  assert.equal(ui.logOutput.scrollTop, 300);
+  assert.equal(ui.logStatus.textContent, "2 recent entries");
 
-  ui.applicationLogOutput.scrollTop = 20;
-  ui.applicationLogOutput.scrollHeight = 400;
+  ui.logOutput.scrollTop = 20;
+  ui.logOutput.scrollHeight = 400;
   logs.push("[INFO] Input recovered");
-  renderApplicationLogs(logs, ui);
+  renderLogs(logs, ui);
 
-  assert.equal(ui.applicationLogOutput.scrollTop, 20);
+  assert.equal(ui.logOutput.scrollTop, 20);
 });
 
 test("process failures and busy state are rendered", () => {
@@ -370,13 +370,13 @@ test("disconnected and external-stack errors disable every control", () => {
   assert.equal(ui.stackAction.disabled, true);
   assert.equal(ui.nodeRateSummary.textContent, "Unavailable");
   assert.match(ui.nodeRateList.children[0].textContent, /Reconnect/);
-  renderApplicationLogsDisconnected(ui);
-  assert.equal(ui.applicationLogStatus.textContent, "Logs unavailable");
+  renderLogsDisconnected(ui);
+  assert.equal(ui.logStatus.textContent, "Logs unavailable");
   assert.ok(ui.runtimeButtons.every((button) => button.disabled));
   assert.ok(Object.values(ui.processes).every(({ action }) => action.disabled));
-  assert.ok(ui.loggingButtons.every((button) => button.disabled));
-  assert.equal(ui.loggingStatus.textContent, "Unavailable");
-  assert.equal(ui.loggingError.hidden, true);
+  assert.ok(ui.recordingButtons.every((button) => button.disabled));
+  assert.equal(ui.recordingStatus.textContent, "Unavailable");
+  assert.equal(ui.recordingError.hidden, true);
   assert.equal(ui.replayRecording.disabled, true);
   assert.equal(ui.replayAction.disabled, true);
   assert.equal(ui.replayStatus.textContent, "Unavailable");

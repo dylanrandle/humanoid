@@ -15,10 +15,10 @@ class Runtime(StrEnum):
         # Constants imports this enum, so resolve its environment settings lazily.
         from humanoid.constants import (  # noqa: PLC0415
             DEFAULT_HUMANOID_RUNTIME,
-            RUNTIME_ENVIRONMENT_VARIABLE,
+            EnvironmentVariable,
         )
 
-        value = os.getenv(RUNTIME_ENVIRONMENT_VARIABLE)
+        value = os.getenv(EnvironmentVariable.RUNTIME)
         if value is None or not value.strip():
             return cls(DEFAULT_HUMANOID_RUNTIME)
         normalized = value.lower().strip()

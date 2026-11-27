@@ -8,50 +8,48 @@ from multiprocessing.connection import Connection
 
 from openai_codex import Codex, Thread
 
-from humanoid.agent.client import AgentControlClient
 from humanoid.agent.harness.model import connect, decide, open_codex, start_thread
 from humanoid.agent.harness.review import ExplorationReview
 from humanoid.agent.harness.robot import RobotTools, image_url
-from humanoid.config.agent import (
-    AGENT_MOTION_LIMITS,
-    CONSOLE_TASK_SECONDS,
-    DEFAULT_MOTION_TIMEOUT_SECONDS,
-    get_agent_endpoint,
-)
+from humanoid.api.clients.robot import RobotClient
+from humanoid.config.agent import CONSOLE_TASK_SECONDS
+from humanoid.config.api import get_api_endpoint
+from humanoid.config.motion import DEFAULT_MOTION_LIMITS, DEFAULT_MOTION_TIMEOUT_SECONDS
 from humanoid.config.robot import ROBOT_CONFIGS
 from humanoid.robots.base import Robot
 from humanoid.types.agent import (
+    AgentExecution,
     AgentPanelStatus,
     AgentPhase,
     AgentTask,
-    ControlOperation,
     DecisionContext,
-    MotionArguments,
-    MotionResult,
-    ObserveAgain,
     TimeBudget,
-    ToolError,
 )
+from humanoid.types.motion import ControlOperation, MotionArguments, MotionResult
 from humanoid.types.orchestrator import Mode
 from humanoid.types.segmentation import SegmentationResult
 from humanoid.types.tools import (
     CompleteDepth,
     DepthCompletionResult,
     DepthSamples,
+    ObserveAgain,
     ReadDepth,
     SegmentRequest,
+    ToolError,
 )
 
 
-def run_task(
-    codex: Codex, client: AgentControlClient, task: AgentTask, update: Callable[[str], None]
+def run_execution(
+    codex: Codex, client: RobotClient, execution: AgentExecution, update: Callable[[str], None]
 ) -> str:
     budget = TimeBudget(CONSOLE_TASK_SECONDS)
-    if client.session_id != task.session_id:
-        raise RuntimeError("Agent API restarted. Submit a new task.")
-    thread = start_thread(codex, task.model)
-    with closing(RobotTools(client, Robot(ROBOT_CONFIGS[task.robot]))) as tools:
-        return run_steps(thread, tools, task, update, budget=budget)
+    if client.runtime_id != execution.runtime_id:
+        raise RuntimeError("Robot runtime restarted. Submit a new task.")
+    if execution.mode is Mode.AUTONOMY and client.motion_session_id != execution.motion_session_id:
+        raise RuntimeError("Motion executor restarted. Submit a new task.")
+    thread = start_thread(codex, execution.model)
+    with closing(RobotTools(client, Robot(ROBOT_CONFIGS[execution.robot]))) as tools:
+        return run_steps(thread, tools, execution.task, update, mode=execution.mode, budget=budget)
 
 
 def _perceive(
@@ -95,12 +93,13 @@ def run_steps(  # noqa: PLR0913 - the optional review observes the same live dec
     task: AgentTask,
     update: Callable[[str], None],
     *,
+    mode: Mode,
     budget: TimeBudget,
     review: ExplorationReview | None = None,
 ) -> str:
-    allow_motion = task.mode is Mode.AUTONOMY
+    allow_motion = mode is Mode.AUTONOMY
     budget.remaining()
-    status, images = tools.observe(task.mode)
+    status, images = tools.observe(mode)
     feedback = None
     while True:
         context = DecisionContext(
@@ -108,7 +107,7 @@ def run_steps(  # noqa: PLR0913 - the optional review observes the same live dec
             observation=status,
             last_result=feedback,
             seconds_remaining=budget.remaining(),
-            limits=AGENT_MOTION_LIMITS,
+            limits=DEFAULT_MOTION_LIMITS,
         )
         if review:
             review.observe(budget.elapsed_seconds, context, images)
@@ -128,12 +127,12 @@ def run_steps(  # noqa: PLR0913 - the optional review observes the same live dec
         name = command.operation
         args = command.arguments
         if not isinstance(args, MotionArguments):
-            if tools.client.observation().mode is not task.mode:
+            if tools.client.observation().mode is not mode:
                 raise RuntimeError("Robot mode changed during the task.")
             update(f"{decision.message}\nRunning {name}.")
             budget.remaining()
             if isinstance(args, ObserveAgain):
-                status, images = tools.observe(task.mode)
+                status, images = tools.observe(mode)
                 feedback = None
             else:
                 try:
@@ -149,14 +148,14 @@ def run_steps(  # noqa: PLR0913 - the optional review observes the same live dec
                 review.outcome(feedback, preview)
             continue
         if not allow_motion or tools.client.observation().mode is not Mode.AUTONOMY:
-            raise RuntimeError("Motion requires an active Autonomy task.")
+            raise RuntimeError("Motion requires an active API task.")
         operation = ControlOperation(name)
         update(f"{decision.message}\nExecuting {operation}.")
         feedback = _move(tools, operation, args, budget, update)
         if review:
             review.outcome(feedback)
         budget.remaining()
-        status, images = tools.observe(task.mode)
+        status, images = tools.observe(mode)
 
 
 def _stop(signum, frame) -> None:
@@ -164,7 +163,9 @@ def _stop(signum, frame) -> None:
     raise SystemExit
 
 
-def work(channel: Connection, task: AgentTask | None, initial_status: AgentPanelStatus) -> None:
+def work(
+    channel: Connection, execution: AgentExecution | None, initial_status: AgentPanelStatus
+) -> None:
     signal.signal(signal.SIGTERM, _stop)
 
     def show_device_code(url: str, code: str) -> None:
@@ -183,12 +184,12 @@ def work(channel: Connection, task: AgentTask | None, initial_status: AgentPanel
     with channel:
         try:
             with open_codex() as codex:
-                if task is None:
+                if execution is None:
                     models = connect(codex, show_device_code)
                     result = replace(initial_status, models=models, message="Connected to ChatGPT.")
                 else:
-                    with closing(AgentControlClient(get_agent_endpoint())) as client:
-                        message = run_task(codex, client, task, show_progress)
+                    with closing(RobotClient(get_api_endpoint())) as client:
+                        message = run_execution(codex, client, execution, show_progress)
                         result = replace(initial_status, message=message)
             channel.send(replace(result, phase=AgentPhase.COMPLETED))
         except Exception as error:

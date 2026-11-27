@@ -7,7 +7,7 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from humanoid.types.controller_tracking import (
+from humanoid.types.controllers import (
     ControllerCommandTiming,
     ControllerTrackingSegment,
     NativeJointSample,

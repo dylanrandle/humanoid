@@ -1,4 +1,4 @@
-import { API, HttpKey } from "./constants.js";
+import { API, ApiKey } from "./constants.js";
 
 export async function fetchStatus(path = API.STATUS) {
   const response = await fetch(path, { cache: "no-store" });
@@ -9,15 +9,15 @@ export async function fetchStatus(path = API.STATUS) {
   return result;
 }
 
-export async function fetchApplicationLogs(after = null) {
+export async function fetchLogs(after = null) {
   const query =
-    after === null ? "" : `?${new URLSearchParams({ [HttpKey.AFTER]: after })}`;
-  const response = await fetch(`${API.APPLICATION_LOGS}${query}`, {
+    after === null ? "" : `?${new URLSearchParams({ [ApiKey.AFTER]: after })}`;
+  const response = await fetch(`${API.LOGS}${query}`, {
     cache: "no-store",
   });
   const result = await readJson(response);
   if (!response.ok || result === null) {
-    throw new Error(result?.error || "Application logs are unavailable.");
+    throw new Error(result?.error || "Logs are unavailable.");
   }
   return result;
 }

@@ -1,6 +1,6 @@
 import pytest
 
-from humanoid.constants import DEFAULT_HUMANOID_RUNTIME, RUNTIME_ENVIRONMENT_VARIABLE
+from humanoid.constants import DEFAULT_HUMANOID_RUNTIME, EnvironmentVariable
 from humanoid.types.process import Runtime
 
 
@@ -16,16 +16,16 @@ from humanoid.types.process import Runtime
 )
 def test_runtime_environment_values(monkeypatch, value, expected):
     if value is None:
-        monkeypatch.delenv(RUNTIME_ENVIRONMENT_VARIABLE, raising=False)
+        monkeypatch.delenv(EnvironmentVariable.RUNTIME, raising=False)
     else:
-        monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, value)
+        monkeypatch.setenv(EnvironmentVariable.RUNTIME, value)
 
     assert Runtime.from_environment() is expected
 
 
 @pytest.mark.parametrize("value", ["simulation", "typo"])
 def test_invalid_runtime_environment_is_rejected(monkeypatch, value):
-    monkeypatch.setenv(RUNTIME_ENVIRONMENT_VARIABLE, value)
+    monkeypatch.setenv(EnvironmentVariable.RUNTIME, value)
 
     with pytest.raises(ValueError, match=value):
         Runtime.from_environment()

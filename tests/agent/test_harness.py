@@ -11,29 +11,30 @@ from pydantic import ValidationError
 from humanoid.agent.harness import model, worker
 from humanoid.agent.harness.console import AgentConsole
 from humanoid.agent.harness.review import ExplorationReview
-from humanoid.config.agent import (
-    AGENT_MOTION_LIMITS,
-    CONSOLE_TASK_SECONDS,
-    DEFAULT_MOTION_TIMEOUT_SECONDS,
-)
+from humanoid.config.agent import CONSOLE_TASK_SECONDS
+from humanoid.config.motion import DEFAULT_MOTION_LIMITS, DEFAULT_MOTION_TIMEOUT_SECONDS
 from humanoid.types.agent import (
+    AgentExecution,
     AgentPanelStatus,
     AgentPhase,
     AgentTask,
     Decision,
     DecisionContext,
     EpisodeTimeExpired,
-    MotionCall,
-    ObservationStatus,
-    PerceptionCall,
-    PoseRecord,
     TimeBudget,
 )
-from humanoid.types.camera import ObservationId
+from humanoid.types.camera import CameraSummary, ObservationId, PoseRecord
+from humanoid.types.observation import ObservationSummary
 from humanoid.types.orchestrator import Mode
 from humanoid.types.robot import RobotName
 from humanoid.types.segmentation import MaskId, MaskProposal, SegmentationResult
-from humanoid.types.tools import CompleteDepth, DepthCompletionResult, SegmentAtPoint
+from humanoid.types.tools import (
+    CompleteDepth,
+    DepthCompletionResult,
+    MotionCall,
+    PerceptionCall,
+    SegmentAtPoint,
+)
 from humanoid.types.trial import TaskScore
 
 
@@ -44,10 +45,32 @@ def decision_reply(message, operation=None, arguments=None):
     )
 
 
-def observation_status() -> ObservationStatus:
+def observation_status() -> ObservationSummary:
     pose: PoseRecord = {"position_m": [0.0, 0.0, 0.0], "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0]}
-    return ObservationStatus(
-        cameras={},
+    return ObservationSummary(
+        cameras={
+            "base": CameraSummary(
+                optical_frame="base_camera",
+                camera_pose=pose,
+                intrinsics={
+                    "width": 8,
+                    "height": 8,
+                    "fx": 4.0,
+                    "fy": 4.0,
+                    "cx": 4.0,
+                    "cy": 4.0,
+                    "distortion_model": "none",
+                    "distortion_coefficients": (),
+                },
+                model=None,
+                observation_id=ObservationId("view"),
+                frame_number=1,
+                device_timestamp=0.0,
+                timestamp_domain="simulation",
+                raw_depth=None,
+                registered_depth_available=True,
+            )
+        },
         mode=Mode.IDLE,
         base_pose_world=pose,
         tool_frame="tool",
@@ -56,10 +79,7 @@ def observation_status() -> ObservationStatus:
         gripper_units=[],
         gripper_positions=[],
         gripper_limits=[],
-        rgb_frame=1,
-        observation_id=ObservationId("view"),
-        rgb_size_xy=[8, 8],
-        registered_depth_available=True,
+        primary_camera="base",
     )
 
 
@@ -76,8 +96,16 @@ def test_completed_connection_can_immediately_start_task(monkeypatch):
     process.is_alive.side_effect = [True, False]
     assert console.status().phase is AgentPhase.CONNECTING
     assert console.status().phase is AgentPhase.COMPLETED
-    task = AgentTask("inspect scene", "vision", Mode.IDLE, "session", RobotName.TRISKEL)
-    assert console.start(task).phase is AgentPhase.RUNNING
+    execution = AgentExecution(
+        AgentTask("inspect scene"),
+        "vision",
+        Mode.IDLE,
+        "session",
+        RobotName.TRISKEL,
+        motion_session_id=None,
+    )
+    assert console.start(execution).phase is AgentPhase.RUNNING
+    assert context.Process.call_args.kwargs["args"][1] is execution
 
 
 @pytest.fixture
@@ -89,7 +117,7 @@ def setup_worker(monkeypatch):
         {"primary RGB": "data:image/jpeg;base64,test"},
     )
     monkeypatch.setattr(worker, "RobotTools", Mock(return_value=tools))
-    client = Mock(session_id="session")
+    client = Mock(runtime_id="session", motion_session_id="motion")
     tools.client = client
     client.observation.return_value.mode = Mode.AUTONOMY
     client.execute.return_value = {"reached": True, "position_error_m": 0.001}
@@ -127,7 +155,7 @@ def test_model_receives_rgb_from_both_cameras():
         observation=observation_status(),
         last_result=None,
         seconds_remaining=10,
-        limits=AGENT_MOTION_LIMITS,
+        limits=DEFAULT_MOTION_LIMITS,
     )
     views = {"primary RGB": "rgb-image", "wrist RGB": "wrist-image"}
     model.decide(thread, context, views, allow_motion=False, timer=TimeBudget(10))
@@ -140,9 +168,19 @@ def test_motion_needs_both_submitted_and_current_autonomy(setup_worker, mode, li
     client, decision, _ = setup_worker
     client.observation.return_value.mode = live_mode
     decision.return_value = decision_reply("moving", "hold", {"duration": 1})
-    with pytest.raises(RuntimeError, match="Autonomy"):
-        worker.run_task(
-            Mock(), client, AgentTask("task", "vision", mode, "session", RobotName.TRISKEL), Mock()
+    with pytest.raises(RuntimeError, match="API"):
+        worker.run_execution(
+            Mock(),
+            client,
+            AgentExecution(
+                AgentTask("task"),
+                "vision",
+                mode,
+                "session",
+                RobotName.TRISKEL,
+                motion_session_id="motion" if mode is Mode.AUTONOMY else None,
+            ),
+            Mock(),
         )
     client.execute.assert_not_called()
 
@@ -154,10 +192,17 @@ def test_motion_result_reaches_next_model_turn(setup_worker):
         decision_reply("Held"),
     ]
     assert (
-        worker.run_task(
+        worker.run_execution(
             Mock(),
             client,
-            AgentTask("hold", "vision", Mode.AUTONOMY, "session", RobotName.PANDA),
+            AgentExecution(
+                AgentTask("hold"),
+                "vision",
+                Mode.AUTONOMY,
+                "session",
+                RobotName.PANDA,
+                motion_session_id="motion",
+            ),
             Mock(),
         )
         == "Held"
@@ -172,10 +217,17 @@ def test_motion_result_reaches_next_model_turn(setup_worker):
 def test_worker_refuses_new_robot_session(setup_worker):
     client, decision, _ = setup_worker
     with pytest.raises(RuntimeError, match="restarted"):
-        worker.run_task(
+        worker.run_execution(
             Mock(),
             client,
-            AgentTask("task", "vision", Mode.AUTONOMY, "old", RobotName.TRISKEL),
+            AgentExecution(
+                AgentTask("task"),
+                "vision",
+                Mode.AUTONOMY,
+                "old",
+                RobotName.TRISKEL,
+                motion_session_id="motion",
+            ),
             Mock(),
         )
     decision.assert_not_called()
@@ -203,10 +255,17 @@ def test_idle_segmentation_passes_numbered_mask_to_next_turn(setup_worker):
         decision_reply("Selected choice"),
     ]
     assert (
-        worker.run_task(
+        worker.run_execution(
             Mock(),
             client,
-            AgentTask("select", "vision", Mode.IDLE, "session", RobotName.TRISKEL),
+            AgentExecution(
+                AgentTask("select"),
+                "vision",
+                Mode.IDLE,
+                "session",
+                RobotName.TRISKEL,
+                motion_session_id=None,
+            ),
             Mock(),
         )
         == "Selected choice"
@@ -251,8 +310,9 @@ def test_exploration_review_pairs_inputs_decisions_and_results(tmp_path, setup_w
         worker.run_steps(
             Mock(),
             tools,
-            AgentTask("Explore", "vision", Mode.AUTONOMY, "sim", RobotName.TRISKEL),
+            AgentTask("Explore"),
             Mock(),
+            mode=Mode.AUTONOMY,
             budget=TimeBudget(30),
             review=review,
         )
@@ -288,8 +348,18 @@ def test_complete_depth_is_an_explicit_perception_command(setup_worker, mode):
         decision_reply("Depth ready"),
     ]
     assert (
-        worker.run_task(
-            Mock(), client, AgentTask("depth", "vision", mode, "session", RobotName.TRISKEL), Mock()
+        worker.run_execution(
+            Mock(),
+            client,
+            AgentExecution(
+                AgentTask("depth"),
+                "vision",
+                mode,
+                "session",
+                RobotName.TRISKEL,
+                motion_session_id="motion" if mode is Mode.AUTONOMY else None,
+            ),
+            Mock(),
         )
         == "Depth ready"
     )
@@ -336,10 +406,17 @@ def test_console_task_can_repeat_perception_and_motion_within_its_time_budget(se
         *[decision_reply("Probe", "hold", {"duration": 1})] * attempts,
         decision_reply("Finished"),
     ]
-    worker.run_task(
+    worker.run_execution(
         Mock(),
         client,
-        AgentTask("Explore cleanup", "vision", Mode.AUTONOMY, "session", RobotName.TRISKEL),
+        AgentExecution(
+            AgentTask("Explore cleanup"),
+            "vision",
+            Mode.AUTONOMY,
+            "session",
+            RobotName.TRISKEL,
+            motion_session_id="motion",
+        ),
         Mock(),
     )
     context = decide.call_args.args[1]
@@ -360,10 +437,17 @@ def test_console_motion_uses_remaining_time_and_reports_expiry(setup_worker, mon
 
     client.execute.side_effect = timeout
     with pytest.raises(EpisodeTimeExpired, match="Task time budget"):
-        worker.run_task(
+        worker.run_execution(
             Mock(),
             client,
-            AgentTask("Hold", "vision", Mode.AUTONOMY, "session", RobotName.TRISKEL),
+            AgentExecution(
+                AgentTask("Hold"),
+                "vision",
+                Mode.AUTONOMY,
+                "session",
+                RobotName.TRISKEL,
+                motion_session_id="motion",
+            ),
             Mock(),
         )
     client.execute.assert_called_once_with("hold", {"duration": 1}, timeout=0.25)
@@ -381,10 +465,60 @@ def test_timed_decision_interrupts_an_in_flight_model_turn():
         observation=observation_status(),
         last_result=None,
         seconds_remaining=0.1,
-        limits=AGENT_MOTION_LIMITS,
+        limits=DEFAULT_MOTION_LIMITS,
     )
     with pytest.raises(EpisodeTimeExpired):
         model.decide(
             thread, context, {"primary RGB": "rgb"}, allow_motion=True, timer=TimeBudget(0.1)
         )
     turn.interrupt.assert_called_once_with()
+
+
+@pytest.mark.parametrize("mode", [Mode.IDLE, Mode.AUTONOMY])
+def test_execution_motion_identity_is_required_only_for_motion(setup_worker, mode):
+    client, decision, _ = setup_worker
+    client.observation.return_value.mode = mode
+    decision.return_value = decision_reply("Observed")
+    task = AgentTask("Inspect the scene")
+    execution = AgentExecution(
+        task=task,
+        model="vision",
+        mode=mode,
+        runtime_id="session",
+        robot=RobotName.TRISKEL,
+        motion_session_id="previous-motion" if mode is Mode.AUTONOMY else None,
+    )
+    if mode is Mode.AUTONOMY:
+        with pytest.raises(RuntimeError, match="Motion executor restarted"):
+            worker.run_execution(Mock(), client, execution, Mock())
+        decision.assert_not_called()
+    else:
+        assert worker.run_execution(Mock(), client, execution, Mock()) == "Observed"
+        assert decision.call_args.args[1].instruction == task.instruction
+        assert decision.call_args.kwargs["allow_motion"] is False
+    client.execute.assert_not_called()
+
+
+def test_model_schema_requires_fields_that_api_callers_can_omit():
+    _, schema = model._decision_contract(allow_motion=True)
+    for name in ("Hold", "MoveBase", "MoveTool", "SetGripper", "CompleteDepth"):
+        definition = schema["$defs"][name]
+        assert set(definition["required"]) == set(definition["properties"])
+        assert all("default" not in field for field in definition["properties"].values())
+
+
+def test_agent_motion_failure_is_json_feedback(setup_worker):
+    client, decide, tools = setup_worker
+    client.execute.side_effect = ValueError("duration exceeds limit")
+    decide.side_effect = [
+        decision_reply("Hold", "hold", {"duration": 10}),
+        decision_reply("Stopped"),
+    ]
+    worker.run_steps(
+        Mock(), tools, AgentTask("Hold"), Mock(), mode=Mode.AUTONOMY, budget=TimeBudget(10)
+    )
+    feedback = decide.call_args.args[1].last_result
+    assert json.loads(json.dumps(feedback)) == {
+        "operation": "hold",
+        "error": "duration exceeds limit",
+    }

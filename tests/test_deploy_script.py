@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from humanoid.constants import EnvironmentVariable
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEPLOY_SCRIPT = PROJECT_ROOT / "scripts" / "deploy"
 INVALID_ARGUMENT_EXIT_CODE = 2
@@ -22,7 +24,7 @@ INVALID_ARGUMENT_EXIT_CODE = 2
     ],
 )
 def test_deploy_rejects_non_normalized_install_directories(install_dir: str) -> None:
-    environment = {**os.environ, "HUMANOID_ROBOT_DIR": install_dir}
+    environment = {**os.environ, EnvironmentVariable.ROBOT_DIR: install_dir}
 
     result = subprocess.run(
         [DEPLOY_SCRIPT, "--dry-run"],

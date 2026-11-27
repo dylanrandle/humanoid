@@ -6,6 +6,7 @@ import os
 import signal
 import threading
 import time
+import uuid
 from collections.abc import Sequence
 from multiprocessing import get_context
 from multiprocessing.process import BaseProcess
@@ -15,12 +16,7 @@ from typing import cast
 from humanoid.config.process import PROCESS_START_METHOD
 from humanoid.config.robot import ROBOT_CONFIGS
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
-from humanoid.constants import (
-    ROBOT_ENVIRONMENT_VARIABLE,
-    RUNTIME_ENVIRONMENT_VARIABLE,
-    SCENE_ENVIRONMENT_VARIABLE,
-    Topic,
-)
+from humanoid.constants import EnvironmentVariable, Topic
 from humanoid.logger import get_logger
 from humanoid.middleware.subscriber import Subscriber
 from humanoid.nodes.base import Node
@@ -29,7 +25,9 @@ from humanoid.nodes.groups import (
     PROCESS_ORDER,
     PROCESS_STOP_ORDER,
 )
+from humanoid.nodes.policy.motion import MotionPolicyNode
 from humanoid.nodes.robot.camera import CameraDriverNode
+from humanoid.types.motion import MotionProcessLifecycle
 from humanoid.types.node import ManagedNodeGroup, NodeGroup, ProcessContext
 from humanoid.types.process import ProcessName, ProcessStatus, Runtime
 from humanoid.types.robot import RobotName
@@ -51,13 +49,14 @@ class NodeManagerError(Exception):
 class NodeManager:
     """Starts, monitors, and stops imported node classes as logical groups."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - injectable process and motion collaborators
         self,
         runtime: Runtime | None = None,
         robot: RobotName | None = None,
         state_timeout_seconds: float = DEFAULT_STATE_TIMEOUT_SECONDS,
         state_poll_interval_seconds: float = DEFAULT_STATE_POLL_INTERVAL_SECONDS,
         log_queue: Queue[logging.LogRecord] | None = None,
+        motion: MotionProcessLifecycle | None = None,
     ):
         self.runtime = runtime if runtime is not None else Runtime.from_environment()
         self.robot = robot if robot is not None else RobotName.from_environment()
@@ -66,6 +65,7 @@ class NodeManager:
         self.state_poll_interval_seconds = state_poll_interval_seconds
         self._process_context = cast(ProcessContext, get_context(PROCESS_START_METHOD))
         self._log_queue = log_queue
+        self.motion_lifecycle = motion
         self._groups: dict[ProcessName, ManagedNodeGroup] = {}
         self._lock = threading.RLock()
 
@@ -189,14 +189,37 @@ class NodeManager:
                 mount.hardware for mount in ROBOT_CONFIGS[group.robot].cameras.values()
             ):
                 continue
-            process = self._process_context.Process(
-                target=node.run_managed,
-                name=node.__name__,
-                args=(self._log_queue,),
-            )
-            with _node_environment(group.runtime, group.robot, self.scene):
-                process.start()
-            group.processes.append(process)
+            connection = None
+            if node is MotionPolicyNode:
+                if self.motion_lifecycle is None:
+                    raise NodeManagerError("Motion transport must be supplied by the backend.")
+                parent, connection = get_context(PROCESS_START_METHOD).Pipe()
+                motion_session_id = uuid.uuid4().hex
+                process = self._process_context.Process(
+                    target=MotionPolicyNode.run_connected,
+                    name=node.__name__,
+                    args=(self._log_queue, connection, motion_session_id),
+                )
+            else:
+                process = self._process_context.Process(
+                    target=node.run_managed,
+                    name=node.__name__,
+                    args=(self._log_queue,),
+                )
+            try:
+                with _node_environment(group.runtime, group.robot, self.scene):
+                    process.start()
+                group.processes.append(process)
+                if node is MotionPolicyNode:
+                    assert self.motion_lifecycle is not None
+                    self.motion_lifecycle.attach(parent, motion_session_id)
+            except BaseException:
+                if connection is not None:
+                    parent.close()
+                raise
+            finally:
+                if connection is not None:
+                    connection.close()
 
     def _require_configuration_change_allowed_locked(self) -> None:
         if any(self._status_locked(name).running for name in PROCESS_ORDER):
@@ -240,6 +263,8 @@ class NodeManager:
 
         if startup_thread is not None and startup_thread is not threading.current_thread():
             startup_thread.join(timeout=1.0)
+        if name is ProcessName.AUTONOMY and self.motion_lifecycle is not None:
+            self.motion_lifecycle.detach()
         self._stop_processes(processes)
 
         with self._lock:
@@ -363,9 +388,9 @@ def _stopped_status() -> ProcessStatus:
 @contextlib.contextmanager
 def _node_environment(runtime: Runtime, robot: RobotName, scene: SimulationScene):
     values = {
-        RUNTIME_ENVIRONMENT_VARIABLE: runtime,
-        ROBOT_ENVIRONMENT_VARIABLE: robot,
-        SCENE_ENVIRONMENT_VARIABLE: scene,
+        EnvironmentVariable.RUNTIME: runtime,
+        EnvironmentVariable.ROBOT: robot,
+        EnvironmentVariable.SCENE: scene,
     }
     previous_values = {name: os.environ.get(name) for name in values}
     os.environ.update(values)
