@@ -22,6 +22,11 @@ The builder imports the robot URDF shared with the controller, then adds MuJoCo
 actuators, constraints, and solver settings. Semantic joint names connect MuJoCo
 state to the rest of the stack. Simulation gains are separate from hardware PID gains.
 
+The configured wheel `floor_frame` defines the ground height for both the viewer's
+reference floor and the cleanup scene. Scene objects are positioned relative to that
+floor; robots without wheels use world zero. Keep the floor frames aligned with the
+wheel bottoms in both Triskel URDFs when changing the base geometry.
+
 Robot geometry collides with the scene, but self-collision is disabled. Mobile
 bases use ideal planar motion, and finger compliance is approximated through
 contact settings. Treat successful simulated manipulation as a model result,

@@ -13,6 +13,7 @@ import numpy as np
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.robots.base import Robot
 from humanoid.types.actuator import ActuatorControlMode
+from humanoid.types.homing import HomingPreset
 from humanoid.types.robot import GeomContactConfig
 from humanoid.types.simulation import MujocoSimulationConfig, SimulationScene
 
@@ -25,6 +26,14 @@ _PACKAGE_URI_PATTERN = re.compile(r"package://([^/]+)/([^\"']+)")
 ROBOT_CONTACT_TYPE = 1
 _EXTERNAL_CONTACT_TYPE = 2
 _FLOOR_CONTACT_TYPE = 4
+
+
+def robot_floor_height(robot: Robot) -> float:
+    """Use the configured wheel floor frame at home, or world zero for fixed bases."""
+    if not robot.config.wheels:
+        return 0.0
+    home = robot.config.homing_presets[HomingPreset.HOME]
+    return float(robot.get_frame_pose(robot.config.wheels[0].floor_frame, home).translation[2])
 
 
 def build_mujoco_spec(
@@ -104,7 +113,9 @@ def build_mujoco_spec(
     if config.scene is not SimulationScene.EMPTY:
         scene_file = Path(__file__).with_name("scenes") / f"{config.scene.value}.xml"
         scene = mujoco.MjSpec.from_file(str(scene_file))
-        spec.attach(scene, prefix="", frame=spec.worldbody.add_frame())
+        spec.attach(
+            scene, prefix="", frame=spec.worldbody.add_frame(pos=[0, 0, robot_floor_height(robot)])
+        )
     return spec
 
 

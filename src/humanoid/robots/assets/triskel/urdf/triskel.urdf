@@ -288,17 +288,17 @@
     <link name="wheel_2_floor" />
     <link name="wheel_3_floor" />
     <joint name="wheel_1_floor_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="0 0 3.141593" />
+        <origin xyz="0 0 -0.0328" rpy="0 0 3.141593" />
         <parent link="base_link" />
         <child link="wheel_1_floor" />
     </joint>
     <joint name="wheel_2_floor_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="0 0 -1.047198" />
+        <origin xyz="0 0 -0.0328" rpy="0 0 -1.047198" />
         <parent link="base_link" />
         <child link="wheel_2_floor" />
     </joint>
     <joint name="wheel_3_floor_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="0 0 1.047198" />
+        <origin xyz="0 0 -0.0328" rpy="0 0 1.047198" />
         <parent link="base_link" />
         <child link="wheel_3_floor" />
     </joint>

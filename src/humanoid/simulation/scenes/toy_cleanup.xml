@@ -16,8 +16,8 @@
     </default>
   </default>
   <worldbody>
-    <!-- Elevations in this frame are relative to the room floor. -->
-    <frame pos="0 0 -0.032" childclass="cleanup">
+    <!-- The model builder places this floor-relative scene at the robot's floor height. -->
+    <frame childclass="cleanup">
       <!-- Floor (4) accepts scene objects (2). Robot geoms opt in to floor contact. -->
       <!-- Weight rigid floor response heavily while preserving per-toy friction. -->
       <geom name="task_floor" type="plane" contype="4" conaffinity="2" size="2 2 0.01" rgba="0.45 0.45 0.45 1"

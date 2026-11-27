@@ -8,6 +8,8 @@ import numpy as np
 import pinocchio as pin
 import pytest
 
+from humanoid.config.robot.triskel import TRISKEL_CONFIG
+
 ASSETS_DIR = Path(__file__).resolve().parents[2] / "src" / "humanoid" / "robots" / "assets"
 URDF_PATHS = sorted(ASSETS_DIR.glob("*/urdf/*.urdf"))
 SRDF_PATHS = sorted(ASSETS_DIR.glob("*/srdf/*.srdf"))
@@ -15,6 +17,20 @@ SRDF_PATHS = sorted(ASSETS_DIR.glob("*/srdf/*.srdf"))
 SIMPLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 PACKAGE_URI_PATTERN = re.compile(r"^package://([^/]+)/(.+)$")
 VERSION_PATTERN = re.compile(r"(?:^|_)v\d+(?:_|$)")
+
+
+@pytest.mark.parametrize("filename", ["triskel.urdf", "triskel_collision.urdf"])
+def test_triskel_floor_frames_match_wheel_contact_height(filename):
+    model = pin.buildModelFromUrdf(
+        str(ASSETS_DIR / "triskel" / "urdf" / filename), pin.JointModelPlanar()
+    )
+    data = model.createData()
+    pin.framesForwardKinematics(model, data, pin.neutral(model))
+    assert TRISKEL_CONFIG.wheels
+    for wheel in TRISKEL_CONFIG.wheels:
+        center = data.oMf[model.getFrameId(wheel.frame)]
+        floor = data.oMf[model.getFrameId(wheel.floor_frame)]
+        assert center.translation[2] - floor.translation[2] == pytest.approx(wheel.radius, abs=1e-6)
 
 
 @pytest.mark.parametrize("filename", ["triskel.urdf", "triskel_collision.urdf"])

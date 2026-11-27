@@ -14,6 +14,28 @@ from humanoid.types.simulation import MujocoSimulationConfig, SimulationScene
 from humanoid.visualizers.world import ViewerWorld
 
 
+def test_empty_simulation_has_a_reference_floor_without_changing_playback():
+    engine = NativeMujocoEngine(
+        ROBOT_CONFIGS[RobotName.TRISKEL], MujocoSimulationConfig(scene=SimulationScene.EMPTY)
+    )
+    try:
+        engine.step(20)
+        world = ViewerWorld(engine.robot, SimulationScene.EMPTY, Runtime.SIM)
+        world.apply(engine.simulation_state(), None, None)
+        floor = world.model.geom("reference_floor")
+        assert floor.contype == 0 and floor.conaffinity == 0
+        wheels = engine.robot.config.wheels
+        assert wheels
+        home = engine.robot.config.homing_presets[HomingPreset.HOME]
+        assert world.data.geom("reference_floor").xpos[2] == pytest.approx(
+            engine.robot.get_frame_pose(wheels[0].floor_frame, home).translation[2]
+        )
+        np.testing.assert_array_equal(world.data.qpos, engine.data.qpos)
+        np.testing.assert_array_equal(world.data.qvel, engine.data.qvel)
+    finally:
+        engine.close()
+
+
 @pytest.mark.parametrize("name", list(RobotName))
 def test_simulation_preserves_live_scene_and_robot(name):
     scene = SimulationScene.TOY_CLEANUP
@@ -38,6 +60,10 @@ def test_simulation_preserves_live_scene_and_robot(name):
         np.testing.assert_array_equal(world.data.qvel, engine.data.qvel)
         assert world.data.time == engine.data.time
         assert model.nbody == engine.model.nbody
+        np.testing.assert_array_equal(
+            model.geom("task_floor").rgba, engine.model.geom("task_floor").rgba
+        )
+        assert model.geom("task_floor").matid == engine.model.geom("task_floor").matid
         assert len(world.joint_geoms) and len(world.tool_geoms)
     finally:
         engine.close()

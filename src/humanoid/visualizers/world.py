@@ -7,10 +7,22 @@ import mujoco
 import numpy as np
 
 from humanoid.config import DEFAULT_MUJOCO_SIMULATION_CONFIG, VISUALIZER_CONFIG
+from humanoid.config.visualizer import (
+    EMPTY_GRID_CELL_COLOR,
+    EMPTY_GRID_CELL_SIZE,
+    EMPTY_GRID_SECTION_COLOR,
+    EMPTY_GRID_SECTION_SIZE,
+    VIEWER_BACKGROUND,
+    VIEWER_FILL_DIRECTION,
+    VIEWER_FILL_INTENSITY,
+    VIEWER_KEY_DIRECTION,
+    VIEWER_KEY_INTENSITY,
+    VIEWER_KEY_POSITION,
+    VIEWER_LIGHT_AMBIENT,
+)
 from humanoid.robots.base import Robot
 from humanoid.simulation.binding import resolve_mujoco_robot_binding
-from humanoid.simulation.model import build_mujoco_spec
-from humanoid.types.homing import HomingPreset
+from humanoid.simulation.model import build_mujoco_spec, robot_floor_height
 from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotState, RobotToolCommand
 from humanoid.types.simulation import SimulationScene, SimulationState
@@ -19,26 +31,86 @@ _URDF_VISUAL_GROUP = 1
 _SIGNATURE = mujoco.mjtState.mjSTATE_INTEGRATION
 
 
+def _style_scene(spec: mujoco.MjSpec) -> None:
+    # Replace scene lighting so every viewer world uses the same light balance.
+    for light in list(spec.lights):
+        spec.delete(light)
+    spec.visual.headlight.active = False
+    # The lower fill and ambient approximation remain visible in shadow.
+    spec.worldbody.add_light(
+        name="reference_fill",
+        type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL,
+        dir=VIEWER_FILL_DIRECTION,
+        castshadow=False,
+        ambient=VIEWER_LIGHT_AMBIENT,
+        diffuse=[VIEWER_FILL_INTENSITY] * 3,
+        specular=[0, 0, 0],
+    )
+    spec.worldbody.add_light(
+        name="reference_light",
+        type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL,
+        pos=VIEWER_KEY_POSITION,
+        dir=VIEWER_KEY_DIRECTION,
+        ambient=[0, 0, 0],
+        diffuse=[VIEWER_KEY_INTENSITY] * 3,
+    )
+    spec.add_texture(
+        name="reference_sky",
+        type=mujoco.mjtTexture.mjTEXTURE_SKYBOX,
+        builtin=mujoco.mjtBuiltin.mjBUILTIN_GRADIENT,
+        rgb1=VIEWER_BACKGROUND,
+        rgb2=VIEWER_BACKGROUND,
+        width=256,
+        height=1536,
+    )
+
+
+def _style_reference_floor(spec: mujoco.MjSpec) -> None:
+    # One texture tile spans a section; the tile edges are the major grid lines.
+    resolution = 512
+    pixels = np.full((resolution, resolution, 3), 255, dtype=np.uint8)
+    spacing = round(resolution * EMPTY_GRID_CELL_SIZE / EMPTY_GRID_SECTION_SIZE)
+    pixels[::spacing, :] = EMPTY_GRID_CELL_COLOR
+    pixels[:, ::spacing] = EMPTY_GRID_CELL_COLOR
+    pixels[0, :] = EMPTY_GRID_SECTION_COLOR
+    pixels[:, 0] = EMPTY_GRID_SECTION_COLOR
+    spec.add_texture(
+        name="reference_grid",
+        type=mujoco.mjtTexture.mjTEXTURE_2D,
+        width=resolution,
+        height=resolution,
+        nchannel=3,
+        data=pixels.ravel(),
+    )
+    material = spec.add_material(
+        name="reference_ground",
+        texuniform=True,
+        texrepeat=[1 / EMPTY_GRID_SECTION_SIZE] * 2,
+        specular=0,
+    )
+    material.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = "reference_grid"
+    floor = spec.geom("reference_floor")
+    floor.material = material.name
+    floor.rgba = [1, 1, 1, 1]
+
+
 class ViewerWorld:
     def __init__(self, robot: Robot, scene: SimulationScene, runtime: Runtime):
         self.robot = robot
         spec = build_mujoco_spec(robot, replace(DEFAULT_MUJOCO_SIMULATION_CONFIG, scene=scene))
-        if runtime is Runtime.REAL:
-            floor_z = 0.0
-            if robot.config.wheels:
-                home = robot.config.homing_presets[HomingPreset.HOME]
-                floor_z = robot.get_frame_pose(
-                    robot.config.wheels[0].floor_frame, home
-                ).translation[2]
+        if runtime is Runtime.REAL or scene is SimulationScene.EMPTY:
             spec.worldbody.add_geom(
                 name="reference_floor",
                 type=mujoco.mjtGeom.mjGEOM_PLANE,
                 size=[2, 2, 0.01],
-                pos=[0, 0, floor_z],
+                pos=[0, 0, robot_floor_height(robot)],
                 rgba=[0.4, 0.42, 0.44, 1],
                 contype=0,
                 conaffinity=0,
             )
+        _style_scene(spec)
+        if scene is SimulationScene.EMPTY:
+            _style_reference_floor(spec)
         self.model = model = spec.compile()
         self.data = mujoco.MjData(model)
         self.joint_ghost = mujoco.MjData(model)

@@ -24,6 +24,12 @@ def test_commands_use_native_decorations_and_leave_model_cameras_available():
     q = robot.config.homing_presets[HomingPreset.HOME].copy()
     state = RobotState(0, q, np.zeros(robot.model.nv), np.empty(0))
     world.apply(state, q, RobotToolCommand(0, pin.SE3.Identity()))
+    assert robot.config.wheels
+    floor_z = world.data.geom("reference_floor").xpos[2]
+    for wheel in robot.config.wheels:
+        center_z = robot.get_frame_pose(wheel.frame, q).translation[2]
+        assert floor_z == pytest.approx(robot.get_frame_pose(wheel.floor_frame, q).translation[2])
+        assert center_z - floor_z == pytest.approx(wheel.radius, abs=1e-6)
     scene = mujoco.MjvScene(model, maxgeom=model.ngeom * 2 + 1)
     pose = pin.SE3(pin.utils.rotate("z", np.pi / 3), np.array([0.3, -0.2, 0.0]))
     draw_commands(scene, world, RobotBaseCommand(0, pose))

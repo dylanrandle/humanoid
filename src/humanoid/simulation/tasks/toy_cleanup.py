@@ -167,7 +167,6 @@ class ToyCleanupTask(SimulationTask):
                 rng.uniform(0.26, 0.34),
                 -side * rng.uniform(0.14, 0.23),
             ]
-            spec.geom("task_floor").frame.pos[2] = 0
 
     def score(self, data: mujoco.MjData) -> TaskScore:
         deposited = deposited_toys(data, self.toys)

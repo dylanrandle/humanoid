@@ -41,9 +41,12 @@ Use `uv run viz --host triskel` for a remote stack over SSH. The viewer follows
 hardware, simulation, and replay. Amber shows commanded joints, blue shows the tool
 target, and the arrow shows the base target and forward heading.
 
-Simulation includes scene objects; hardware appears on a reference floor. Until
-feedback arrives, the viewer displays the configured home pose. Drag to orbit,
-scroll to zoom, and close the window to disconnect.
+Simulation includes scene objects; Empty and hardware appear on a reference floor.
+Both scenes use a white background and fixed overhead and lower fill lights that
+approximate Viser's lighting. Empty also uses Viser's gray grid; Toy cleanup keeps
+its scene floor. The native renderer uses ambient fill in place of HDR environment
+reflections. Until feedback arrives, the viewer displays the configured home pose.
+Drag to orbit, scroll to zoom, and close the window to disconnect.
 
 ## Cameras
 

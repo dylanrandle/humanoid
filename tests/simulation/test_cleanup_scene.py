@@ -18,6 +18,7 @@ from humanoid.simulation.tasks.toy_cleanup import (
     deposited_toys,
     randomize_cleanup,
 )
+from humanoid.types.homing import HomingPreset
 from humanoid.types.lcm import simulation_state_t
 from humanoid.types.lcm.converter import LCMConverter
 from humanoid.types.robot import RobotJointCommand
@@ -28,6 +29,17 @@ from humanoid.types.simulation import SimulationScene
 def test_cleanup_toys_and_viewer_state_round_trip(robot_config):
     config = replace(DEFAULT_MUJOCO_SIMULATION_CONFIG, scene=SimulationScene.TOY_CLEANUP)
     engine = NativeMujocoEngine(robot_config, config)
+    floor_z = 0.0
+    if robot_config.wheels:
+        home = robot_config.homing_presets[HomingPreset.HOME]
+        floor_z = engine.robot.get_frame_pose(robot_config.wheels[0].floor_frame, home).translation[
+            2
+        ]
+    assert engine.data.geom("task_floor").xpos[2] == pytest.approx(floor_z)
+    # The whole scene moves together: bin, walls, and free-jointed toys.
+    assert engine.data.geom("bin_floor").xpos[2] == pytest.approx(floor_z + 0.003)
+    assert engine.data.geom("wall_left").xpos[2] == pytest.approx(floor_z + 0.2)
+    assert engine.data.body("cube_0").xpos[2] == pytest.approx(floor_z + 0.018)
     for kind in ("car", "cube", "ball", "cylinder"):
         for index in range(3):
             body = engine.model.body(f"{kind}_{index}")
