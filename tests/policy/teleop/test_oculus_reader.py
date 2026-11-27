@@ -49,7 +49,9 @@ def test_wireless_device_reports_unreachable_address():
         reader.get_network_device(client)
 
 
-def test_buffered_logcat_frame_keeps_its_original_capture_time():
+def test_buffered_logcat_frame_keeps_its_original_capture_time(monkeypatch: pytest.MonkeyPatch):
+    # Reproduce the clock-offset roundoff seen on CI regardless of host uptime.
+    monkeypatch.setattr(time, "monotonic", lambda: 144.287430623)
     reader = _reader_without_device()
     expected_capture = time.monotonic() - 25
     reader._device_to_monotonic = expected_capture - 1000
@@ -65,7 +67,7 @@ def test_buffered_logcat_frame_keeps_its_original_capture_time():
 
     np.testing.assert_array_equal(snapshot.transforms["r"], np.eye(4))
     assert snapshot.buttons["RG"]
-    assert snapshot.captured_monotonic == expected_capture
+    assert snapshot.captured_monotonic == pytest.approx(expected_capture, rel=0, abs=1e-9)
     connection.close.assert_called_once_with()
 
 
