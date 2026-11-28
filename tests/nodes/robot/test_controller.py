@@ -157,7 +157,7 @@ def _make_state(nq=7, nv=None):
 
 def _activate(controller: RobotControllerNode) -> None:
     """Put the controller into an active mode so the OSC compute path runs."""
-    controller.current_mode = Mode.OCULUS
+    controller.current_mode = Mode.QUEST
     controller.current_tool_command = _make_tool_cmd()
 
 
@@ -224,13 +224,13 @@ class TestModeTransitions:
 
         def receive(topic, timeout=0):
             if topic == Topic.ORCHESTRATOR_MODE:
-                return OrchestratorMode(timestamp=0.0, mode=Mode.OCULUS)
+                return OrchestratorMode(timestamp=0.0, mode=Mode.QUEST)
             return None
 
         controller.subscriber.receive = Mock(side_effect=receive)
         controller.step()
 
-        assert controller.current_mode is Mode.OCULUS
+        assert controller.current_mode is Mode.QUEST
         assert controller.is_active
 
     def test_system_mode_activates_controller(self, controller):
@@ -264,7 +264,7 @@ class TestModeTransitions:
 class TestActiveMode:
     def test_first_state_after_mode_entry_seeds_a_stationary_hold(self, controller):
         state = _make_state()
-        messages = {Topic.ORCHESTRATOR_MODE: OrchestratorMode(timestamp=0, mode=Mode.OCULUS)}
+        messages = {Topic.ORCHESTRATOR_MODE: OrchestratorMode(timestamp=0, mode=Mode.QUEST)}
         controller.subscriber.receive.side_effect = lambda topic: messages.pop(topic, None)
         controller.step()
         controller.publisher.publish.assert_not_called()
@@ -492,7 +492,7 @@ def test_close_closes_subscriber(controller):
     controller.subscriber.close.assert_called_once()
 
 
-@pytest.mark.parametrize("mode", [Mode.KEYBOARD, Mode.OCULUS, Mode.AUTONOMY, Mode.SYSTEM])
+@pytest.mark.parametrize("mode", [Mode.KEYBOARD, Mode.QUEST, Mode.AUTONOMY, Mode.SYSTEM])
 def test_base_tracks_targets_from_its_commanded_pose(mode: Mode):
     now = 1.0
     with (
@@ -569,12 +569,12 @@ def test_autonomy_keeps_tracking_last_targets_when_agent_stops_publishing():
     ("old_mode", "new_mode"),
     [
         (Mode.KEYBOARD, Mode.AUTONOMY),
-        (Mode.AUTONOMY, Mode.OCULUS),
-        (Mode.KEYBOARD, Mode.OCULUS),
-        (Mode.IDLE, Mode.OCULUS),
-        (Mode.HOMING, Mode.OCULUS),
+        (Mode.AUTONOMY, Mode.QUEST),
+        (Mode.KEYBOARD, Mode.QUEST),
+        (Mode.IDLE, Mode.QUEST),
+        (Mode.HOMING, Mode.QUEST),
         (Mode.AUTONOMY, Mode.KEYBOARD),
-        (Mode.OCULUS, Mode.KEYBOARD),
+        (Mode.QUEST, Mode.KEYBOARD),
         (Mode.SYSTEM, Mode.KEYBOARD),
         (Mode.IDLE, Mode.KEYBOARD),
         (Mode.HOMING, Mode.KEYBOARD),

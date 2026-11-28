@@ -16,7 +16,7 @@ from humanoid.nodes.orchestrator import OrchestratorNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.policy.motion import MotionPolicyNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
-from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
+from humanoid.nodes.policy.teleop.quest import QuestTeleopNode
 from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
@@ -105,7 +105,7 @@ def test_node_groups_reference_imported_node_classes():
     )
     assert NODE_GROUPS[ProcessName.KEYBOARD].nodes == (KeyboardTeleopNode,)
     assert NODE_GROUPS[ProcessName.AUTONOMY].nodes == (MotionPolicyNode,)
-    assert NODE_GROUPS[ProcessName.OCULUS].nodes == (OculusTeleopNode,)
+    assert NODE_GROUPS[ProcessName.QUEST].nodes == (QuestTeleopNode,)
 
 
 @pytest.mark.parametrize("runtime", list(Runtime))

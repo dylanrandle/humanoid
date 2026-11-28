@@ -1,6 +1,6 @@
 import os
 import secrets
-from enum import Enum, StrEnum
+from enum import Enum, IntEnum, StrEnum
 
 from humanoid.types.actuator import ActuatorHealthReport
 from humanoid.types.camera import CameraImage, CameraTopic, RegisteredDepth
@@ -17,8 +17,28 @@ from humanoid.types.robot import (
 )
 from humanoid.types.simulation import SimulationState
 
+
+class Host(StrEnum):
+    """Network host defaults; environment and CLI settings can override them."""
+
+    LCM_MULTICAST = "239.255.76.67"
+    LOCALHOST = "localhost"
+    LOOPBACK = "127.0.0.1"
+    ROBOT = "triskel"
+
+
+class Port(IntEnum):
+    """Service port defaults; DYNAMIC asks the OS to allocate a free listener."""
+
+    API = 8765
+    DASHBOARD_GATEWAY = 443
+    DYNAMIC = 0
+    LCM = 7667
+    QUEST_GATEWAY = 8443
+    QUEST_SERVER = 8012
+
+
 LCM_RECEIVE_BUFFER_BYTES = 8 * 1024 * 1024
-LCM_PORT_RANGE_START = 7667
 
 
 def local_lcm_url(group: str, port: int) -> str:
@@ -31,7 +51,7 @@ def private_lcm_url() -> str:
     # The multicast group isolates each bus. Keep its 500 channel ports outside
     # the ephemeral range: Linux's outgoing sockets can otherwise claim a port
     # before LCM binds it, even when the multicast group is unique.
-    return local_lcm_url(group, LCM_PORT_RANGE_START)
+    return local_lcm_url(group, Port.LCM)
 
 
 class EnvironmentVariable(StrEnum):
@@ -41,7 +61,8 @@ class EnvironmentVariable(StrEnum):
     DASHBOARD_PORT = "HUMANOID_DASHBOARD_PORT"
     DATA_DIR = "HUMANOID_DATA_DIR"
     LOCAL_DASHBOARD_PORT = "HUMANOID_LOCAL_DASHBOARD_PORT"
-    OCULUS_IP = "HUMANOID_OCULUS_IP"
+    PUBLIC_HOST = "HUMANOID_PUBLIC_HOST"
+    QUEST_PORT = "HUMANOID_QUEST_PORT"
     ROBOT = "HUMANOID_ROBOT"
     ROBOT_DIR = "HUMANOID_ROBOT_DIR"
     ROBOT_HOST = "HUMANOID_ROBOT_HOST"
@@ -49,9 +70,7 @@ class EnvironmentVariable(StrEnum):
     SCENE = "HUMANOID_SCENE"
 
 
-DEFAULT_LCM_URL = os.environ.get(
-    "LCM_DEFAULT_URL", local_lcm_url("239.255.76.67", LCM_PORT_RANGE_START)
-)
+DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", local_lcm_url(Host.LCM_MULTICAST, Port.LCM))
 DEFAULT_HUMANOID_RUNTIME = Runtime.SIM
 DEFAULT_HUMANOID_ROBOT = RobotName.TRISKEL
 DEFAULT_ROBOT_DIR = "/opt/humanoid"
@@ -78,8 +97,8 @@ class Topic(Enum):
     # message type — the orchestrator selects which one feeds the final topic.
     CONTROLLER_JOINT_COMMAND = "CONTROLLER/JOINT_COMMAND"
     HOMING_JOINT_COMMAND = "HOMING/JOINT_COMMAND"
-    OCULUS_TOOL_COMMAND = "OCULUS/TOOL_COMMAND"
-    OCULUS_BASE_COMMAND = "OCULUS/BASE_COMMAND"
+    QUEST_TOOL_COMMAND = "QUEST/TOOL_COMMAND"
+    QUEST_BASE_COMMAND = "QUEST/BASE_COMMAND"
     KEYBOARD_TOOL_COMMAND = "KEYBOARD/TOOL_COMMAND"
     KEYBOARD_BASE_COMMAND = "KEYBOARD/BASE_COMMAND"
     SYSTEM_TOOL_COMMAND = "SYSTEM/TOOL_COMMAND"
@@ -106,8 +125,8 @@ TOPIC_TO_TYPE: dict[Topic, type] = {
     Topic.ROBOT_BASE_COMMAND: RobotBaseCommand,
     Topic.CONTROLLER_JOINT_COMMAND: RobotJointCommand,
     Topic.HOMING_JOINT_COMMAND: RobotJointCommand,
-    Topic.OCULUS_TOOL_COMMAND: RobotToolCommand,
-    Topic.OCULUS_BASE_COMMAND: RobotBaseCommand,
+    Topic.QUEST_TOOL_COMMAND: RobotToolCommand,
+    Topic.QUEST_BASE_COMMAND: RobotBaseCommand,
     Topic.KEYBOARD_TOOL_COMMAND: RobotToolCommand,
     Topic.KEYBOARD_BASE_COMMAND: RobotBaseCommand,
     Topic.SYSTEM_TOOL_COMMAND: RobotToolCommand,

@@ -4,7 +4,7 @@ from humanoid.nodes.orchestrator import OrchestratorNode
 from humanoid.nodes.policy.homing import HomingNode
 from humanoid.nodes.policy.motion import MotionPolicyNode
 from humanoid.nodes.policy.teleop.keyboard import KeyboardTeleopNode
-from humanoid.nodes.policy.teleop.oculus import OculusTeleopNode
+from humanoid.nodes.policy.teleop.quest import QuestTeleopNode
 from humanoid.nodes.robot.camera import CameraDriverNode
 from humanoid.nodes.robot.controller import RobotControllerNode
 from humanoid.nodes.robot.driver import RobotDriverNode
@@ -48,9 +48,9 @@ NODE_GROUPS = {
             nodes=(KeyboardTeleopNode,),
         ),
         NodeGroup(
-            name=ProcessName.OCULUS,
-            display_name="Oculus teleop",
-            nodes=(OculusTeleopNode,),
+            name=ProcessName.QUEST,
+            display_name="Quest teleop",
+            nodes=(QuestTeleopNode,),
         ),
     )
 }
@@ -58,7 +58,7 @@ PROCESS_ORDER = tuple(NODE_GROUPS)
 PROCESS_STOP_ORDER = (
     ProcessName.AUTONOMY,
     ProcessName.KEYBOARD,
-    ProcessName.OCULUS,
+    ProcessName.QUEST,
     ProcessName.REPLAY,
     ProcessName.STACK,
 )

@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 
+from humanoid.constants import Host
 from humanoid.visualizers.native import show
 from humanoid.visualizers.stream import local_frames, ssh_frames
 
@@ -19,7 +20,7 @@ def run(argv: list[str]) -> None:
             launcher = Path(sys.executable).with_name("mjpython")
             os.execv(launcher, [str(launcher), "-m", "humanoid.visualizers.cli", *argv])
         with ssh_frames(args.host) if args.host else local_frames() as receive:
-            show(receive, args.host or "localhost")
+            show(receive, args.host or Host.LOCALHOST)
     except KeyboardInterrupt:
         pass
     except (OSError, RuntimeError, ValueError) as exc:

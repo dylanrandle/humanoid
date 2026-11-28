@@ -10,11 +10,12 @@ from urllib.parse import urlsplit
 
 from flask import Flask, Response, jsonify, request
 from werkzeug.exceptions import HTTPException
-from werkzeug.serving import make_server
+from werkzeug.serving import WSGIRequestHandler, make_server
 
 from humanoid.api.application import BackendApplication
 from humanoid.api.routes.agent import register_agent_routes
 from humanoid.api.routes.logs import register_logs_routes
+from humanoid.api.routes.quest import register_quest_routes
 from humanoid.api.routes.recording import register_recording_routes
 from humanoid.api.routes.replay import register_replay_routes
 from humanoid.api.routes.robot import register_robot_routes
@@ -22,20 +23,27 @@ from humanoid.api.routes.runtime import register_runtime_routes
 from humanoid.api.routes.streaming import register_streaming_routes
 from humanoid.config.api import (
     ALLOWED_HOSTS,
-    API_HOST,
     BROWSER_OPEN_DELAY_SECONDS,
     CONTENT_SECURITY_POLICY,
-    DEFAULT_API_PORT,
     MAX_REQUEST_BYTES,
     STATIC_ROOT,
 )
-from humanoid.config.teleop import get_oculus_teleop_policy_config
-from humanoid.constants import EnvironmentVariable
+from humanoid.config.quest import get_quest_config
+from humanoid.constants import EnvironmentVariable, Host, Port
 from humanoid.logger import get_logger, setup_logging
 from humanoid.types.api import ApiError, ApiRoute, BackendError
 from humanoid.types.motion import MotionNotFound
 
 logger = get_logger(__name__)
+
+
+class _RequestHandler(WSGIRequestHandler):
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        # The controller worker polls at frame rate; preserve errors without
+        # flooding the operator log with successful internal reads.
+        if self.path == ApiRoute.QUEST_INPUT and str(code) == "200":
+            return
+        super().log_request(code, size)
 
 
 def create_app(backend: BackendApplication | None = None) -> Flask:
@@ -94,6 +102,7 @@ def create_app(backend: BackendApplication | None = None) -> Flask:
 
     register_agent_routes(app, backend)
     register_logs_routes(app, backend)
+    register_quest_routes(app, backend)
     register_recording_routes(app, backend)
     register_replay_routes(app, backend)
     register_runtime_routes(app, backend)
@@ -121,56 +130,53 @@ def _check_request_origin() -> None:
         hostname = urlsplit(f"//{host}").hostname if host else None
     except ValueError:
         hostname = None
-    if hostname is None or hostname.lower() not in ALLOWED_HOSTS:
+    public_host = get_quest_config().public_host
+    allowed_hosts = ALLOWED_HOSTS | ({public_host} if public_host else set())
+    if hostname is None or hostname.lower() not in allowed_hosts:
         raise ApiError("Invalid request host.", HTTPStatus.FORBIDDEN)
 
     if request.headers.get("Sec-Fetch-Site") in {"cross-site", "same-site"}:
         raise ApiError("A local request is required.", HTTPStatus.FORBIDDEN)
     origin = request.headers.get("Origin")
-    if origin and urlsplit(origin).netloc != host:
+    if origin and (
+        urlsplit(origin).netloc != host
+        or (hostname == public_host and urlsplit(origin).scheme != "https")
+    ):
         raise ApiError("Cross-origin control requests are not allowed.", HTTPStatus.FORBIDDEN)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the local humanoid operator console")
     parser.add_argument(
-        "--port", type=int, default=DEFAULT_API_PORT, help="Port to bind (default: %(default)s)"
+        "--port", type=int, default=Port.API, help="Port to bind (default: %(default)s)"
     )
     parser.add_argument(
         "--no-open", action="store_true", help="Do not open a browser automatically"
     )
     parser.add_argument(
-        "--oculus-ip",
-        metavar="IP",
-        help=(
-            "Quest IPv4 address for wireless ADB "
-            f"(also configurable with {EnvironmentVariable.OCULUS_IP})"
-        ),
+        "--public-host",
+        help=f"Local HTTPS hostname, e.g. {Host.ROBOT}.local",
     )
     args = parser.parse_args()
 
-    if args.oculus_ip is not None:
-        os.environ[EnvironmentVariable.OCULUS_IP] = args.oculus_ip
     try:
-        oculus_config = get_oculus_teleop_policy_config()
+        get_quest_config(args.public_host)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.public_host is not None:
+        os.environ[EnvironmentVariable.PUBLIC_HOST] = args.public_host
 
     setup_logging()
-    if oculus_config.ip_address is not None:
-        logger.info(
-            "Oculus wireless ADB configured for %s:%d",
-            oculus_config.ip_address,
-            oculus_config.port,
-        )
     backend = BackendApplication()
     app = create_app(backend)
     try:
-        server = make_server(API_HOST, args.port, app, threaded=True)
-    except Exception:
+        server = make_server(
+            Host.LOOPBACK, args.port, app, threaded=True, request_handler=_RequestHandler
+        )
+    except BaseException:
         backend.close()
         raise
-    url = f"http://{API_HOST}:{server.server_port}"
+    url = f"http://{Host.LOOPBACK}:{server.server_port}"
     os.environ[EnvironmentVariable.API_URL] = url
     logger.info("Humanoid operator console available at %s", url)
 

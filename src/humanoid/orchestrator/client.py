@@ -39,8 +39,8 @@ class OrchestratorClient:
             topic=Topic.ORCHESTRATOR_EVENT,
         )
 
-    def request_oculus(self) -> None:
-        self._send(EventKind.REQUEST_OCULUS)
+    def request_quest(self) -> None:
+        self._send(EventKind.REQUEST_QUEST)
 
     def request_keyboard(self) -> None:
         self._send(EventKind.REQUEST_KEYBOARD)

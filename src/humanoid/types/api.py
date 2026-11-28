@@ -74,6 +74,8 @@ class SafetyContext:
 
 class ApiRoute(StrEnum):
     ROOT = "/api"
+    QUEST_INPUT = f"{ROOT}/quest/input"
+    QUEST_OPEN = f"{ROOT}/quest/open"
     STATE = f"{ROOT}/state"
     CAMERA = f"{ROOT}/camera"
     CAPTURE = f"{ROOT}/capture"

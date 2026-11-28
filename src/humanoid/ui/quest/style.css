@@ -1,0 +1,29 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #101922;
+  color: #eaf2f7;
+}
+main {
+  max-width: 720px;
+  margin: 60px auto;
+  padding: 28px;
+}
+h1 {
+  font-size: 38px;
+}
+p {
+  line-height: 1.6;
+}
+a {
+  color: #80d8ca;
+}
+.button {
+  display: inline-block;
+  padding: 16px 24px;
+  border-radius: 10px;
+  background: #80d8ca;
+  color: #101922;
+  font-weight: 600;
+  text-decoration: none;
+}

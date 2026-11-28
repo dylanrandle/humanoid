@@ -15,7 +15,7 @@ class Mode(StrEnum):
 
     IDLE = "idle"
     HOMING = "homing"
-    OCULUS = "oculus"
+    QUEST = "quest"
     KEYBOARD = "keyboard"
     SYSTEM = "system"
     AUTONOMY = "autonomy"
@@ -96,7 +96,7 @@ class EventKind(StrEnum):
     """Events that drive orchestrator mode transitions."""
 
     REQUEST_HOMING = "request_homing"
-    REQUEST_OCULUS = "request_oculus"
+    REQUEST_QUEST = "request_quest"
     REQUEST_KEYBOARD = "request_keyboard"
     REQUEST_SYSTEM = "request_system"
     REQUEST_AUTONOMY = "request_autonomy"

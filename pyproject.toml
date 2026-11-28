@@ -13,7 +13,6 @@ dependencies = [
     "lcm>=1.5.2",
     "mujoco~=3.10.0",
     "numpy>=2.0.0",
-    "oculus-reader",
     "openai-codex==0.169.0",
     "pin>=3.2.0",
     "pin-pink>=4.0.0",
@@ -29,6 +28,10 @@ dependencies = [
     "opencv-python-headless>=4.10,<5",
     "cuda-bindings>=13,<14 ; platform_machine == 'aarch64' and sys_platform == 'linux'",
     "aiortc>=1.14,<2",
+    "vuer==0.0.60",
+    "params-proto>=2.13.2,<3",
+    "aiohttp>=3.13,<4",
+    "aiohttp-cors>=0.8,<1",
 ]
 
 [project.scripts]
@@ -87,6 +90,3 @@ extra-paths = ["typings"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/humanoid"]
-
-[tool.uv.sources]
-oculus-reader = { git = "https://github.com/rail-berkeley/oculus_reader.git", rev = "17bc7b3923f5754d70c4e358867a3bcac1a3c0c3" }

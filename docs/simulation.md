@@ -13,7 +13,7 @@ the default scene. Use the [live viewer](operation.md#live-3d-viewer) to inspect
 
 For pickup, approach from above with the finger pads on either side of the toy.
 Grasp cars across the narrow chassis width. Close with `[` on the keyboard or
-hold **A** with Oculus teleop engaged. Keep the grip target while lifting, then
+hold **A** with Quest teleop engaged. Keep the grip target while lifting, then
 open with `]` or **B**.
 
 ## Models and limits

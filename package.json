@@ -2,8 +2,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "format": "prettier --write src/humanoid/ui/static",
-    "format:check": "prettier --check src/humanoid/ui/static",
+    "format": "prettier --write src/humanoid/ui/static src/humanoid/ui/quest",
+    "format:check": "prettier --check src/humanoid/ui/static src/humanoid/ui/quest",
     "test": "./scripts/run-ui-tests"
   },
   "devDependencies": {

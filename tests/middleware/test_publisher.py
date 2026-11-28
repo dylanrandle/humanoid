@@ -145,10 +145,10 @@ class TestPublisher:
 
     def test_publish_tool_command(self, mock_lcm):
         publisher = Publisher()
-        publisher.publish(_make_tool_command(), topic=Topic.OCULUS_TOOL_COMMAND)
+        publisher.publish(_make_tool_command(), topic=Topic.QUEST_TOOL_COMMAND)
 
         channel, _ = mock_lcm.publish.call_args[0]
-        assert channel == Topic.OCULUS_TOOL_COMMAND.value
+        assert channel == Topic.QUEST_TOOL_COMMAND.value
 
     def test_publish_base_command(self, mock_lcm):
         publisher = Publisher()
@@ -159,14 +159,14 @@ class TestPublisher:
 
     def test_publish_orchestrator_mode(self, mock_lcm):
         publisher = Publisher()
-        mode = OrchestratorMode(timestamp=5.0, mode=Mode.OCULUS)
+        mode = OrchestratorMode(timestamp=5.0, mode=Mode.QUEST)
 
         publisher.publish(mode, topic=Topic.ORCHESTRATOR_MODE)
 
         channel, data_bytes = mock_lcm.publish.call_args[0]
         assert channel == Topic.ORCHESTRATOR_MODE.value
         recovered = LCMConverter.orchestrator_mode_from_lcm(orchestrator_mode_t.decode(data_bytes))
-        assert recovered.mode is Mode.OCULUS
+        assert recovered.mode is Mode.QUEST
 
     def test_publish_topic_type_mismatch_raises(self, mock_lcm):
         publisher = Publisher()

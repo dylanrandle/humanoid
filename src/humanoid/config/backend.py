@@ -19,7 +19,7 @@ REPLAY_CHANNELS = (
 REPLAY_CHANNEL_PATTERN = "|".join(topic.value for topic in REPLAY_CHANNELS)
 INPUT_PROCESSES: dict[Mode, ProcessName] = {
     Mode.KEYBOARD: ProcessName.KEYBOARD,
-    Mode.OCULUS: ProcessName.OCULUS,
+    Mode.QUEST: ProcessName.QUEST,
     Mode.AUTONOMY: ProcessName.AUTONOMY,
 }
 PROCESS_MODES = {process: mode for mode, process in INPUT_PROCESSES.items()}

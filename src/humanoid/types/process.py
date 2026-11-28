@@ -29,7 +29,7 @@ class ProcessName(StrEnum):
     STACK = "stack"
     REPLAY = "replay"
     KEYBOARD = "keyboard"
-    OCULUS = "oculus"
+    QUEST = "quest"
     AUTONOMY = "autonomy"
 
 

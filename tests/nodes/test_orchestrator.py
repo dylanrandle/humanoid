@@ -65,14 +65,14 @@ class TestTransitions:
     def test_release_autonomy_preserves_operator_mode(self, node, mode):
         node.mode = mode
         if mode is Mode.HOMING:
-            node.return_mode = Mode.OCULUS
+            node.return_mode = Mode.QUEST
         node._handle_event(_event(EventKind.RELEASE_AUTONOMY))
         assert node.mode is (Mode.IDLE if mode is Mode.AUTONOMY else mode)
-        assert node.return_mode is (Mode.OCULUS if mode is Mode.HOMING else None)
+        assert node.return_mode is (Mode.QUEST if mode is Mode.HOMING else None)
 
-    def test_request_oculus_from_idle(self, node):
-        node._handle_event(_event(EventKind.REQUEST_OCULUS))
-        assert node.mode is Mode.OCULUS
+    def test_request_quest_from_idle(self, node):
+        node._handle_event(_event(EventKind.REQUEST_QUEST))
+        assert node.mode is Mode.QUEST
         assert node.return_mode is None
 
     def test_request_keyboard_from_idle(self, node):
@@ -84,16 +84,16 @@ class TestTransitions:
         assert node.mode is Mode.SYSTEM
 
     def test_request_idle_from_teleop(self, node):
-        node.mode = Mode.OCULUS
+        node.mode = Mode.QUEST
         node._handle_event(_event(EventKind.REQUEST_IDLE))
         assert node.mode is Mode.IDLE
 
     def test_request_homing_from_teleop_saves_return_mode(self, node):
-        node.mode = Mode.OCULUS
+        node.mode = Mode.QUEST
         node._handle_event(_event(EventKind.REQUEST_HOMING))
 
         assert node.mode is Mode.HOMING
-        assert node.return_mode is Mode.OCULUS
+        assert node.return_mode is Mode.QUEST
 
     def test_request_homing_from_idle_leaves_return_mode_empty(self, node):
         node._handle_event(_event(EventKind.REQUEST_HOMING))
@@ -118,25 +118,25 @@ class TestTransitions:
         assert node.mode is Mode.IDLE
 
     def test_complete_with_no_saved_return_drops_to_idle(self, node):
-        node.mode = Mode.OCULUS
+        node.mode = Mode.QUEST
         node.return_mode = None
         node._handle_event(_event(EventKind.COMPLETE))
         assert node.mode is Mode.IDLE
 
     def test_re_request_during_homing_preserves_return_mode(self, node):
-        node.mode = Mode.OCULUS
+        node.mode = Mode.QUEST
         node._handle_event(_event(EventKind.REQUEST_HOMING))
-        assert node.return_mode is Mode.OCULUS
+        assert node.return_mode is Mode.QUEST
 
         # Re-requesting while already homing should NOT overwrite the saved return.
         node._handle_event(_event(EventKind.REQUEST_HOMING))
         assert node.mode is Mode.HOMING
-        assert node.return_mode is Mode.OCULUS
+        assert node.return_mode is Mode.QUEST
 
     def test_request_teleop_during_homing_clears_return_mode(self, node):
-        node.mode = Mode.OCULUS
+        node.mode = Mode.QUEST
         node._handle_event(_event(EventKind.REQUEST_HOMING))
-        assert node.return_mode is Mode.OCULUS
+        assert node.return_mode is Mode.QUEST
 
         node._handle_event(_event(EventKind.REQUEST_KEYBOARD))
         assert node.mode is Mode.KEYBOARD
@@ -147,7 +147,7 @@ class TestStepIntegration:
     @pytest.mark.parametrize(
         ("event", "mode", "base_topic"),
         [
-            (EventKind.REQUEST_OCULUS, Mode.OCULUS, Topic.OCULUS_BASE_COMMAND),
+            (EventKind.REQUEST_QUEST, Mode.QUEST, Topic.QUEST_BASE_COMMAND),
             (EventKind.REQUEST_KEYBOARD, Mode.KEYBOARD, Topic.KEYBOARD_BASE_COMMAND),
         ],
     )

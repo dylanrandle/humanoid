@@ -18,7 +18,7 @@ from humanoid.types.robot import RobotGripperConfig, RobotState
 class _DummyTeleopPolicy(BaseTeleopPolicy):
     """Concrete subclass so we can instantiate the otherwise-abstract base."""
 
-    mode = Mode.OCULUS
+    mode = Mode.QUEST
 
     def step(self, observation: Observation) -> Action:
         return self._hold_current_pose_action(observation)

@@ -19,7 +19,16 @@ See [Networking](networking.md#lcm-transport) for receive-buffer settings.
 ## Remote console opens but video does not
 
 Check the [WebRTC media path](networking.md#camera-streaming). An HTTP SSH forward
-alone does not carry video. Metric camera snapshots remain available over the API.
+or ADB reverse mapping alone does not carry UDP video. Metric camera snapshots remain available over the API.
+
+## Quest cannot resolve the hostname
+
+`DNS_PROBE_FINISHED_NXDOMAIN` means hostname lookup failed before HTTPS connected.
+Confirm the Quest is on the host's Wi-Fi network, close its browser, toggle Wi-Fi
+off and on, then open the address in a new tab. This restored `.local` lookup during
+headset testing; it does not resolve certificate warnings. If lookup still fails,
+check Avahi on the host and whether the network blocks multicast or isolates clients.
+See [Local HTTPS gateway](gateway.md) for addresses and service checks.
 
 ## Cameras fail to start
 

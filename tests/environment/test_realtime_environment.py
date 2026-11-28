@@ -35,8 +35,8 @@ _ALL_FEEDBACK = ObservationSubscriptions(
 
 _TEST_TOPICS = ActionTopics(
     joint=Topic.HOMING_JOINT_COMMAND,
-    tool=Topic.OCULUS_TOOL_COMMAND,
-    base=Topic.OCULUS_BASE_COMMAND,
+    tool=Topic.QUEST_TOOL_COMMAND,
+    base=Topic.QUEST_BASE_COMMAND,
 )
 
 
@@ -149,7 +149,7 @@ class TestReset:
 
     def test_observation_includes_orchestrator_mode(self, env):
         state = _make_state()
-        mode_msg = OrchestratorMode(timestamp=0.0, mode=Mode.OCULUS)
+        mode_msg = OrchestratorMode(timestamp=0.0, mode=Mode.QUEST)
         env.subscriber.receive = MagicMock(
             side_effect=lambda topic, **_: {
                 Topic.ROBOT_STATE: state,
@@ -159,7 +159,7 @@ class TestReset:
 
         observation = env.reset()
 
-        assert observation.mode is Mode.OCULUS
+        assert observation.mode is Mode.QUEST
 
     def test_raises_when_no_state_received(self, env):
         env.subscriber.receive = MagicMock(return_value=None)
@@ -245,7 +245,7 @@ class TestStep:
         np.testing.assert_allclose(cmd.pose.translation, tool_pose.translation)
         np.testing.assert_allclose(cmd.gripper_positions, gripper)
         assert cmd.velocity is tool_velocity
-        assert published[0].kwargs["topic"] is Topic.OCULUS_TOOL_COMMAND
+        assert published[0].kwargs["topic"] is Topic.QUEST_TOOL_COMMAND
 
     def test_publishes_base_command_to_configured_topic(self, env):
         env.subscriber.receive = MagicMock(side_effect=_state_only_receive(_make_state()))
@@ -259,7 +259,7 @@ class TestStep:
         cmd = published[0].args[0]
         assert isinstance(cmd, RobotBaseCommand)
         np.testing.assert_allclose(cmd.pose.translation, base_pose.translation)
-        assert published[0].kwargs["topic"] is Topic.OCULUS_BASE_COMMAND
+        assert published[0].kwargs["topic"] is Topic.QUEST_BASE_COMMAND
 
     def test_publishes_multiple_commands_for_combined_action(self, env):
         env.subscriber.receive = MagicMock(side_effect=_state_only_receive(_make_state()))
@@ -275,8 +275,8 @@ class TestStep:
             (c.args[0].__class__, c.kwargs["topic"]) for c in env.publisher.publish.call_args_list
         ]
         assert (RobotJointCommand, Topic.HOMING_JOINT_COMMAND) in published_pairs
-        assert (RobotToolCommand, Topic.OCULUS_TOOL_COMMAND) in published_pairs
-        assert (RobotBaseCommand, Topic.OCULUS_BASE_COMMAND) in published_pairs
+        assert (RobotToolCommand, Topic.QUEST_TOOL_COMMAND) in published_pairs
+        assert (RobotBaseCommand, Topic.QUEST_BASE_COMMAND) in published_pairs
 
     def test_empty_action_publishes_nothing(self, env):
         env.subscriber.receive = MagicMock(side_effect=_state_only_receive(_make_state()))
@@ -284,7 +284,7 @@ class TestStep:
         env.publisher.publish.assert_not_called()
 
     def test_raises_when_action_field_set_but_topic_missing(self):
-        env = _make_env(action_topics=ActionTopics(tool=Topic.OCULUS_TOOL_COMMAND))
+        env = _make_env(action_topics=ActionTopics(tool=Topic.QUEST_TOOL_COMMAND))
         env.subscriber.receive = MagicMock(side_effect=_state_only_receive(_make_state()))  # ty:ignore[invalid-assignment]
         action = Action(joint_positions=np.zeros(7))
 

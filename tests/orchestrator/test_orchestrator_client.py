@@ -47,14 +47,14 @@ def test_request_homing_publishes_target_before_event():
     assert topics_in_order == [Topic.HOMING_TARGET, Topic.ORCHESTRATOR_EVENT]
 
 
-def test_request_oculus_publishes_single_event():
+def test_request_quest_publishes_single_event():
     client, publisher = _make_client()
-    client.request_oculus()
+    client.request_quest()
 
     publisher.publish.assert_called_once()
     call = publisher.publish.call_args
     assert call.kwargs["topic"] is Topic.ORCHESTRATOR_EVENT
-    assert call.args[0].kind is EventKind.REQUEST_OCULUS
+    assert call.args[0].kind is EventKind.REQUEST_QUEST
 
 
 def test_request_keyboard_publishes_single_event():

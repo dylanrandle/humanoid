@@ -1,9 +1,24 @@
 """WebRTC boundary contracts and stream metrics."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
+import numpy as np
 from pydantic import BaseModel, ConfigDict, Field
+
+from humanoid.types.camera import CameraImage
+
+
+@dataclass(frozen=True)
+class DisplayFrame:
+    """RGB display composition, deliberately without camera calibration metadata."""
+
+    data: np.ndarray
+    timestamp: float
+
+
+type VideoSource = Callable[[], CameraImage | DisplayFrame | None]
 
 
 @dataclass(frozen=True)

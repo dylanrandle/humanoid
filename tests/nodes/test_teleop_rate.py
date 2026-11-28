@@ -2,7 +2,7 @@ import pytest
 
 from humanoid.config import (
     get_keyboard_teleop_policy_config,
-    get_oculus_teleop_policy_config,
+    get_quest_teleop_policy_config,
 )
 
 EXPECTED_TELEOP_RATE_HZ = 30.0
@@ -10,7 +10,7 @@ EXPECTED_TELEOP_RATE_HZ = 30.0
 
 @pytest.mark.parametrize(
     "config_factory",
-    [get_keyboard_teleop_policy_config, get_oculus_teleop_policy_config],
+    [get_keyboard_teleop_policy_config, get_quest_teleop_policy_config],
 )
 def test_runtime_teleop_config_targets_thirty_hz(config_factory):
     config = config_factory()

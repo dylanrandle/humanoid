@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from ipaddress import AddressValueError, IPv4Address
 
 import numpy as np
 
@@ -54,18 +53,18 @@ class KeyboardTeleopPolicyConfig:
 
 
 @dataclass
-class OculusTeleopPolicyConfig:
-    """Tunable parameters for OculusTeleopPolicy.
+class QuestTeleopPolicyConfig:
+    """Tunable parameters for QuestTeleopPolicy.
 
     Args:
         dt: Control loop period in seconds. Used with the selected robot's
             tool and base velocity limits to derive per-tick steps and to set
             the rate of the teleop node.
-        oculus_to_tool_command_rotation: 3x3 orthogonal matrix mapping
-            Oculus-frame vector components into the robot's tool-command
+        quest_to_tool_command_rotation: 3x3 orthogonal matrix mapping
+            Quest-frame vector components into the robot's tool-command
             frame: world for fixed-base robots and the configured base frame
             for mobile robots. Defaults to a 90-degree rotation about X:
-            Oculus +Y maps to command +Z (up), and Oculus -Z maps to command
+            Quest +Y maps to command +Z (up), and Quest -Z maps to command
             +Y (forward).
         tool_translation_scale: Scale factor for controller translation before
             applying the selected robot's linear tool velocity limit.
@@ -87,25 +86,20 @@ class OculusTeleopPolicyConfig:
             the full gripper joint range. The per-tick step is
             ``(gripper_max - gripper_min) * dt / gripper_close_time``;
             commanded position is clamped to the joint limits.
-        ip_address: Quest IPv4 address for wireless ADB. ``None`` preserves
-            the upstream reader's USB-device behavior.
-        port: Quest wireless ADB port.
-        input_timeout: Maximum age in seconds since capture of the latest
-            controller frame. Older input suppresses Oculus commands until fresh tracking returns.
-        startup_timeout: Maximum time in seconds to wait for the first valid
-            controller frame before failing with a setup error.
+        input_timeout: Maximum age in seconds of a Quest controller frame.
+            Older input suppresses commands until fresh, neutral tracking returns.
         tool_linear_acceleration_limit: Optional tool translation acceleration
             limit in m/s^2. ``None`` disables acceleration shaping.
         tool_angular_acceleration_limit: Optional tool rotation acceleration
             limit in rad/s^2. ``None`` disables acceleration shaping.
         controller_pose_filter_time_constant: Low-pass filter time constant for
-            Oculus position and orientation in seconds. Zero disables filtering.
+            Quest position and orientation in seconds. Zero disables filtering.
         verbose: Whether to log pose updates.
     """
 
     subscriptions: ObservationSubscriptions = field(kw_only=True)
     dt: float = 0.01
-    oculus_to_tool_command_rotation: np.ndarray = field(
+    quest_to_tool_command_rotation: np.ndarray = field(
         default_factory=lambda: np.array(
             [
                 [1.0, 0.0, 0.0],
@@ -123,10 +117,7 @@ class OculusTeleopPolicyConfig:
     tool_linear_acceleration_limit: float | None = None
     tool_angular_acceleration_limit: float | None = None
     controller_pose_filter_time_constant: float = 0.0
-    ip_address: str | None = None
-    port: int = 5555
     input_timeout: float = 0.3
-    startup_timeout: float = 15.0
     verbose: bool = True
 
     def __post_init__(self) -> None:
@@ -142,17 +133,8 @@ class OculusTeleopPolicyConfig:
             raise ValueError(
                 "Controller pose filter time constant must be finite and non-negative."
             )
-        if self.ip_address is not None:
-            try:
-                self.ip_address = str(IPv4Address(self.ip_address.strip()))
-            except AddressValueError as exc:
-                raise ValueError("Oculus IP address must be a valid IPv4 address.") from exc
-        if not MIN_NETWORK_PORT <= self.port <= MAX_NETWORK_PORT:
-            raise ValueError("Oculus ADB port must be between 1 and 65535.")
         if not np.isfinite(self.input_timeout) or self.input_timeout <= 0.0:
-            raise ValueError("Oculus input timeout must be positive and finite.")
-        if not np.isfinite(self.startup_timeout) or self.startup_timeout <= 0.0:
-            raise ValueError("Oculus startup timeout must be positive and finite.")
+            raise ValueError("Quest input timeout must be positive and finite.")
 
 
 def _validate_motion_config(
@@ -171,7 +153,7 @@ def _validate_motion_config(
 
 
 @dataclass(frozen=True)
-class OculusInputSnapshot:
+class QuestInputSnapshot:
     """One controller frame and its capture time on the host monotonic clock."""
 
     transforms: dict[str, np.ndarray]

@@ -83,7 +83,7 @@ function elements() {
         action: element(),
       },
       autonomy: { row: element(), status: element(), error: element(), action: element() },
-      oculus: {
+      quest: {
         row: element(),
         status: element(),
         error: element(),
@@ -174,7 +174,7 @@ function snapshot() {
       stack: processStatus(),
       replay: processStatus(),
       keyboard: processStatus(),
-      oculus: processStatus(),
+      quest: processStatus(),
       autonomy: processStatus(),
     },
     node_rates: [],
@@ -357,14 +357,14 @@ test("recent logs render as text and follow the live tail", () => {
   ui.logOutput.scrollTop = 200;
   const logs = [
     "[INFO] Controller initialized",
-    "[WARNING] Oculus input is stale",
+    "[WARNING] Quest input is stale",
   ];
 
   renderLogs(logs, ui);
 
   assert.equal(
     ui.logOutput.textContent,
-    "[INFO] Controller initialized\n[WARNING] Oculus input is stale",
+    "[INFO] Controller initialized\n[WARNING] Quest input is stale",
   );
   assert.equal(ui.logOutput.scrollTop, 300);
   assert.equal(ui.logStatus.textContent, "2 recent entries");

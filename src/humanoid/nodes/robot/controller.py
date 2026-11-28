@@ -36,7 +36,7 @@ logger = get_logger(__name__)
 
 # Modes in which the OSC's joint commands are forwarded to the robot. In any
 # other mode (HOMING, IDLE) the OSC only observes the robot and routed commands.
-OSC_ACTIVE_MODES = {Mode.OCULUS, Mode.KEYBOARD, Mode.SYSTEM, Mode.AUTONOMY}
+OSC_ACTIVE_MODES = {Mode.QUEST, Mode.KEYBOARD, Mode.SYSTEM, Mode.AUTONOMY}
 MAX_FEEDFORWARD_COMMAND_AGE_PERIODS = 1.0
 
 

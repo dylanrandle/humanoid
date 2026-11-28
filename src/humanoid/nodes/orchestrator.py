@@ -37,9 +37,9 @@ MODE_FORWARDS: dict[Mode, dict[Topic, Topic]] = {
     Mode.HOMING: {
         Topic.HOMING_JOINT_COMMAND: Topic.ROBOT_JOINT_COMMAND,
     },
-    Mode.OCULUS: {
-        Topic.OCULUS_TOOL_COMMAND: Topic.ROBOT_TOOL_COMMAND,
-        Topic.OCULUS_BASE_COMMAND: Topic.ROBOT_BASE_COMMAND,
+    Mode.QUEST: {
+        Topic.QUEST_TOOL_COMMAND: Topic.ROBOT_TOOL_COMMAND,
+        Topic.QUEST_BASE_COMMAND: Topic.ROBOT_BASE_COMMAND,
         Topic.CONTROLLER_JOINT_COMMAND: Topic.ROBOT_JOINT_COMMAND,
     },
     Mode.KEYBOARD: {
@@ -61,7 +61,7 @@ MODE_FORWARDS: dict[Mode, dict[Topic, Topic]] = {
 # Modes the orchestrator will pop back to after a transient HOMING. Requesting
 # HOMING from any other mode leaves the return slot empty, so COMPLETE falls
 # back to IDLE.
-_RETURNABLE_MODES = {Mode.OCULUS, Mode.KEYBOARD}
+_RETURNABLE_MODES = {Mode.QUEST, Mode.KEYBOARD}
 
 
 def _all_source_topics() -> list[Topic]:
@@ -133,9 +133,9 @@ class OrchestratorNode(Node):
             if self.mode is not Mode.HOMING and self.mode in _RETURNABLE_MODES:
                 self.return_mode = self.mode
             self._transition_to(Mode.HOMING)
-        elif kind is EventKind.REQUEST_OCULUS:
+        elif kind is EventKind.REQUEST_QUEST:
             self.return_mode = None
-            self._transition_to(Mode.OCULUS)
+            self._transition_to(Mode.QUEST)
         elif kind is EventKind.REQUEST_KEYBOARD:
             self.return_mode = None
             self._transition_to(Mode.KEYBOARD)

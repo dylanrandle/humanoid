@@ -56,24 +56,25 @@ def _all_processes(
     stack: bool = False,
     replay: bool = False,
     keyboard: bool = False,
-    oculus: bool = False,
+    quest: bool = False,
 ) -> dict[ProcessName, ProcessStatus]:
     return {
         ProcessName.STACK: _process_status(stack),
         ProcessName.REPLAY: _process_status(replay),
         ProcessName.KEYBOARD: _process_status(keyboard),
-        ProcessName.OCULUS: _process_status(oculus),
+        ProcessName.QUEST: _process_status(quest),
         ProcessName.AUTONOMY: _process_status(),
     }
 
 
-def _make_service(
+def _make_service(  # noqa: PLR0913 - independent backend fixture settings
     *,
     stack: bool = False,
     keyboard: bool = False,
-    oculus: bool = False,
+    quest: bool = False,
     connected: bool = False,
     mode: Mode | None = None,
+    serve_quest: bool = True,
 ) -> tuple[BackendApplication, MagicMock, MagicMock, MagicMock]:
     manager = MagicMock(spec=NodeManager)
     manager.runtime = Runtime.SIM
@@ -82,7 +83,7 @@ def _make_service(
     manager.status.return_value = _all_processes(
         stack=stack,
         keyboard=keyboard,
-        oculus=oculus,
+        quest=quest,
     )
     manager.active_nodes.return_value = {}
     client = MagicMock(spec=OrchestratorClient)
@@ -126,6 +127,7 @@ def _make_service(
     log_service.queue = MagicMock()
     with patch.multiple(
         "humanoid.api.application",
+        QuestServer=MagicMock(),
         NodeManager=MagicMock(return_value=manager),
         OrchestratorClient=MagicMock(return_value=client),
         ModeMonitor=MagicMock(return_value=monitor),
@@ -138,7 +140,7 @@ def _make_service(
         Publisher=MagicMock(),
         Subscriber=MagicMock(),
     ):
-        service = BackendApplication()
+        service = BackendApplication(serve_quest=serve_quest)
     recording_catalog = MagicMock(spec=RecordingCatalog)
     recording_catalog.list.return_value = []
     service.recording_catalog = recording_catalog
@@ -176,7 +178,7 @@ def test_teleop_requires_main_stack():
     service, manager, _, _ = _make_service()
 
     with pytest.raises(BackendError, match="Start the main stack"):
-        service.start_process(ProcessName.OCULUS, _safety_context())
+        service.start_process(ProcessName.QUEST, _safety_context())
 
     manager.start.assert_not_called()
 
@@ -925,7 +927,7 @@ def test_stopping_inactive_teleop_does_not_change_mode():
         stack=True,
         keyboard=True,
         connected=True,
-        mode=Mode.OCULUS,
+        mode=Mode.QUEST,
     )
 
     service.stop_process(ProcessName.KEYBOARD)
@@ -1026,6 +1028,45 @@ def test_supervision_reaps_stack_failure_without_status_requests():
         assert service._supervisor is not None and service._supervisor.is_alive()
     finally:
         service.close()
+
+
+def test_backend_owns_quest_lifecycle():
+    service, _, _, _ = _make_service()
+    quest = cast(MagicMock, service.quest_server)
+    service.start()
+    service.start()
+    try:
+        quest.start.assert_called_once_with()
+    finally:
+        service.close()
+    service.close()
+    quest.close.assert_called_once_with()
+    cast(MagicMock, service.lcm_rate_monitor).close.assert_called_once_with()
+    with pytest.raises(RuntimeError, match="Backend is closed"):
+        service.start()
+
+
+def test_trial_backend_can_skip_quest_listener():
+    service, _, _, _ = _make_service(serve_quest=False)
+    try:
+        service.start()
+        assert service.quest_server is None
+        assert service._supervisor is not None and service._supervisor.is_alive()
+    finally:
+        service.close()
+
+
+def test_quest_start_failure_closes_backend_resources():
+    service, _, _, monitor = _make_service()
+    quest = cast(MagicMock, service.quest_server)
+    quest.start.side_effect = RuntimeError("port in use")
+    with pytest.raises(RuntimeError, match="port in use"):
+        service.start()
+    service.close()
+    assert service._supervisor is None
+    quest.close.assert_called_once_with()
+    monitor.close.assert_called_once_with()
+    cast(MagicMock, service.log_service).close.assert_called_once_with()
 
 
 def test_read_only_agent_task_does_not_require_motion_process(monkeypatch):

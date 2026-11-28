@@ -38,7 +38,7 @@ class ModeService:
         methods: dict[Mode, Callable[[], None]] = {
             Mode.IDLE: self.orchestrator_client.request_idle,
             Mode.KEYBOARD: self.orchestrator_client.request_keyboard,
-            Mode.OCULUS: self.orchestrator_client.request_oculus,
+            Mode.QUEST: self.orchestrator_client.request_quest,
             Mode.SYSTEM: self.orchestrator_client.request_system,
             Mode.AUTONOMY: self.orchestrator_client.request_autonomy,
         }

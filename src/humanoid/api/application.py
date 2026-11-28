@@ -2,6 +2,7 @@
 
 import threading
 import uuid
+from functools import partial
 
 from humanoid.api.services.agent_tasks import AgentTaskService
 from humanoid.api.services.cameras import CameraFrameService
@@ -18,7 +19,10 @@ from humanoid.config.backend import (
     INPUT_PROCESSES,
 )
 from humanoid.config.logs import get_log_path
+from humanoid.config.quest import get_quest_config
 from humanoid.constants import DEFAULT_LCM_URL, Topic
+from humanoid.hardware.teleop.quest.input import QuestInputState
+from humanoid.hardware.teleop.quest.server import QuestServer
 from humanoid.logger import get_logger
 from humanoid.middleware.publisher import Publisher
 from humanoid.middleware.subscriber import Subscriber
@@ -41,6 +45,7 @@ from humanoid.types.orchestrator import (
     OrchestratorRequest,
 )
 from humanoid.types.process import ProcessAction, ProcessName, Runtime
+from humanoid.types.quest import QuestCameraSources, QuestVideoServices
 from humanoid.types.recording import RecordingOwner, RecordingState, RecordingStatus
 from humanoid.types.robot import RobotConfig, RobotName
 from humanoid.types.simulation import SimulationScene
@@ -56,13 +61,18 @@ class BackendApplication:
         runtime: Runtime | None = None,
         robot: RobotName | None = None,
         lcm_url: str = DEFAULT_LCM_URL,
+        *,
+        serve_quest: bool = True,
     ) -> None:
         # Runtime state and supervision.
         self.lcm_url = lcm_url
         self.runtime_id = uuid.uuid4().hex
         self.camera_generation = 0
+        quest_config = get_quest_config()
+        self.quest_input = QuestInputState(quest_config.input_timeout)
         self._lock = threading.RLock()
         self._stop = threading.Event()
+        self._closed = False
         self._supervisor: threading.Thread | None = None
 
         # Services and process management.
@@ -124,6 +134,32 @@ class BackendApplication:
             release_motion=self.orchestrator_client.release_autonomy,
             lock=self._lock,
         )
+
+        self.quest_server = (
+            QuestServer(
+                quest_config,
+                self.quest_input,
+                QuestVideoServices(
+                    cameras=self._quest_camera_sources,
+                    offer=lambda offer, source: self.streaming_service.offer(offer, source),  # noqa: PLW0108 - lazy service
+                    remove=lambda stream_id: self.streaming_service.remove(stream_id),  # noqa: PLW0108 - lazy service
+                    metrics=self.stream_telemetry.snapshot,
+                ),
+            )
+            if serve_quest
+            else None
+        )
+
+    def _quest_camera_sources(self) -> QuestCameraSources:
+        """Snapshot readers and generation together; retain lazy sensor initialization."""
+        with self._lock:
+            return QuestCameraSources(
+                generation=self.camera_generation,
+                sources={
+                    name: partial(camera.read_frame, "rgb")
+                    for name, camera in self.camera_frame_services.items()
+                },
+            )
 
     def status(self) -> BackendStatus:
         with self._lock:
@@ -276,8 +312,16 @@ class BackendApplication:
             return status
 
     def start(self) -> None:
-        """Supervise failures and sample health even when no clients are polling."""
+        """Start Quest transport and supervise health independently of browser polling."""
+        if self._closed:
+            raise RuntimeError("Backend is closed")
         if self._supervisor is None:
+            try:
+                if self.quest_server is not None:
+                    self.quest_server.start()
+            except BaseException:
+                self.close()
+                raise
             self._supervisor = threading.Thread(
                 target=self._supervise, daemon=True, name="backend-supervisor"
             )
@@ -293,6 +337,7 @@ class BackendApplication:
                 logger.exception("Backend supervision failed")
 
     def _reset_runtime(self) -> None:
+        self.quest_input.clear()
         self.runtime_id = uuid.uuid4().hex
         self.recording_service.reconcile_runtime(self.runtime_id)
         self.actuator_health_monitor.reset()
@@ -300,9 +345,17 @@ class BackendApplication:
         self._reset_sensor_services()
 
     def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         self._stop.set()
         if self._supervisor is not None:
             self._supervisor.join(timeout=2)
+        try:
+            if self.quest_server is not None:
+                self.quest_server.close()
+        except Exception:
+            logger.exception("Failed to close Quest server cleanly")
         try:
             self.agent_task_service.stop()
             self.runtime_service.stop_stack()

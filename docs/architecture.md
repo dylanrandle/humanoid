@@ -10,6 +10,10 @@ and control modes. Policies produce targets, the orchestrator routes the active
 policy's commands, and controllers translate them into robot commands. Hardware
 or simulation returns feedback over LCM.
 
+Teleoperation devices also live under `hardware`, even when their commands target
+the simulator. The backend hosts the Quest device integration independently of
+the policy worker; see [Quest transport](hardware/quest.md#architecture).
+
 | Area | Responsibility |
 | --- | --- |
 | [API](api.md) and [UI](../src/humanoid/ui/) | Operator console, observations, motion requests, and lifecycle management |

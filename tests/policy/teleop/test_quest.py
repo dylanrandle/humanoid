@@ -1,6 +1,6 @@
-"""Tests for OculusTeleopPolicy.
+"""Tests for QuestTeleopPolicy.
 
-The ``oculus_reader.OculusReader`` device dependency is patched out with a
+The backend ``QuestClient`` dependency is patched out with a
 mutable stub so we can drive the policy through synthetic controller poses,
 button states, and joystick deflections.
 """
@@ -17,10 +17,10 @@ import pytest
 from humanoid.config import ROBOT_CONFIGS
 from humanoid.config.teleop import TELEOP_SUBSCRIPTIONS
 from humanoid.orchestrator.client import OrchestratorClient
-from humanoid.policy.teleop import oculus as oculus_module
-from humanoid.policy.teleop.oculus import (
-    OculusTeleopPolicy,
-    OculusTeleopPolicyConfig,
+from humanoid.policy.teleop import quest as quest_module
+from humanoid.policy.teleop.quest import (
+    QuestTeleopPolicy,
+    QuestTeleopPolicyConfig,
 )
 from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
@@ -28,24 +28,21 @@ from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.recording import RecordingState, RecordingStatus
 from humanoid.types.robot import RobotJointCommand, RobotState
-from humanoid.types.teleop import OculusInputSnapshot
+from humanoid.types.teleop import QuestInputSnapshot
 
 ONE_CALL = 1
 TWO_CALLS = 2
-CUSTOM_ADB_PORT = 5556
 
 
-class StubOculusReader:
-    """Stand-in for oculus_reader.OculusReader.
+class StubQuestClient:
+    """Stand-in for quest.QuestClient.
 
     Returns whatever pose/button state the test has loaded into it. Tests
     mutate ``transforms`` and ``buttons`` between policy calls to simulate
     operator input.
     """
 
-    def __init__(self, ip_address: str | None = None, port: int = 5555):
-        self.ip_address = ip_address
-        self.port = port
+    def __init__(self):
         self.input_fresh = True
         self.captured_monotonic: float | None = None
         self.last_disengaged_monotonic: float | None = None
@@ -63,7 +60,7 @@ class StubOculusReader:
 
     def get_snapshot(self):
         captured_monotonic = time.monotonic() if self.input_fresh else self.captured_monotonic
-        return OculusInputSnapshot(
+        return QuestInputSnapshot(
             transforms=self.transforms,
             buttons=self.buttons,
             captured_monotonic=captured_monotonic,
@@ -87,9 +84,9 @@ class StubOrchestratorClient(OrchestratorClient):
 
 
 @pytest.fixture(autouse=True)
-def _patch_reader(monkeypatch):
-    """Auto-applied: every test in this module sees the stub, not real hardware."""
-    monkeypatch.setattr(oculus_module, "OculusReader", StubOculusReader)
+def _patch_input_client(monkeypatch):
+    """Auto-applied: every test uses the stub rather than polling the backend."""
+    monkeypatch.setattr(quest_module, "QuestClient", StubQuestClient)
 
 
 def _observation_from_q(q: np.ndarray) -> Observation:
@@ -106,21 +103,21 @@ def _observation_from_q(q: np.ndarray) -> Observation:
 def _make_policy(
     *,
     robot_name: str = "panda",
-    config: OculusTeleopPolicyConfig | None = None,
-) -> tuple[OculusTeleopPolicy, StubOculusReader]:
+    config: QuestTeleopPolicyConfig | None = None,
+) -> tuple[QuestTeleopPolicy, StubQuestClient]:
     robot_config = ROBOT_CONFIGS[robot_name]
     if config is None:
-        config = OculusTeleopPolicyConfig(
+        config = QuestTeleopPolicyConfig(
             subscriptions=TELEOP_SUBSCRIPTIONS,
             verbose=False,
-            oculus_to_tool_command_rotation=np.eye(3),
+            quest_to_tool_command_rotation=np.eye(3),
         )
-    policy = OculusTeleopPolicy(
+    policy = QuestTeleopPolicy(
         robot_config=robot_config,
         config=config,
         orchestrator_client=StubOrchestratorClient(),
     )
-    return policy, policy.reader  # ty:ignore[invalid-return-type]
+    return policy, policy.input_client  # ty:ignore[invalid-return-type]
 
 
 @pytest.fixture
@@ -136,16 +133,16 @@ def mobile_policy_and_reader():
 class TestConstruction:
     def test_uses_stub_reader(self, panda_policy_and_reader):
         policy, reader = panda_policy_and_reader
-        assert isinstance(reader, StubOculusReader)
+        assert isinstance(reader, StubQuestClient)
         assert policy.config.verbose is False
 
-    def test_default_mapping_rotates_oculus_y_and_z_axes(self):
-        config = OculusTeleopPolicyConfig(
+    def test_default_mapping_rotates_quest_y_and_z_axes(self):
+        config = QuestTeleopPolicyConfig(
             subscriptions=TELEOP_SUBSCRIPTIONS,
         )
 
         np.testing.assert_array_equal(
-            config.oculus_to_tool_command_rotation,
+            config.quest_to_tool_command_rotation,
             np.array(
                 [
                     [1.0, 0.0, 0.0],
@@ -155,37 +152,20 @@ class TestConstruction:
             ),
         )
 
-    def test_passes_wireless_connection_to_reader(self):
-        config = OculusTeleopPolicyConfig(
-            subscriptions=TELEOP_SUBSCRIPTIONS,
-            ip_address="192.168.1.42",
-            port=CUSTOM_ADB_PORT,
-            verbose=False,
-        )
-
-        policy, reader = _make_policy(config=config)
-
-        assert policy.config.ip_address == "192.168.1.42"
-        assert reader.ip_address == "192.168.1.42"
-        assert reader.port == CUSTOM_ADB_PORT
-
     @pytest.mark.parametrize(
         ("kwargs", "message"),
         [
-            ({"ip_address": "not-an-ip"}, "valid IPv4"),
-            ({"port": 0}, "port"),
             ({"input_timeout": 0.0}, "input timeout"),
-            ({"startup_timeout": float("inf")}, "startup timeout"),
         ],
     )
     def test_rejects_invalid_connection_config(self, kwargs, message):
         with pytest.raises(ValueError, match=message):
-            OculusTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS, **kwargs)
+            QuestTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS, **kwargs)
 
     def test_mobile_base_limits_come_from_robot_config(self):
         robot_config = ROBOT_CONFIGS["triskel"]
 
-        policy = OculusTeleopPolicy(
+        policy = QuestTeleopPolicy(
             robot_config=robot_config,
             config=None,
             orchestrator_client=StubOrchestratorClient(),
@@ -226,13 +206,13 @@ class TestInputDropout:
         client = StubOrchestratorClient()
         policy.orchestrator_client = client
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
-        obs.mode = Mode.OCULUS
+        obs.mode = Mode.QUEST
         reader.buttons.update(X=True, LG=True)
         policy(obs)
         obs.mode = Mode.HOMING
         assert policy(obs).tool_pose is None
 
-        obs.mode = Mode.OCULUS
+        obs.mode = Mode.QUEST
         left_pose = reader.transforms.pop("l")
         assert policy(obs) == Action()
         reader.transforms["r"][0, 3] += 0.15
@@ -319,7 +299,7 @@ class TestInputDropout:
         assert policy.commanded_gripper_position is None
         assert hold_action == Action()
 
-        recovered_reader_state = StubOculusReader()
+        recovered_reader_state = StubQuestClient()
         reader.transforms = recovered_reader_state.transforms
         reader.buttons = recovered_reader_state.buttons
         reader.buttons["RG"] = True
@@ -347,7 +327,7 @@ class TestDeadManSwitch:
         obs.robot_joint_command = RobotJointCommand(1.0, previous)
         obs.mode = Mode.KEYBOARD
         assert policy(obs).base_pose is None
-        obs.mode = Mode.OCULUS
+        obs.mode = Mode.QUEST
         expected_base = policy.robot.get_base_pose(measured).copy()
         expected_tool = policy.robot.get_tool_command_pose(previous).copy()
         gripper = policy.robot.get_gripper_position_indices()
@@ -484,11 +464,11 @@ class TestControllerDeltaApplied:
 
     def test_translation_scale_amplifies_delta(self):
         policy, reader = _make_policy(
-            config=OculusTeleopPolicyConfig(
+            config=QuestTeleopPolicyConfig(
                 subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
                 tool_translation_scale=3.0,
-                oculus_to_tool_command_rotation=np.eye(3),
+                quest_to_tool_command_rotation=np.eye(3),
             ),
         )
         reader.buttons["RG"] = True
@@ -502,21 +482,21 @@ class TestControllerDeltaApplied:
         expected_translation = ref.translation + delta * 3.0  # ty:ignore[unresolved-attribute]
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)  # ty:ignore[unresolved-attribute]
 
-    def test_oculus_to_tool_command_remap_applied_to_delta(self):
+    def test_quest_to_tool_command_remap_applied_to_delta(self):
         """A 90° rotation about Z should swap x and y axes of the input delta."""
         rotation_about_z_90 = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
         policy, reader = _make_policy(
-            config=OculusTeleopPolicyConfig(
+            config=QuestTeleopPolicyConfig(
                 subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
-                oculus_to_tool_command_rotation=rotation_about_z_90,
+                quest_to_tool_command_rotation=rotation_about_z_90,
             ),
         )
         reader.buttons["RG"] = True
         obs = _observation_from_q(policy.robot_config.homing_presets[HomingPreset.HOME])
         ref = policy(obs).tool_pose
 
-        # +x in the Oculus frame should appear as +y after the remap.
+        # +x in the Quest frame should appear as +y after the remap.
         reader.transforms["r"] = _se3_to_matrix(pin.SE3(np.eye(3), np.array([0.001, 0.0, 0.0])))
         action = policy(obs)
 
@@ -525,20 +505,20 @@ class TestControllerDeltaApplied:
         np.testing.assert_allclose(action.tool_pose.translation, expected_translation, atol=1e-12)  # ty:ignore[unresolved-attribute]
 
     @pytest.mark.parametrize(
-        ("oculus_delta", "command_delta"),
+        ("quest_delta", "command_delta"),
         [
             (np.array([0.0, 0.001, 0.0]), np.array([0.0, 0.0, 0.001])),
             (np.array([0.0, 0.0, 0.001]), np.array([0.0, -0.001, 0.0])),
         ],
     )
-    def test_default_mapping_rotates_up_and_forward_axes(self, oculus_delta, command_delta):
+    def test_default_mapping_rotates_up_and_forward_axes(self, quest_delta, command_delta):
         policy, _ = _make_policy(
-            config=OculusTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS, verbose=False)
+            config=QuestTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS, verbose=False)
         )
         policy.filtered_controller_pose = pin.SE3.Identity()
         policy.commanded_tool_pose = pin.SE3.Identity()
 
-        target = policy._compute_tool_pose(_se3_to_matrix(pin.SE3(np.eye(3), oculus_delta)))
+        target = policy._compute_tool_pose(_se3_to_matrix(pin.SE3(np.eye(3), quest_delta)))
 
         np.testing.assert_allclose(target.translation, command_delta, atol=1e-12)
 
@@ -595,13 +575,13 @@ class TestControllerDeltaApplied:
             atol=1e-12,
         )
 
-    def test_oculus_to_tool_command_remap_applied_to_rotation(self):
+    def test_quest_to_tool_command_remap_applied_to_rotation(self):
         command_rotation = pin.utils.rotate("z", np.pi / 2)
         policy, _ = _make_policy(
-            config=OculusTeleopPolicyConfig(
+            config=QuestTeleopPolicyConfig(
                 subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
-                oculus_to_tool_command_rotation=command_rotation,
+                quest_to_tool_command_rotation=command_rotation,
             ),
         )
         tool_reference = pin.SE3.Identity()
@@ -890,17 +870,17 @@ class TestGripper:
 
     def test_no_gripper_indices_yields_none(self):
         cfg = replace(ROBOT_CONFIGS["panda"], gripper=None)
-        policy = OculusTeleopPolicy(
+        policy = QuestTeleopPolicy(
             robot_config=cfg,
-            config=OculusTeleopPolicyConfig(
+            config=QuestTeleopPolicyConfig(
                 subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
-                oculus_to_tool_command_rotation=np.eye(3),
+                quest_to_tool_command_rotation=np.eye(3),
             ),
             orchestrator_client=StubOrchestratorClient(),
         )
-        policy.reader.buttons["RG"] = True  # ty:ignore[unresolved-attribute]
-        policy.reader.buttons["A"] = True  # ty:ignore[unresolved-attribute]
+        policy.input_client.buttons["RG"] = True  # ty:ignore[unresolved-attribute]
+        policy.input_client.buttons["A"] = True  # ty:ignore[unresolved-attribute]
 
         action = policy(_observation_from_q(cfg.homing_presets[HomingPreset.HOME]))
 
@@ -1093,18 +1073,18 @@ class TestHomingButtons:
     def test_homing_passes_through_when_no_gripper_configured(self):
         """With no gripper joints, the target equals the config array verbatim."""
         cfg = replace(ROBOT_CONFIGS["panda"], gripper=None)
-        policy = OculusTeleopPolicy(
+        policy = QuestTeleopPolicy(
             robot_config=cfg,
-            config=OculusTeleopPolicyConfig(
+            config=QuestTeleopPolicyConfig(
                 subscriptions=TELEOP_SUBSCRIPTIONS,
                 verbose=False,
-                oculus_to_tool_command_rotation=np.eye(3),
+                quest_to_tool_command_rotation=np.eye(3),
             ),
             orchestrator_client=StubOrchestratorClient(),
         )
         stub_client = StubOrchestratorClient()
         policy.orchestrator_client = stub_client
-        policy.reader.buttons["X"] = True  # ty:ignore[unresolved-attribute]
+        policy.input_client.buttons["X"] = True  # ty:ignore[unresolved-attribute]
 
         policy(_observation_from_q(cfg.homing_presets[HomingPreset.HOME]))
 
@@ -1194,7 +1174,7 @@ class TestReset:
 
 
 def _se3_to_matrix(transform: pin.SE3) -> np.ndarray:
-    """4x4 numpy matrix matching the format OculusReader produces."""
+    """4x4 numpy matrix matching the validated Vuer controller pose format."""
     matrix = np.eye(4)
     matrix[:3, :3] = transform.rotation
     matrix[:3, 3] = transform.translation

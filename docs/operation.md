@@ -10,11 +10,32 @@ share the same control interface; hardware actions require explicit operator
 acknowledgement. Start the input you want to use, then select its control mode.
 Use **Idle** to leave active control.
 
-Keyboard and Oculus provide teleoperation; [Agent control](agents.md) covers API mode.
-For headset installation, see [oculus_reader](https://github.com/rail-berkeley/oculus_reader);
-for a wireless connection, see [Deployment](deployment.md#wireless-oculus).
-Each Oculus clutch starts from the current tool target. Commands pause when tracking
-is lost or the latest frame exceeds `input_timeout`.
+Keyboard and Quest provide teleoperation; [Agent control](agents.md) covers API mode.
+
+## Quest teleoperation
+
+Connect using [the local HTTPS gateway](gateway.md) or [Mac USB](hardware/quest.md#mac-usb).
+The viewer includes offline assets for the
+[Quest 3 Touch Plus controllers](hardware/quest.md#controller-assets).
+
+1. Choose runtime, robot, and scene, then start the stack and Quest input.
+2. Open the headset's connection page, choose **Open Vuer**, and enter VR or passthrough.
+3. Release both grips, select Quest mode, then hold a grip to control.
+4. Close the viewer before switching hosts. Stop input and stack when finished.
+
+The right controller moves the tool, the left stick drives, and the right stick
+turns. A/B closes/opens the gripper, X homes, and Y toggles recording. Each clutch
+starts from the current tool target. Tracking loss pauses commands and requires
+releasing both grips before control resumes. Physical controllers are required.
+
+On Triskel, the viewer combines a large base-camera view with a wrist inset at its top-right.
+Other robots use their [configured camera order](hardware/quest.md#architecture).
+Unavailable sources show a label; calibrated observations remain unchanged.
+[Quest configuration](../src/humanoid/config/quest.py) defines `base_height` for
+panel size, `base_down_degrees` for placement below forward gaze, `wrist_fraction`
+for inset size, and `wrist_margin` for inset padding. Its `input_timeout` controls
+transport freshness. The [teleoperation configuration](../src/humanoid/config/teleop.py)
+separately controls policy input freshness and motion filtering.
 
 ## Health and metrics
 
@@ -59,7 +80,7 @@ and [Networking](networking.md#camera-streaming) for remote video requirements.
 
 Use the console to record or replay LCM sessions. Each recording is a bundle under
 `logs/recordings/<timestamp>/` containing the LCM log and robot configuration manifest.
-Oculus **Y** toggles recording; the console reflects confirmed recorder state.
+The console reflects confirmed recorder state, including controller-triggered recording.
 
 Stop other stacks or standalone drivers before replaying on the shared LCM network.
 The viewer can follow replay just as it follows a live stack.

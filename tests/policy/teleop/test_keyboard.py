@@ -126,7 +126,7 @@ class TestFirstCallInitialization:
         previous[gripper] = policy.gripper_max
         obs = _observation_from_q(measured)
         obs.robot_joint_command = RobotJointCommand(1.0, previous)
-        obs.mode = Mode.OCULUS
+        obs.mode = Mode.QUEST
         assert policy(obs).base_pose is None
 
         obs.mode = Mode.KEYBOARD

@@ -1,44 +1,44 @@
-"""Oculus VR teleoperation node for controlling robot end-effector pose.
+"""Quest VR teleoperation node for controlling robot end-effector pose.
 
-This node uses the OculusTeleopPolicy with the RealtimeEnvironment to provide
-Oculus VR controller-based control of the robot's end-effector pose.
+This node uses the QuestTeleopPolicy with the RealtimeEnvironment to provide
+Quest VR controller-based control of the robot's end-effector pose.
 """
 
 from humanoid.api.clients.recording import RecordingClient
-from humanoid.config import ROBOT_CONFIG, get_oculus_teleop_policy_config
+from humanoid.config import ROBOT_CONFIG, get_quest_teleop_policy_config
 from humanoid.constants import Topic
 from humanoid.environment.realtime import ActionTopics, RealtimeEnvironment
 from humanoid.logger import get_logger
 from humanoid.nodes.base import Node
-from humanoid.policy import OculusTeleopPolicy, OculusTeleopPolicyConfig
+from humanoid.policy import QuestTeleopPolicy, QuestTeleopPolicyConfig
 from humanoid.types.robot import RobotConfig
 
 logger = get_logger(__name__)
 
 
-class OculusTeleopNode(Node):
-    """Node that runs Oculus VR teleoperation using policy and environment.
+class QuestTeleopNode(Node):
+    """Node that runs Quest VR teleoperation using policy and environment.
 
-    This node integrates the OculusTeleopPolicy with the RealtimeEnvironment
+    This node integrates the QuestTeleopPolicy with the RealtimeEnvironment
     to provide a clean, modular approach to VR-based robot control.
     """
 
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
-        policy_config: OculusTeleopPolicyConfig | None = None,
+        policy_config: QuestTeleopPolicyConfig | None = None,
     ):
-        """Initialize the Oculus teleoperation node.
+        """Initialize the Quest teleoperation node.
 
         Args:
             robot_config: Robot configuration
-            policy_config: Tunable parameters for the Oculus teleop policy.
+            policy_config: Tunable parameters for the Quest teleop policy.
                 Its ``dt`` field sets the control loop period.
         """
         if policy_config is None:
-            policy_config = get_oculus_teleop_policy_config()
+            policy_config = get_quest_teleop_policy_config()
         self.recording = RecordingClient()
-        self.policy = OculusTeleopPolicy(
+        self.policy = QuestTeleopPolicy(
             robot_config=robot_config,
             config=policy_config,
             recording_request=self.recording.request,
@@ -48,8 +48,8 @@ class OculusTeleopNode(Node):
         # Create environment
         self.env = RealtimeEnvironment(
             action_topics=ActionTopics(
-                tool=Topic.OCULUS_TOOL_COMMAND,
-                base=Topic.OCULUS_BASE_COMMAND,
+                tool=Topic.QUEST_TOOL_COMMAND,
+                base=Topic.QUEST_BASE_COMMAND,
             ),
             subscriptions=policy_config.subscriptions,
         )
@@ -78,15 +78,15 @@ class OculusTeleopNode(Node):
 
     def on_close(self) -> None:
         try:
-            self.policy.reader.stop()
+            self.policy.input_client.close()
         finally:
             self.recording.close()
             self.env.close()
 
 
 def main():
-    """Main entry point for the Oculus teleoperation node."""
-    node = OculusTeleopNode()
+    """Main entry point for the Quest teleoperation node."""
+    node = QuestTeleopNode()
     node.run()
 
 

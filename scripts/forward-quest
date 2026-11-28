@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") start|stop
+
+Forward the local Quest viewer and dashboard to a USB-connected headset.
+The backend must be started separately.
+
+Environment overrides:
+  HUMANOID_QUEST_PORT       Backend Quest port (default: Port.QUEST_SERVER)
+  HUMANOID_DASHBOARD_PORT   Backend dashboard port, matching start --port (default: Port.API)
+
+Start prints the headset URLs and exits; the mappings remain until removed or
+the device disconnects. Stop removes only these two mappings.
+EOF
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    usage
+    exit 0
+fi
+ACTION="${1:-}"
+if [[ $# -ne 1 || ( "$ACTION" != start && "$ACTION" != stop ) ]]; then
+    usage >&2
+    exit 2
+fi
+
+NETWORK_DEFAULTS="$(uv run --project "$PROJECT_ROOT" python - <<'PY'
+from humanoid.constants import Host, Port
+
+print(Port.QUEST_SERVER, Port.API, Host.LOCALHOST)
+PY
+)"
+read -r QUEST_DEFAULT DASHBOARD_DEFAULT VIEWER_HOST <<< "$NETWORK_DEFAULTS"
+QUEST_PORT="${HUMANOID_QUEST_PORT:-$QUEST_DEFAULT}"
+DASHBOARD_PORT="${HUMANOID_DASHBOARD_PORT:-$DASHBOARD_DEFAULT}"
+for port in "$QUEST_PORT" "$DASHBOARD_PORT"; do
+    if [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || ((10#$port < 1 || 10#$port > 65535)); then
+        echo "Invalid port: $port" >&2
+        exit 2
+    fi
+done
+QUEST_PORT="$((10#$QUEST_PORT))"
+DASHBOARD_PORT="$((10#$DASHBOARD_PORT))"
+if [[ "$QUEST_PORT" == "$DASHBOARD_PORT" ]]; then
+    echo 'Quest and dashboard ports must be different.' >&2
+    exit 2
+fi
+
+if command -v adb >/dev/null 2>&1; then
+    ADB="$(command -v adb)"
+elif [[ -x "$HOME/Library/Android/sdk/platform-tools/adb" ]]; then
+    ADB="$HOME/Library/Android/sdk/platform-tools/adb"
+else
+    echo 'Install Android Platform Tools and make adb available on PATH.' >&2
+    exit 1
+fi
+
+if ! "$ADB" -d get-state >/dev/null; then
+    echo 'Connect one USB headset, enable Developer Mode, and accept USB debugging in the headset.' >&2
+    exit 1
+fi
+
+if [[ "$ACTION" == stop ]]; then
+    status=0
+    for port in "$QUEST_PORT" "$DASHBOARD_PORT"; do
+        "$ADB" -d reverse --remove "tcp:$port" || status=1
+    done
+    exit "$status"
+fi
+
+"$ADB" -d reverse "tcp:$QUEST_PORT" "tcp:$QUEST_PORT"
+if ! "$ADB" -d reverse "tcp:$DASHBOARD_PORT" "tcp:$DASHBOARD_PORT"; then
+    echo 'Dashboard forwarding failed; the Quest mapping remains. Rerun start or use stop to clean up.' >&2
+    exit 1
+fi
+echo "Quest viewer: http://$VIEWER_HOST:$QUEST_PORT/connect"
+echo "Dashboard:    http://$VIEWER_HOST:$DASHBOARD_PORT"
+echo 'Open these addresses in the Quest browser. Keep Wi-Fi connected for camera video.'

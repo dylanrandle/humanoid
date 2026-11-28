@@ -2,9 +2,7 @@
 
 set -euo pipefail
 
-REMOTE_HOST="${HUMANOID_ROBOT_HOST:-triskel}"
-REMOTE_DASHBOARD_PORT="${HUMANOID_DASHBOARD_PORT:-8765}"
-LOCAL_DASHBOARD_PORT="${HUMANOID_LOCAL_DASHBOARD_PORT:-${REMOTE_DASHBOARD_PORT}}"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
     cat <<EOF
@@ -13,8 +11,8 @@ Usage: $(basename "$0")
 Forward the robot dashboard to localhost.
 
 Environment overrides:
-  HUMANOID_ROBOT_HOST             SSH host (default: triskel)
-  HUMANOID_DASHBOARD_PORT         Remote dashboard port (default: 8765)
+  HUMANOID_ROBOT_HOST             SSH host (default: Host.ROBOT)
+  HUMANOID_DASHBOARD_PORT         Remote dashboard port (default: Port.API)
   HUMANOID_LOCAL_DASHBOARD_PORT   Local dashboard port (default: remote port)
 EOF
 }
@@ -28,6 +26,17 @@ if [[ $# -ne 0 ]]; then
     exit 2
 fi
 
+NETWORK_DEFAULTS="$(uv run --project "$PROJECT_ROOT" python - <<'PY'
+from humanoid.constants import Host, Port
+
+print(Port.API, Host.ROBOT, Host.LOOPBACK)
+PY
+)"
+read -r DEFAULT_PORT DEFAULT_ROBOT_HOST LOOPBACK_HOST <<< "$NETWORK_DEFAULTS"
+REMOTE_HOST="${HUMANOID_ROBOT_HOST:-$DEFAULT_ROBOT_HOST}"
+REMOTE_DASHBOARD_PORT="${HUMANOID_DASHBOARD_PORT:-$DEFAULT_PORT}"
+LOCAL_DASHBOARD_PORT="${HUMANOID_LOCAL_DASHBOARD_PORT:-${REMOTE_DASHBOARD_PORT}}"
+
 validate_port() {
     local label="$1"
     local port="$2"
@@ -40,7 +49,7 @@ validate_port() {
 validate_port "remote dashboard" "${REMOTE_DASHBOARD_PORT}"
 validate_port "local dashboard" "${LOCAL_DASHBOARD_PORT}"
 
-echo "Forwarding dashboard: http://127.0.0.1:${LOCAL_DASHBOARD_PORT}"
+echo "Forwarding dashboard: http://${LOOPBACK_HOST}:${LOCAL_DASHBOARD_PORT}"
 echo "Press Ctrl-C to close the tunnel."
 
 ssh \
@@ -49,5 +58,5 @@ ssh \
     -o ExitOnForwardFailure=yes \
     -o ServerAliveInterval=30 \
     -o ServerAliveCountMax=3 \
-    -L "127.0.0.1:${LOCAL_DASHBOARD_PORT}:127.0.0.1:${REMOTE_DASHBOARD_PORT}" \
+    -L "${LOOPBACK_HOST}:${LOCAL_DASHBOARD_PORT}:${LOOPBACK_HOST}:${REMOTE_DASHBOARD_PORT}" \
     "${REMOTE_HOST}"

@@ -51,7 +51,7 @@ def test_matching_mode_runs_step():
 
 def test_mismatched_mode_resets_and_returns_empty_action():
     policy = _RecordingPolicy()
-    action = policy(_obs(Mode.OCULUS))
+    action = policy(_obs(Mode.QUEST))
 
     assert policy.step_calls == 0
     assert policy.reset_calls == 1

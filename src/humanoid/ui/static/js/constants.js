@@ -12,7 +12,7 @@ export const ProcessName = Object.freeze({
   STACK: "stack",
   REPLAY: "replay",
   KEYBOARD: "keyboard",
-  OCULUS: "oculus",
+  QUEST: "quest",
   AUTONOMY: "autonomy",
 });
 
@@ -24,7 +24,7 @@ export const ProcessAction = Object.freeze({
 export const Mode = Object.freeze({
   IDLE: "idle",
   HOMING: "homing",
-  OCULUS: "oculus",
+  QUEST: "quest",
   KEYBOARD: "keyboard",
   SYSTEM: "system",
   AUTONOMY: "autonomy",
@@ -82,6 +82,8 @@ export const ApiKey = Object.freeze({
 
 export const ApiRoute = Object.freeze({
   ROOT: "/api",
+  QUEST_INPUT: "/api/quest/input",
+  QUEST_OPEN: "/api/quest/open",
   STATE: "/api/state",
   CAMERA: "/api/camera",
   CAPTURE: "/api/capture",
@@ -120,7 +122,7 @@ export const BusyKey = Object.freeze({
 
 export const INPUT_PROCESSES = Object.freeze([
   ProcessName.KEYBOARD,
-  ProcessName.OCULUS,
+  ProcessName.QUEST,
   ProcessName.AUTONOMY,
 ]);
 

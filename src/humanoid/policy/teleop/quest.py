@@ -1,4 +1,4 @@
-"""Oculus VR teleoperation policy for controlling robot end-effector pose."""
+"""Quest VR teleoperation policy for controlling robot end-effector pose."""
 
 import time
 from collections.abc import Callable
@@ -7,24 +7,24 @@ from copy import deepcopy
 import numpy as np
 import pinocchio as pin
 
+from humanoid.api.clients.quest import QuestClient
 from humanoid.config import ROBOT_CONFIG
 from humanoid.config.teleop import TELEOP_SUBSCRIPTIONS
 from humanoid.logger import get_logger
 from humanoid.orchestrator.client import OrchestratorClient
 from humanoid.policy.teleop.base import BaseTeleopPolicy
 from humanoid.policy.teleop.motion import CartesianPoseLimiter, low_pass_pose
-from humanoid.policy.teleop.oculus_reader import OculusReader
 from humanoid.types.action import Action
 from humanoid.types.homing import HomingPreset
 from humanoid.types.observation import Observation
 from humanoid.types.orchestrator import Mode
 from humanoid.types.recording import RecordingState, RecordingStatus
 from humanoid.types.robot import RobotConfig
-from humanoid.types.teleop import OculusInputSnapshot, OculusTeleopPolicyConfig
+from humanoid.types.teleop import QuestInputSnapshot, QuestTeleopPolicyConfig
 
 logger = get_logger(__name__)
 
-# Oculus controller data keys
+# Quest controller data keys
 LEFT_CONTROLLER_KEY = "l"
 RIGHT_CONTROLLER_KEY = "r"
 LEFT_GRIP_KEY = "LG"
@@ -37,8 +37,8 @@ X_BUTTON_KEY = "X"
 Y_BUTTON_KEY = "Y"
 
 
-class OculusTeleopPolicy(BaseTeleopPolicy):
-    """Policy that uses Oculus VR controllers to control the robot.
+class QuestTeleopPolicy(BaseTeleopPolicy):
+    """Policy that uses Quest VR controllers to control the robot.
 
     The right controller's pose commands the tool pose, the A and B buttons
     command the gripper (push-and-hold), and (when the robot has a base frame)
@@ -59,8 +59,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         - Left joystick: Base XY translation (see ``base_translation_matrix``)
         - Right joystick X: Base yaw (see ``base_yaw_scale``)
 
-    Controller-pose deltas are remapped from the Oculus frame into the robot's
-    tool-command frame via ``oculus_to_tool_command_rotation``. That command
+    Controller-pose deltas are remapped from the Quest frame into the robot's
+    tool-command frame via ``quest_to_tool_command_rotation``. That command
     frame is world for fixed-base robots and the configured base frame for
     mobile robots.
 
@@ -70,26 +70,26 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         orchestrator_client: Client used for homing requests
     """
 
-    mode = Mode.OCULUS
+    mode = Mode.QUEST
 
     def __init__(
         self,
         robot_config: RobotConfig = ROBOT_CONFIG,
-        config: OculusTeleopPolicyConfig | None = None,
+        config: QuestTeleopPolicyConfig | None = None,
         orchestrator_client: OrchestratorClient | None = None,
         recording_request: Callable[[], bool] | None = None,
         recording_status: Callable[[], RecordingStatus | None] | None = None,
     ):
-        """Initialize the Oculus teleoperation policy."""
+        """Initialize the Quest teleoperation policy."""
         if config is None:
-            config = OculusTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS)
+            config = QuestTeleopPolicyConfig(subscriptions=TELEOP_SUBSCRIPTIONS)
         super().__init__(robot_config=robot_config, verbose=config.verbose)
 
         self.config = config
         self.tool_translation_scale = config.tool_translation_scale
         self.tool_rotation_scale = config.tool_rotation_scale
         self.base_config = robot_config.base
-        self.oculus_to_tool_command_rotation = config.oculus_to_tool_command_rotation.copy()
+        self.quest_to_tool_command_rotation = config.quest_to_tool_command_rotation.copy()
         self.tool_motion_limiter = CartesianPoseLimiter(
             robot_config.tool.velocity_limits,
             config.tool_linear_acceleration_limit,
@@ -103,15 +103,8 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.recording_status = recording_status
         self.recording_request = recording_request
 
-        # Oculus reader. An explicit address selects wireless ADB; None keeps
-        # the upstream library's USB-device discovery behavior.
-        self.reader = OculusReader(ip_address=config.ip_address, port=config.port)
+        self.input_client = QuestClient()
         self._input_issue: str | None = None
-        try:
-            self._wait_for_initial_input()
-        except BaseException:
-            self.reader.stop()
-            raise
 
         # Reference poses (set on first engaged call; cleared whenever the dead-man releases)
         self._clutched_at: float | None = None
@@ -127,30 +120,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         if self.verbose:
             self.log_configuration()
 
-    def _wait_for_initial_input(self) -> None:
-        deadline = time.monotonic() + self.config.startup_timeout
-        last_log = 0.0
-        while True:
-            now = time.monotonic()
-            snapshot = self.reader.get_snapshot()
-            if self._tracking_issue(snapshot, now) is None:
-                return
-            if now >= deadline:
-                connection = (
-                    f"wireless ADB at {self.config.ip_address}:{self.config.port}"
-                    if self.config.ip_address is not None
-                    else "USB ADB"
-                )
-                raise RuntimeError(
-                    f"Timed out waiting for Oculus controller data over {connection}. "
-                    "Wake the headset and controllers, then verify the ADB connection."
-                )
-            if now - last_log >= 1.0:
-                logger.info("Waiting for Oculus data...")
-                last_log = now
-            time.sleep(0.1)
-
-    def _tracking_issue(self, snapshot: OculusInputSnapshot, now: float) -> str | None:
+    def _tracking_issue(self, snapshot: QuestInputSnapshot, now: float) -> str | None:
         captured_at = snapshot.captured_monotonic
         if captured_at is None or now - captured_at > self.config.input_timeout:
             return "controller stream timed out"
@@ -165,9 +135,9 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
                 return f"{hand} controller buttons unavailable"
         return None
 
-    def _tracking_ready(self, snapshot: OculusInputSnapshot) -> bool:
+    def _tracking_ready(self, snapshot: QuestInputSnapshot) -> bool:
         # Invalid or old controller data is always disengaged. This prevents a
-        # dropped ADB stream from replaying the last grip/joystick state.
+        # dropped Vuer stream from replaying the last grip/joystick state.
         now = time.monotonic()
         issue = self._tracking_issue(snapshot, now)
         if issue is not None:
@@ -177,35 +147,28 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
                     if snapshot.captured_monotonic is None
                     else f"last frame captured {now - snapshot.captured_monotonic:.2f} s ago"
                 )
-                logger.warning("Oculus %s (%s). Suspending teleop commands.", issue, age)
+                logger.warning("Quest %s (%s). Suspending teleop commands.", issue, age)
             if self._input_issue is None:
                 self.reset()
             self._input_issue = issue
             return False
         if self._input_issue is not None:
-            logger.info("Oculus input recovered")
+            logger.info("Quest input recovered")
             self._input_issue = None
         return True
 
     def log_configuration(self):
-        logger.info(f"OculusTeleopPolicy initialized for {self.robot_config.name}")
+        logger.info(f"QuestTeleopPolicy initialized for {self.robot_config.name}")
         logger.info(f"End effector frame: {self.robot_config.tool.frame}")
         if self.robot_config.gripper is not None:
             logger.info(f"Gripper joints: {self.robot_config.gripper.joint_names}")
         logger.info(f"Translation scale: {self.tool_translation_scale:.2f}")
         logger.info(f"Rotation scale: {self.tool_rotation_scale:.2f}")
-        if self.config.ip_address is None:
-            logger.info("Oculus connection: USB ADB")
-        else:
-            logger.info(
-                "Oculus connection: wireless ADB at %s:%d",
-                self.config.ip_address,
-                self.config.port,
-            )
-        logger.info(f"Oculus input timeout: {self.config.input_timeout:.2f} s")
+        logger.info("Quest connection: Vuer over local HTTPS/WebSocket")
+        logger.info(f"Quest input timeout: {self.config.input_timeout:.2f} s")
         logger.info(
-            "Oculus->tool-command axis mapping:\n%s",
-            self.oculus_to_tool_command_rotation,
+            "Quest->tool-command axis mapping:\n%s",
+            self.quest_to_tool_command_rotation,
         )
         logger.info("\nControls:")
         logger.info("  Right controller pose -> End-effector pose")
@@ -250,7 +213,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         """Read a joystick (x, y) pair with the configured deadzone applied.
 
         Args:
-            buttons: Dictionary of button states from OculusReader
+            buttons: Dictionary of button states from QuestClient
             key: Joystick key, e.g. ``leftJS`` or ``rightJS``
 
         Returns:
@@ -342,7 +305,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
         self.filtered_controller_pose = current_controller
         # Consume this hand displacement once. Any motion the robot could not follow
         # at its speed limit must not keep advancing the target after the hand stops.
-        command_rotation = self.oculus_to_tool_command_rotation
+        command_rotation = self.quest_to_tool_command_rotation
 
         # translation
         controller_translation_delta = (
@@ -385,7 +348,7 @@ class OculusTeleopPolicy(BaseTeleopPolicy):
             Action containing the target tool pose and gripper positions
         """
         # Get current controller data
-        snapshot = self.reader.get_snapshot()
+        snapshot = self.input_client.get_snapshot()
         buttons = snapshot.buttons
 
         if not self._tracking_ready(snapshot):

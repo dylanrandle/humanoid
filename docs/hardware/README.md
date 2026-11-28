@@ -22,6 +22,15 @@ settings. See [Cameras](cameras.md) for RealSense setup and depth interpretation
 State estimation consumes measurements but remains separate from device lifecycle
 and robot kinematics. See [State estimation](../state-estimation.md).
 
+## Teleoperation devices
+
+The [Quest integration](../../src/humanoid/hardware/teleop/quest/) connects the
+physical headset and controllers for both simulated and real robots. The backend
+hosts its transport and viewer; the teleoperation policy separately converts
+controller snapshots into robot commands. See [Quest headset](quest.md) for setup,
+[Quest transport](quest.md#architecture) for ownership and service boundaries,
+and [Quest teleoperation](../operation.md#quest-teleoperation) for operation.
+
 ## See also
 
 - [Documentation index](../README.md)

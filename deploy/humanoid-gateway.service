@@ -1,0 +1,22 @@
+[Unit]
+Description=Humanoid local HTTPS gateway
+Wants=network-online.target humanoid.service
+After=network-online.target humanoid.service
+
+[Service]
+Type=simple
+User=@HUMANOID_USER@
+WorkingDirectory=@HUMANOID_INSTALL_DIR@
+Environment=XDG_DATA_HOME=@HUMANOID_INSTALL_DIR@/gateway/data
+Environment=XDG_CONFIG_HOME=@HUMANOID_INSTALL_DIR@/gateway/config
+Environment=HUMANOID_PUBLIC_HOST=@HUMANOID_PUBLIC_HOST@
+ExecStart=@HUMANOID_INSTALL_DIR@/bin/caddy run --config @HUMANOID_INSTALL_DIR@/gateway/Caddyfile --adapter caddyfile
+Restart=on-failure
+RestartSec=3
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -24,7 +24,7 @@ function snapshot(runtime = Runtime.SIM) {
       replay: { running: false },
       keyboard: { running: false },
       autonomy: { running: false },
-      oculus: { running: false },
+      quest: { running: false },
     },
     replay: {
       running: false,

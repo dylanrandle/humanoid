@@ -7,7 +7,8 @@ Its HTTP listener remains available when the robot stack or motion policy stops.
 
 Routes adapt HTTP requests to typed services. The backend owns runtime selection,
 process supervision, modes, observations, motions, recordings, logs, and camera
-streaming. Supervision continues independently of browser polling.
+streaming. Supervision continues independently of browser polling. The backend
+also hosts the [Quest device integration](hardware/quest.md#architecture).
 
 The motion policy runs in a managed process. A private pipe connects it to the
 backend, with I/O workers keeping HTTP and model calls out of the control loop.

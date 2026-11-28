@@ -1,0 +1,20 @@
+{
+	admin off
+	auto_https disable_redirects
+	skip_install_trust
+}
+
+https://{$HUMANOID_PUBLIC_HOST}:@PORT_DASHBOARD_GATEWAY@ {
+	tls internal
+	header X-Content-Type-Options nosniff
+	reverse_proxy @HOST_LOOPBACK@:@PORT_API@
+}
+
+https://{$HUMANOID_PUBLIC_HOST}:@PORT_QUEST_GATEWAY@ {
+	tls internal
+	header {
+		Permissions-Policy "xr-spatial-tracking=(self)"
+		X-Content-Type-Options nosniff
+	}
+	reverse_proxy @HOST_LOOPBACK@:@PORT_QUEST_SERVER@
+}

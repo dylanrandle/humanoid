@@ -11,6 +11,7 @@ SupplementaryGroups=dialout
 WorkingDirectory=@HUMANOID_INSTALL_DIR@
 Environment=HUMANOID_DATA_DIR=@HUMANOID_INSTALL_DIR@
 Environment=PYTHONUNBUFFERED=1
+Environment=HUMANOID_PUBLIC_HOST=@HUMANOID_PUBLIC_HOST@
 # Render simulated cameras without an X11 display, using the host GPU.
 Environment=MUJOCO_GL=egl
 ExecStart=@HUMANOID_INSTALL_DIR@/.venv/bin/start --no-open

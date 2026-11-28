@@ -18,7 +18,7 @@ from humanoid.api.server import create_app
 from humanoid.api.services.recording import RecordingService
 from humanoid.config.selection import ROBOT_CONFIG
 from humanoid.config.simulation import DEFAULT_MUJOCO_SIMULATION_CONFIG
-from humanoid.constants import private_lcm_url
+from humanoid.constants import Host, Port, private_lcm_url
 from humanoid.middleware.publisher import Publisher
 from humanoid.nodes.base import Node
 from humanoid.nodes.orchestrator import OrchestratorNode
@@ -60,11 +60,13 @@ def _run_api(  # noqa: PLR0913 - isolated trial startup arguments
     motion_connection: Connection,
     motion_session_id: str,
 ) -> None:
-    backend = BackendApplication(runtime=Runtime.SIM, robot=robot.name, lcm_url=url)
+    backend = BackendApplication(
+        runtime=Runtime.SIM, robot=robot.name, lcm_url=url, serve_quest=False
+    )
     backend.create_observation_service(robot)
     backend.motion_service.attach(motion_connection, motion_session_id)
     try:
-        with make_server("127.0.0.1", 0, create_app(backend), threaded=True) as server:
+        with make_server(Host.LOOPBACK, Port.DYNAMIC, create_app(backend), threaded=True) as server:
             server.timeout = 0.1
             with ready:
                 ready.send(server.server_port)
@@ -183,7 +185,7 @@ class TrialStack:
                     self._children.append(process)
                 if not port.poll(30):
                     raise RuntimeError("Timed out starting the trial robot API.")
-                self.client = RobotClient(ApiEndpoint(f"http://127.0.0.1:{port.recv()}"))
+                self.client = RobotClient(ApiEndpoint(f"http://{Host.LOOPBACK}:{port.recv()}"))
                 self._wait_until_ready(names)
         except BaseException:
             self.close()

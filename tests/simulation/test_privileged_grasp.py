@@ -17,7 +17,7 @@ from scipy.spatial.transform import Rotation
 from humanoid.config import DEFAULT_MUJOCO_SIMULATION_CONFIG
 from humanoid.config.robot.panda import PANDA_CONFIG
 from humanoid.config.robot.triskel import TRISKEL_CONFIG
-from humanoid.config.teleop import get_oculus_teleop_policy_config
+from humanoid.config.teleop import get_quest_teleop_policy_config
 from humanoid.simulation.engine import NativeMujocoEngine
 from humanoid.types.robot import RobotConfig, RobotName
 from humanoid.types.simulation import SimulationScene
@@ -227,7 +227,7 @@ class PinchApproach:
             return np.linspace(opened, closed, 50), 0.015
 
         closed = opened + self.travel * (rig.closed_limit - opened)
-        teleop = get_oculus_teleop_policy_config()
+        teleop = get_quest_teleop_policy_config()
         ticks = round(self.travel * teleop.gripper_close_time / teleop.dt)
         return np.linspace(opened, closed, ticks + 1)[1:], teleop.dt
 

@@ -3,6 +3,16 @@
 LCM connects robot processes; HTTP connects the console and agent clients.
 Remote video also needs a direct WebRTC media path.
 
+## Network defaults
+
+The `Host` string enum and `Port` integer enum in
+[constants.py](../src/humanoid/constants.py) define shared network defaults for
+runtime listeners, deployment, forwarding helpers, and LCM. Environment variables
+and CLI arguments still override defaults where supported. The deployed public
+hostname is derived from the target machine's hostname rather than fixed to one
+robot. See [Local HTTPS gateway](gateway.md#install-and-configure) for the public
+and internal listener roles.
+
 ## LCM transport
 
 LCM uses host-local multiport UDP (`mpudpm`, `ttl=0`). Each socket requests an
@@ -31,7 +41,8 @@ export LCM_DEFAULT_URL='mpudpm://239.255.76.67:7667?ttl=1&recv_buf_size=8388608'
 
 ## Remote API access
 
-The HTTP listener binds to loopback. Use the port forwarding workflow in
+The HTTP listeners bind to loopback. The [local HTTPS gateway](gateway.md)
+exposes dashboard and Quest access on the local network. You can also use the port forwarding workflow in
 [Deployment](deployment.md), or an SSH tunnel for a remote agent client:
 
 ```bash
@@ -43,10 +54,13 @@ can override it. Reuse the forwarded port for both the console and clients.
 
 ## Camera streaming
 
-The console uses WebRTC for RGB and colorized native-depth video. The browser
+The console uses WebRTC for RGB and colorized native-depth video; the Quest viewer
+uses the same service for its combined base/wrist view. The browser
 needs a direct media path to the backend, such as the same host or LAN. The
 backend uses local ICE candidates without external discovery or relay servers.
-An SSH HTTP tunnel carries API calls and signaling, but does not tunnel video.
+SSH and ADB reverse tunnels carry HTTP, WebSocket, and signaling traffic, but do
+not tunnel the UDP video. Keep the headset and host on the same Wi-Fi network when
+using the [Mac USB workflow](hardware/quest.md#mac-usb).
 
 For metric snapshots rather than video, use the [robot client](agents.md), which
 works over the HTTP tunnel. For display controls, see [Operating the robot](operation.md).

@@ -17,7 +17,7 @@ from aiortc import (
 )
 from aiortc.exceptions import InvalidStateError
 from av import VideoFrame
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from humanoid.config.camera import CAMERA_DISPLAY_CONFIG
 from humanoid.config.streaming import get_streaming_config
@@ -25,13 +25,13 @@ from humanoid.perception.depth import colorize_depth
 from humanoid.telemetry.streaming import StreamTelemetry
 from humanoid.types.api import ServiceConflict
 from humanoid.types.camera import CameraImage
-from humanoid.types.streaming import StreamAnswer, StreamingConfig, StreamOffer
+from humanoid.types.streaming import StreamAnswer, StreamingConfig, StreamOffer, VideoSource
 
 
 class _CameraTrack(VideoStreamTrack):
     def __init__(
         self,
-        source: Callable[[], CameraImage | None],
+        source: VideoSource,
         offer: StreamOffer,
         config: StreamingConfig,
         report: Callable[[float | None], None],
@@ -52,6 +52,8 @@ class _CameraTrack(VideoStreamTrack):
         if frame is None:
             pixels = np.zeros((240, 320, 3), dtype=np.uint8)
         elif self.offer.stream == "depth":
+            if not isinstance(frame, CameraImage):
+                raise ValueError("Depth streaming requires a calibrated camera frame")
             pixels = colorize_depth(
                 frame.data.astype(np.float32) * frame.depth_scale,
                 CAMERA_DISPLAY_CONFIG.depth_near_meters,
@@ -60,6 +62,8 @@ class _CameraTrack(VideoStreamTrack):
         else:
             pixels = frame.data
         image = Image.fromarray(pixels)
+        if frame is None:
+            ImageDraw.Draw(image).text((20, 105), "CAMERA UNAVAILABLE", fill="white")
         image.thumbnail((self.config.max_width, self.config.max_width))
         result = VideoFrame.from_ndarray(np.asarray(image), format="rgb24")
         result.pts = int((time.monotonic() - self._started) * 90000)
@@ -100,7 +104,7 @@ class StreamingService:
             future.cancel()
             raise ServiceConflict("Camera stream negotiation timed out.") from exc
 
-    def offer(self, offer: StreamOffer, source: Callable[[], CameraImage | None]) -> StreamAnswer:
+    def offer(self, offer: StreamOffer, source: VideoSource) -> StreamAnswer:
         if offer.depth_far not in CAMERA_DISPLAY_CONFIG.depth_ranges_meters:
             raise ValueError("Unsupported depth preview range.")
         return self._call(self._offer(offer, source))
@@ -108,7 +112,7 @@ class StreamingService:
     async def _offer(
         self,
         offer: StreamOffer,
-        source: Callable[[], CameraImage | None],
+        source: VideoSource,
     ) -> StreamAnswer:
         if len(self._peers) >= self.config.max_sessions:
             raise ServiceConflict("Camera stream viewer limit reached.")
