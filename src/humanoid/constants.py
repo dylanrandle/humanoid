@@ -18,6 +18,7 @@ from humanoid.types.robot import (
 from humanoid.types.simulation import SimulationState
 
 LCM_RECEIVE_BUFFER_BYTES = 8 * 1024 * 1024
+LCM_PORT_RANGE_START = 7667
 
 
 def local_lcm_url(group: str, port: int) -> str:
@@ -27,8 +28,10 @@ def local_lcm_url(group: str, port: int) -> str:
 def private_lcm_url() -> str:
     """Allocate a random local bus independently of the operator's LCM_DEFAULT_URL."""
     group = f"239.192.{secrets.randbelow(256)}.{secrets.randbelow(256)}"
-    # Multiport LCM uses 500 consecutive ports starting at the supplied port.
-    return local_lcm_url(group, 49152 + secrets.randbelow(16384 - 500 + 1))
+    # The multicast group isolates each bus. Keep its 500 channel ports outside
+    # the ephemeral range: Linux's outgoing sockets can otherwise claim a port
+    # before LCM binds it, even when the multicast group is unique.
+    return local_lcm_url(group, LCM_PORT_RANGE_START)
 
 
 class EnvironmentVariable(StrEnum):
@@ -46,7 +49,9 @@ class EnvironmentVariable(StrEnum):
     SCENE = "HUMANOID_SCENE"
 
 
-DEFAULT_LCM_URL = os.environ.get("LCM_DEFAULT_URL", local_lcm_url("239.255.76.67", 7667))
+DEFAULT_LCM_URL = os.environ.get(
+    "LCM_DEFAULT_URL", local_lcm_url("239.255.76.67", LCM_PORT_RANGE_START)
+)
 DEFAULT_HUMANOID_RUNTIME = Runtime.SIM
 DEFAULT_HUMANOID_ROBOT = RobotName.TRISKEL
 DEFAULT_ROBOT_DIR = "/opt/humanoid"

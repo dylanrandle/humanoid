@@ -10,6 +10,9 @@ from humanoid.constants import (
 from humanoid.types.process import Runtime
 from humanoid.types.robot import RobotName
 
+FIRST_UNPRIVILEGED_PORT = 1024
+LINUX_EPHEMERAL_PORT_START = 32768
+
 
 def test_default_humanoid_configuration_is_explicit():
     assert DEFAULT_HUMANOID_RUNTIME is Runtime.SIM
@@ -25,11 +28,12 @@ def test_linux_deployment_matches_the_lcm_defaults():
     assert "LCM_DEFAULT_URL" not in (deploy / "humanoid.service").read_text()
 
 
-def test_private_bus_reserves_room_for_all_channel_ports(monkeypatch):
+def test_private_bus_keeps_all_channel_ports_outside_the_linux_ephemeral_range(monkeypatch):
     monkeypatch.setattr("humanoid.constants.secrets.randbelow", lambda n: n - 1)
     url = urlsplit(private_lcm_url())
     assert url.port is not None
-    assert url.port + 499 <= 2**16 - 1
+    assert url.port >= FIRST_UNPRIVILEGED_PORT
+    assert url.port + 499 < LINUX_EPHEMERAL_PORT_START
     assert url.hostname == "239.192.255.255"
     assert url.scheme == "mpudpm"
     assert url.query == f"ttl=0&recv_buf_size={LCM_RECEIVE_BUFFER_BYTES}"

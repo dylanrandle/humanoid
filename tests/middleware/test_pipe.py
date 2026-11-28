@@ -102,3 +102,33 @@ def test_outbox_overflow_closes_pipe_without_blocking_caller(config):
         release.set()
         pipe.close()
     assert not pipe._reader.is_alive() and not pipe._writer.is_alive()
+
+
+def test_concurrent_close_releases_the_connection_only_once(config):
+    entered, release, duplicate = threading.Event(), threading.Event(), threading.Event()
+    connection = MagicMock()
+    connection.poll.side_effect = lambda timeout: release.wait(timeout) and False
+
+    def close():
+        if entered.is_set():
+            duplicate.set()
+        entered.set()
+        release.wait(timeout=5)
+
+    connection.close.side_effect = close
+    pipe = Pipe(connection, Message, config)
+    first = threading.Thread(target=pipe.close, daemon=True)
+    second = threading.Thread(target=pipe.close, daemon=True)
+    first.start()
+    try:
+        assert entered.wait(timeout=5)
+        second.start()
+        assert not duplicate.wait(timeout=0.1)
+    finally:
+        release.set()
+        first.join(timeout=5)
+        if second.ident is not None:
+            second.join(timeout=5)
+        pipe.close()
+    assert not first.is_alive() and not second.is_alive()
+    connection.close.assert_called_once()

@@ -3,7 +3,6 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, closing
 from dataclasses import replace
 from pathlib import Path
-from threading import Event
 from typing import cast
 from unittest.mock import MagicMock, call, patch
 
@@ -457,9 +456,7 @@ def test_episode_recording_rejects_stale_runtime_before_requesting_recording():
     )
 
 
-def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
-    tmp_path, monkeypatch
-):
+def test_hardware_episode_records_camera_and_state_channels_even_on_exception(tmp_path):
     service, manager, _, _ = _make_service(stack=True, connected=True)
     manager.runtime = Runtime.REAL
     url = private_lcm_url()
@@ -481,9 +478,7 @@ def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
         service.runtime_service.recording_service = recorder
         server = make_server("127.0.0.1", 0, create_app(service))
         resources.callback(server.server_close)
-        pool = resources.enter_context(ThreadPoolExecutor(max_workers=2))
-        stop = Event()
-        resources.callback(stop.set)
+        pool = resources.enter_context(ThreadPoolExecutor(max_workers=1))
         pool.submit(server.serve_forever, poll_interval=0.01)
         resources.callback(server.shutdown)
         console = f"http://127.0.0.1:{server.server_port}"
@@ -491,13 +486,28 @@ def test_hardware_episode_records_camera_and_state_channels_even_on_exception(
             pytest.raises(ValueError, match="interrupted"),
             record_lcm_episode(console, service.runtime_id) as name,
         ):
-            # A late wildcard subscriber can wait for mpudpm's five-second
-            # channel-map rebroadcast. Exercise that path with sustained input.
-            deadline = time.monotonic() + 6
-            while time.monotonic() < deadline:
+            # A late wildcard subscriber may need mpudpm's next channel map,
+            # whose rebroadcast interval is randomized between 5 and 6.25 s.
+            # Wait for delivery and the logger's flush, not a fixed publishing
+            # duration that can expire before discovery finishes.
+            deadline = time.monotonic() + 15
+            recorded: set[str] = set()
+            while True:
                 for channel in channels:
                     publisher.lc.publish(channel, b"episode sample")
                 publisher.lc.handle_timeout(0)
+                if Path(name).is_file():
+                    with closing(lcm.EventLog(name, "r")) as log:
+                        recorded.update(
+                            event.channel
+                            for event in iter(log.read_next_event, None)
+                            if event.data == b"episode sample"
+                        )
+                assert recorder.snapshot().state is RecordingState.RUNNING
+                if channels <= recorded:
+                    break
+                if time.monotonic() >= deadline:
+                    pytest.fail(f"Timed out recording channels: {sorted(channels - recorded)}")
                 time.sleep(0.01)
             raise ValueError("episode interrupted")
         assert recorder.process is None

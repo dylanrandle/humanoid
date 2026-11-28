@@ -18,6 +18,8 @@ class Pipe[T: BaseModel]:
         self.inbox: queue.Queue[T] = queue.Queue(config.capacity)
         self._outbox: queue.Queue[bytes] = queue.Queue(config.capacity)
         self.closed = threading.Event()
+        self._close_lock = threading.Lock()
+        self._connection_closed = False
         self.last_received = time.monotonic()
         self._reader = threading.Thread(target=self._read, daemon=True, name="pipe-read")
         self._writer = threading.Thread(target=self._write, daemon=True, name="pipe-write")
@@ -62,7 +64,12 @@ class Pipe[T: BaseModel]:
 
     def close(self) -> None:
         self.closed.set()
-        self.connection.close()
+        # The service worker and its owner can close concurrently. Connection.close
+        # is not atomic: a second close can hit a descriptor already reused by LCM.
+        with self._close_lock:
+            if not self._connection_closed:
+                self.connection.close()
+                self._connection_closed = True
         for worker in (self._reader, self._writer):
             if worker is not threading.current_thread():
                 worker.join(timeout=self.config.join_seconds)

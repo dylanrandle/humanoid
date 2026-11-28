@@ -57,6 +57,7 @@ class MotionPolicyNode(Node):
         self.executor = MotionExecutor(policy, get_motion_service_config())
         self.executor.motion_session_id = motion_session_id
         self.pipe: Pipe[MotionEnvelope] = Pipe(connection, MotionEnvelope, MOTION_PIPE_CONFIG)
+        self._contacted = False
         self._disconnected = False
         self._worker = threading.Thread(target=self._serve, daemon=True, name="motion-executor")
         self._worker.start()
@@ -89,6 +90,7 @@ class MotionPolicyNode(Node):
                 try:
                     if message.motion_session_id != self.executor.motion_session_id:
                         raise RuntimeError("Control session has expired.")
+                    self._contacted = True
                     if message.kind is MotionMessageKind.SUBMIT and message.request is not None:
                         if message.deadline is None:
                             raise ValueError("A motion start deadline is required.")
@@ -122,10 +124,14 @@ class MotionPolicyNode(Node):
     def step(self) -> None:
         observation = self.env.observe()
         self.executor.observe(observation)
+        contact_timeout = (
+            MOTION_PROTOCOL_CONFIG.contact_timeout_seconds
+            if self._contacted
+            else MOTION_PROTOCOL_CONFIG.startup_timeout_seconds
+        )
         if (
             self.pipe.closed.is_set()
-            or time.monotonic() - self.pipe.last_received
-            > MOTION_PROTOCOL_CONFIG.contact_timeout_seconds
+            or time.monotonic() - self.pipe.last_received > contact_timeout
         ):
             self.policy.reset()
             self.env.step(self.policy(observation))

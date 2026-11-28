@@ -8,6 +8,10 @@ Remote video also needs a direct WebRTC media path.
 LCM uses host-local multiport UDP (`mpudpm`, `ttl=0`). Each socket requests an
 8 MiB receive buffer through `recv_buf_size`.
 
+Simulation trials isolate their buses with randomized multicast groups. Their
+channel ports stay below the operating system's default ephemeral port range so
+outgoing sockets cannot claim ports needed by trial subscribers.
+
 - **Jetson** deployment applies the buffer settings automatically.
 - On **other Linux hosts**, copy the buffer configuration into `/etc/sysctl.d/`
   and run `sudo sysctl -p /etc/sysctl.d/90-humanoid-lcm.conf`. [Configuration file](../deploy/90-humanoid-lcm.conf)

@@ -22,7 +22,7 @@ from humanoid.simulation.trial_stack import TrialStack
 from humanoid.types.agent import AgentTask
 from humanoid.types.orchestrator import Mode
 from humanoid.types.process import Runtime
-from humanoid.types.robot import RobotName
+from humanoid.types.robot import RobotConfig, RobotName
 from humanoid.types.simulation import SimulationScene
 from humanoid.types.trial import SimulationTask, TaskScore, TrialStep
 
@@ -36,7 +36,29 @@ class WaitTask(SimulationTask):
         return TaskScore(data.time >= self.target_seconds, {"elapsed": data.time})
 
 
-def test_registered_task_explores_generates_and_evaluates_in_an_empty_scene(tmp_path, monkeypatch):
+@pytest.fixture
+def trial_robot(monkeypatch) -> RobotConfig:
+    # These tests exercise trial behavior and transport, not image fidelity.
+    # Keep real RGB-D rendering affordable with several software-rendered stacks
+    # running concurrently, without relaxing the API's capture freshness checks.
+    robot = replace(
+        TRISKEL_CONFIG,
+        cameras={
+            name: replace(
+                mount,
+                simulation=replace(mount.simulation, width=160, height=120, render_shadows=False),
+            )
+            for name, mount in TRISKEL_CONFIG.cameras.items()
+            if mount.simulation is not None
+        },
+    )
+    monkeypatch.setitem(trial.ROBOT_CONFIGS, robot.name, robot)
+    return robot
+
+
+def test_registered_task_explores_generates_and_evaluates_in_an_empty_scene(
+    tmp_path, monkeypatch, trial_robot
+):
     task = WaitTask()
     monkeypatch.setitem(trial.TASKS, "wait", lambda parser: lambda args: task)
     thread = Mock()
@@ -130,7 +152,7 @@ def test_episode_requires_a_camera():
         )
 
 
-def test_rejected_motion_returns_feedback_and_replay_continues(tmp_path, monkeypatch):
+def test_rejected_motion_returns_feedback_and_replay_continues(tmp_path, monkeypatch, trial_robot):
     replay = tmp_path / "controller.py"
     replay.write_text("# Controller decisions supplied by the test.")
 
@@ -195,7 +217,9 @@ def test_vision_trial_rejects_robots_without_cameras(robot, backend):
         pass
 
 
-def test_time_budget_ends_both_phases_without_dispatching_a_decision(tmp_path, monkeypatch):
+def test_time_budget_ends_both_phases_without_dispatching_a_decision(
+    tmp_path, monkeypatch, trial_robot
+):
     task = WaitTask()
     agent = AgentTask(task.goal)
     thread = Mock()
@@ -205,7 +229,7 @@ def test_time_budget_ends_both_phases_without_dispatching_a_decision(tmp_path, m
         task=task,
         backend=Runtime.SIM,
         endpoint=get_api_endpoint(),
-        robot_config=TRISKEL_CONFIG,
+        robot_config=trial_robot,
     )
     trial.explore(thread, agent, 0, output, 1e-12, episodes=episodes)
     thread.turn.assert_not_called()
@@ -220,12 +244,12 @@ def test_time_budget_ends_both_phases_without_dispatching_a_decision(tmp_path, m
     assert result.error is None
 
 
-def test_trial_routes_renamed_cameras_from_robot_config():
+def test_trial_routes_renamed_cameras_from_robot_config(trial_robot):
     config = replace(
-        TRISKEL_CONFIG,
+        trial_robot,
         cameras={
-            "chassis": TRISKEL_CONFIG.cameras["base"],
-            "inspection_2": TRISKEL_CONFIG.cameras["wrist"],
+            "chassis": trial_robot.cameras["base"],
+            "inspection_2": trial_robot.cameras["wrist"],
         },
     )
     with trial.open_episode(
@@ -243,9 +267,9 @@ def test_trial_routes_renamed_cameras_from_robot_config():
         assert set(images) == {"chassis RGB", "inspection_2 RGB"}
 
 
-def test_api_process_crash_stops_motion_process_and_returns_robot_to_idle():
+def test_api_process_crash_stops_motion_process_and_returns_robot_to_idle(trial_robot):
 
-    stack = TrialStack(WaitTask(), 0, robot_config=TRISKEL_CONFIG)
+    stack = TrialStack(WaitTask(), 0, robot_config=trial_robot)
     api = next(p for p in stack._children if p.name == "trial-api")
     motion = next(p for p in stack._children if p.name == "trial-motion")
     subscriber = Subscriber(topics=[Topic.ORCHESTRATOR_MODE], url=stack.lcm_url)

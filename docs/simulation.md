@@ -59,6 +59,9 @@ controls each camera's simulation-time sampling; `MujocoSimulationConfig.enable_
 controls whether sensors render. If rendering falls behind, newer snapshots replace
 pending ones. See [Cameras](hardware/cameras.md) for depth semantics.
 
+`cameras[name].simulation.render_shadows` controls shadows in sensor RGB images.
+Disabling it reduces software-rendering cost without changing depth geometry.
+
 Triskel's wrist-camera mount is nominal; calibrate its physical transform before
 relying on it for hardware measurements. Panda and SO101 have no onboard cameras.
 

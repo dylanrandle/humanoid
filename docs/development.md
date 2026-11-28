@@ -27,6 +27,14 @@ Pytest suite includes the Node.js UI tests. The check command runs tests in para
 and reports the slowest test phases. For a serial run or a focused test, use
 `uv run pytest` with an optional test path. To run only the UI tests, use `npm test`.
 
+The check command limits each numerical-library and Mesa software-rendering
+worker pool to one thread. Pytest and trial processes still run concurrently;
+the limits prevent nested thread pools from overwhelming the runner. See the
+[verification environment](../src/humanoid/config/check.py) for these settings.
+Trial behavior tests use smaller RGB-D images with shadows disabled so concurrent
+software renderers can meet the normal capture freshness limit; production camera
+settings are unchanged.
+
 ## Browser constants
 
 Python enums, payload keys, process mappings, and API routes are the source of truth for

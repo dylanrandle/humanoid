@@ -282,3 +282,28 @@ class TestSubscriber:
         unsubscribed = [c.args[0] for c in mock_lcm.unsubscribe.call_args_list]
         assert unsubscribed == subs
         assert sub._subscriptions == []
+
+    def test_close_waits_for_an_in_flight_receive_before_unsubscribing(self, mock_lcm, subscriber):
+        receiving = threading.Event()
+        release = threading.Event()
+        unsubscribed = threading.Event()
+
+        def receive(_milliseconds):
+            receiving.set()
+            release.wait(timeout=5)
+
+        mock_lcm.handle_timeout.side_effect = receive
+        mock_lcm.unsubscribe.side_effect = lambda _: unsubscribed.set()
+        sub = subscriber(topics=[Topic.ROBOT_STATE])
+        assert receiving.wait(timeout=5)
+        closer = threading.Thread(target=sub.close, daemon=True)
+        closer.start()
+        try:
+            # Exceed the old one-second join timeout while receive is still
+            # active: freeing its native subscription at this point is unsafe.
+            assert not unsubscribed.wait(timeout=1.1)
+        finally:
+            release.set()
+            closer.join(timeout=5)
+        assert not closer.is_alive()
+        assert unsubscribed.is_set()

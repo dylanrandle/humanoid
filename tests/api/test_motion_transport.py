@@ -180,3 +180,33 @@ def test_readiness_requires_executor_feedback_in_autonomy(connected):
     assert service.ready
     service.detach()
     assert not service.ready
+
+
+@pytest.mark.parametrize(
+    ("contacted", "elapsed", "stops"),
+    [
+        (False, MOTION_PROTOCOL_CONFIG.contact_timeout_seconds + 1, False),
+        (False, MOTION_PROTOCOL_CONFIG.startup_timeout_seconds + 1, True),
+        (True, MOTION_PROTOCOL_CONFIG.contact_timeout_seconds + 1, True),
+    ],
+)
+def test_motion_policy_distinguishes_api_startup_from_lost_contact(
+    monkeypatch, contacted, elapsed, stops
+):
+    parent, child = get_context("spawn").Pipe()
+    with (
+        closing(parent),
+        closing(MotionPolicyNode(child, "session", TRISKEL_CONFIG, lcm_url="memq://")) as node,
+    ):
+        observation = _observation()
+        monkeypatch.setattr(node.env, "observe", lambda: observation)
+        monkeypatch.setattr(node.env, "step", MagicMock())
+        release = MagicMock()
+        monkeypatch.setattr("humanoid.nodes.policy.motion.OrchestratorClient", release)
+        node._contacted = contacted
+        node.pipe.last_received = time.monotonic() - elapsed
+
+        node.step()
+
+        assert node.stop_condition() is stops
+        assert release.return_value.release_autonomy.called is stops

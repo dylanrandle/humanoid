@@ -247,7 +247,9 @@ class Subscriber:
 
     def close(self) -> None:
         self._running = False
-        self._lcm_thread.join(timeout=1.0)
+        # A timed join can leave a callback in flight on a busy host. LCM's
+        # subscription must outlive that callback, including during shutdown.
+        self._lcm_thread.join()
         for subscription in self._subscriptions:
             self.lc.unsubscribe(subscription)
         self._subscriptions.clear()

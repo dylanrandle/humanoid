@@ -54,6 +54,7 @@ class MujocoCamera:
             self._renderer = mujoco.Renderer(
                 self.model, height=self.config.height, width=self.config.width
             )
+            self._renderer.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW] = self.config.render_shadows
         renderer = self._renderer
         renderer.update_scene(data, camera=self.config.rgb_frame, scene_option=self._scene_option)
         rgb = renderer.render().copy()

@@ -79,6 +79,7 @@ class SimulatedCameraConfig(CameraConfig):
     rgb_fov_degrees: tuple[float, float]  # horizontal, vertical at the configured resolution
     depth_fov_degrees: tuple[float, float]
     depth_scale: float
+    render_shadows: bool = True
 
     def __post_init__(self) -> None:
         super().__post_init__()

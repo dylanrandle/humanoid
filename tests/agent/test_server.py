@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import replace
 from http import HTTPStatus
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -150,7 +151,15 @@ def test_client_cancellation_does_not_wait_for_motion_completion(connection):
     assert all(record.result.done() for record in service._motions.values())
 
 
-def test_observations_survive_motion_restart_but_old_motion_authority_does_not(observations):
+def test_observations_survive_motion_restart_but_old_motion_authority_does_not(
+    observations, monkeypatch
+):
+    # This static feedback sample tests restart identity, not elapsed-time expiry.
+    timestamp = observations.observation().robot_state.timestamp
+    monkeypatch.setattr(
+        "humanoid.api.services.observations.time",
+        SimpleNamespace(perf_counter=lambda: timestamp),
+    )
     with closing(ApiTestServer(observations)) as server:
         server.start()
         host, port = server.server.server_address[:2]

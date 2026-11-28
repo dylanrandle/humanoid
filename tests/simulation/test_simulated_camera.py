@@ -81,14 +81,16 @@ def test_camera_poses_follow_urdf_at_nonzero_mobile_pose():
     engine.close()
 
 
-def test_native_rendering_depth_conversion_cadence_and_cleanup(monkeypatch):
-    config = replace(SIMULATED_CAMERA_CONFIG, width=4, height=2)
+@pytest.mark.parametrize("render_shadows", [False, True])
+def test_native_rendering_depth_conversion_cadence_and_cleanup(monkeypatch, render_shadows):
+    config = replace(SIMULATED_CAMERA_CONFIG, width=4, height=2, render_shadows=render_shadows)
     model = mujoco.MjModel.from_xml_string(f'''<mujoco><worldbody>
       <camera name="{config.rgb_frame}" fovy="42"/>
       <camera name="{config.depth_frame}" fovy="58"/>
     </worldbody></mujoco>''')
     data = mujoco.MjData(model)
     renderer = MagicMock()
+    renderer.scene = mujoco.MjvScene(model, maxgeom=100)
     factory = MagicMock(return_value=renderer)
     monkeypatch.setattr("humanoid.simulation.camera.mujoco.Renderer", factory)
     rgb = np.full((2, 4, 3), 12, dtype=np.uint8)
@@ -99,6 +101,7 @@ def test_native_rendering_depth_conversion_cadence_and_cleanup(monkeypatch):
     factory.assert_not_called()
     frames = camera.read(data, timestamp=5.0)
     assert frames is not None
+    assert bool(renderer.scene.flags[mujoco.mjtRndFlag.mjRND_SHADOW]) is render_shadows
     assert frames.rgb.encoding is CameraEncoding.RGB8
     assert frames.depth.encoding is CameraEncoding.DEPTH16
     np.testing.assert_array_equal(frames.depth.data, [[1000, 2500, 0, 0], [0, 0, 0, 1]])
